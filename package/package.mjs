@@ -76,6 +76,11 @@ async function main() {
   const NEVER = 'no-cache, no-transform';
 
   const HOUR = 'public, max-age=3600, no-transform';
+  // The tab icon: a plain neutral one (three print layers), the same for every slicer; never the slicer maker's logo.
+  // The program does not set one either (its window icon is not drawn into the page).
+  const ICON = '<link rel=icon href="data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">'
+    + '<rect x="4" y="6" width="24" height="5" rx="2" fill="#8a9099"/><rect x="4" y="13.5" width="24" height="5" rx="2" fill="#6b7280"/>'
+    + '<rect x="4" y="21" width="24" height="5" rx="2" fill="#4b5563"/></svg>') + '">';
   const files = [];   // { rel, from, cache, top }: top = at <app>/<rel>, outside the version folder
   const add = (rel, from, cache = YEAR, top = false) => files.push({ rel, from, cache, top });
 
@@ -161,7 +166,7 @@ async function main() {
   }
 
   // The address without a version: forwards to the current version, keeping ?arguments and #hash.
-  const fwd = '<!doctype html><meta charset=utf-8><title>' + a.app + '</title><script>location.replace('
+  const fwd = '<!doctype html><meta charset=utf-8><title>' + a.app + '</title>' + ICON + '<script>location.replace('
     + JSON.stringify(a.version + '/') + '+location.search+location.hash)</script>';
   const top = path.join(out, a.app, 'index.html');
   fs.writeFileSync(top, fwd);
@@ -218,7 +223,9 @@ async function main() {
   const inject = '<script>window.SLICER_PAGE=' + JSON.stringify(page) + '</script><script src=credit.js></script>'
     + '<script src=home-folder-sync.js></script><script src=boolean3d-folder.js></script><script src=open-part-from-link.js></script>' + inject2;
   // With an install (install-and-lazy-load.js) the page does not load the program's script itself: install-and-lazy-load.js does, once the program is in the browser.
-  fs.writeFileSync(pageFile, fileList ? html.replace(tag + '</script>', inject) : html.replace(tag, inject + tag));
+  const pageHtml = fileList ? html.replace(tag + '</script>', inject) : html.replace(tag, inject + tag);
+  if (pageHtml.split('</head>').length !== 2) throw new Error(PROGRAM + '.html: no single "</head>"');
+  fs.writeFileSync(pageFile, pageHtml.replace('</head>', ICON + '</head>'));
   for (const f of files) {
     if (f.stored !== undefined) continue;
     const to = f.to;
