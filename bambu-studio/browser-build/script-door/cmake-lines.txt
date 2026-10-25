@@ -1,0 +1,8 @@
+Slicer door: three edits to browser-port/browser-build/CMakeLists.txt (Bambu only).
+1. After the agent line (target_sources(libslic3r_gui PRIVATE .../printer-link/lan_printer_agent.cpp ...)) add:
+   target_sources(libslic3r_gui PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/script-door/script_door.cpp")
+2. bambu_app link options: after "SHELL:--pre-js ${CMAKE_CURRENT_SOURCE_DIR}/printer-link/lan-printer-link.js" add
+   "SHELL:--pre-js ${CMAKE_CURRENT_SOURCE_DIR}/script-door/script-door.js"
+   and EXPORTED_FUNCTIONS gains _b3d_door_call,_b3d_door_now
+   (-sEXPORTED_FUNCTIONS=_main,_b3d_lan_incoming,_b3d_lan_camera_frame,_b3d_door_call,_b3d_door_now,_malloc,_free)
+3. LINK_DEPENDS gains "${CMAKE_CURRENT_SOURCE_DIR}/script-door/script-door.js"

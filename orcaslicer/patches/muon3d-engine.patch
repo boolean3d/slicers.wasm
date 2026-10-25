@@ -1,0 +1,16 @@
+diff --git a/engine/cmake/Engine.cmake b/engine/cmake/Engine.cmake
+index 8182907..1f9aad4 100644
+--- a/engine/cmake/Engine.cmake
++++ b/engine/cmake/Engine.cmake
+@@ -9,6 +9,11 @@
+ #  flush/*.txt                       GenericFlushPredictor: flush volumes for 2+ filaments
+ #  filament_mixing/*.json            ColorDecomposeRecipe (mixed filaments)
+ #  profiles/BBL/cli_config.json      the CLI's machine-limit clamp for Bambu Lab A1 / A1 mini / A2L
++# GUI spike: only libslic3r is wanted, not the engine module.
++if (ENGINE_LIBSLIC3R_ONLY)
++    return()
++endif ()
++
+ set(ENGINE_RESOURCE_PATTERNS
+     info/nozzle_info.json
+     info/nozzle_incompatibles.json

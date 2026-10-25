@@ -1,0 +1,1 @@
+[{"description":"slicers: a folder address opens its index.html (R2 serves no index pages)","expression":"(http.host eq \"slicers.boolean3d.com\" and ends_with(http.request.uri.path, \"/\"))","action":"rewrite","action_parameters":{"uri":{"path":{"expression":"wildcard_replace(http.request.uri.path, \"*/\", \"${1}/index.html\")"}}},"enabled":true}]

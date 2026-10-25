@@ -1,0 +1,1 @@
+[{"description":"slicers: cache every file (.wasm/.data are not cached by default); lifetimes from each object's Cache-Control","expression":"(http.host eq \"slicers.boolean3d.com\")","action":"set_cache_settings","action_parameters":{"cache":true,"edge_ttl":{"mode":"respect_origin"},"browser_ttl":{"mode":"respect_origin"}},"enabled":true}]
