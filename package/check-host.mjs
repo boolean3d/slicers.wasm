@@ -6,6 +6,7 @@
 // Requests are paced (4 at a time, ~25 a second) to stay well under the host's per-address rate limit.
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 
 const [dir, base] = process.argv.slice(2);
 if (!dir || !base) { console.error('usage: node check-host.mjs <package dir> <host url>'); process.exit(2); }
@@ -40,8 +41,10 @@ for (const app of Object.keys(manifest.current)) {
   const text = await r.text();
   if (r.status !== 200 || !text.includes(manifest.current[app] + '/')) faults.push(`${app}/: ${r.status}, not the pointer page`);
   const v = `${app}/${manifest.current[app]}/`;
+  // the version address must serve this package's own page, byte for byte (its script names change between builds)
   const page = await get(v, 'GET');
-  if (page.status !== 200 || !(await page.text()).includes('install-and-lazy-load.js')) faults.push(`${v}: ${page.status}, not the slicer page`);
+  const sha = createHash('sha256').update(Buffer.from(await page.arrayBuffer())).digest('hex');
+  if (page.status !== 200 || sha !== manifest.objects[v + 'index.html']?.sha256) faults.push(`${v}: ${page.status}, not the slicer page`);
 }
 
 // A second request of each big file: served from the CDN cache (header only exists behind Cloudflare). Both are GETs:
