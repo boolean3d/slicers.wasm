@@ -204,12 +204,16 @@ addToLibrary({
     // message and runs as the frame's own task: in WebKit a script started while the program page's code is on the
     // stack still resolves location.href = '../21/index.html' against the program page, inline <script> or not.
     Module.wxwvPostRun = function (win, js) {
-      if (!win.__wxwvRunner) {
-        Module.wxwvEval(win, 'addEventListener("message", function (e) { var d = e.data; if (e.source === parent && d && typeof d.__wxwvRun === "string")' +
-          ' try { (0, eval)(d.__wxwvRun); } catch (x) { console.error(x); } })');
-        win.__wxwvRunner = true;
+      // A MessageChannel made inside the frame carries the scripts: pages replace window.postMessage (Orca's Home:
+      // window.postMessage = HandleStudio, home.js:510), which then got the message instead of the runner and every
+      // such script was lost. The port belongs to the frame's document, so a new page gets a new runner.
+      if (!win.__wxwvRunPort) {
+        var r = Module.wxwvEval(win, '(function () { var c = new MessageChannel(); c.port1.onmessage = function (e) {' +
+          ' try { (0, eval)(e.data); } catch (x) { console.error(x); } }; return c.port2; })()');
+        if (!r.ok) return;
+        win.__wxwvRunPort = r.value;
       }
-      win.postMessage({ __wxwvRun: js }, location.origin);
+      win.__wxwvRunPort.postMessage(js);
     };
     Module.wxwvEval = function (win, js) {
       var doc = win.document;
