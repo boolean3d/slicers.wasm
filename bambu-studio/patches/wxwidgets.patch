@@ -16255,10 +16255,10 @@ index 36906c8..5214a68 100644
  {
 diff --git a/src/wasm/app.cpp b/src/wasm/app.cpp
 new file mode 100644
-index 0000000..5091ed2
+index 0000000..0752afa
 --- /dev/null
 +++ b/src/wasm/app.cpp
-@@ -0,0 +1,1081 @@
+@@ -0,0 +1,1090 @@
 +/////////////////////////////////////////////////////////////////////////////
 +// Name:        src/wasm/app.cpp
 +// Purpose      wxApp implementation
@@ -16338,6 +16338,15 @@ index 0000000..5091ed2
 +void wxWasmQueueUserInput(std::function<void()> handler, bool press = false)
 +{
 +    s_inputQueue.emplace_back(press ? 2 : 1, std::move(handler));
++}
++
++// z49: an input entry waits that wxWasmDispatchInput would run now (user input counts only while it is not deferred)
++bool wxWasmInputPending()
++{
++    for (const auto& entry : s_inputQueue)
++        if (s_deferUserInput <= 0 || entry.first == 0)
++            return true;
++    return false;
 +}
 +
 +bool wxWasmInPress()
@@ -22268,10 +22277,10 @@ index 0000000..fe57ed6
 +#endif // wxUSE_DRAG_AND_DROP
 diff --git a/src/wasm/evtloop.cpp b/src/wasm/evtloop.cpp
 new file mode 100644
-index 0000000..2c1f179
+index 0000000..0639b00
 --- /dev/null
 +++ b/src/wasm/evtloop.cpp
-@@ -0,0 +1,165 @@
+@@ -0,0 +1,170 @@
 +/////////////////////////////////////////////////////////////////////////////
 +// Name:        wx/wasm/evtloop.cpp
 +// Purpose:     wxGUIEventLoop implementation
@@ -22317,6 +22326,7 @@ index 0000000..2c1f179
 +}
 +
 +bool wxWasmInPress();                   // app.cpp (z15)
++bool wxWasmInputPending();              // app.cpp (z49)
 +int wxWasmSetDeferUserInput(int defer);
 +
 +extern "C" {
@@ -22352,7 +22362,10 @@ index 0000000..2c1f179
 +
 +bool wxGUIEventLoop::Pending() const
 +{
-+    return wxTheApp && wxTheApp->HasPendingEvents();
++    // z49: the native queue (the port's input entries), as in the desktop ports; wx's own pending events are processed by
++    // Dispatch() and wxEventLoopBase::DoYieldFor(). HasPendingEvents() stays true during a selective yield (delayed handlers
++    // go back into the list), which made "while (Pending()) Dispatch()" spin forever.
++    return wxWasmInputPending();
 +}
 +
 +bool wxGUIEventLoop::Dispatch()
@@ -22378,10 +22391,11 @@ index 0000000..2c1f179
 +    // inside a button press handler (or asked to leave input out) the next mouse/key events wait for it to end (z15)
 +    const bool defer = wxWasmInPress() || !(eventsToProcess & wxEVT_CATEGORY_USER_INPUT);
 +    const int oldDefer = defer ? wxWasmSetDeferUserInput(1) : -1;
-+    while (Pending())
++    // z49: one full pass always (input, pending events, paint, idle), then more only while native input waits
++    do
 +    {
 +        Dispatch();
-+    }
++    } while (Pending());
 +    if (defer)
 +        wxWasmSetDeferUserInput(oldDefer);
 +
@@ -27263,10 +27277,10 @@ index 0000000..8050afc
 +#endif // wxUSE_WEBVIEW && __WXWASM__
 diff --git a/src/wasm/window.cpp b/src/wasm/window.cpp
 new file mode 100644
-index 0000000..1408ddc
+index 0000000..5036b05
 --- /dev/null
 +++ b/src/wasm/window.cpp
-@@ -0,0 +1,857 @@
+@@ -0,0 +1,860 @@
 +/////////////////////////////////////////////////////////////////////////////
 +// Name:        wx/wasm/window.cpp
 +// Purpose:     wxWasmWindow implementation
@@ -27286,6 +27300,9 @@ index 0000000..1408ddc
 +#include "wx/log.h"
 +#include "wx/menu.h"
 +#include "wx/nonownedwnd.h"
++#include "wx/notebook.h"
++#include "wx/statbox.h"
++#include "wx/toplevel.h"
 +#include "wx/notebook.h"
 +#include "wx/statbox.h"
 +#include "wx/toplevel.h"

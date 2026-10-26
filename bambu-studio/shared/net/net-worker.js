@@ -105,7 +105,14 @@
   }
   function houseBridge() {
     var q = typeof location !== 'undefined' && new URLSearchParams(location.search).get('bridge');
-    return Module.lanBridge || q || 'ws://localhost:8770';
+    var b = Module.lanBridge || q || 'ws://localhost:8770';
+    // the helper's door (farm-helper/bambu-home/pairing.mjs): a tunnel line needs the token this browser got when it
+    // paired (lan-printer-link.js keeps it); without one the helper refuses the line
+    try {
+      var t = typeof localStorage !== 'undefined' && localStorage.getItem('b3d-helper-token');
+      if (t) { var u = new URL(b, location.href); u.searchParams.set('token', t); return u.href; }
+    } catch (e) {}
+    return b;
   }
   function relayUrl(url) {
     var m = /^wss?:\/\/([^\/:?#]+):(\d+)\/?$/.exec(String(url));

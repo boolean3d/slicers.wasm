@@ -2,8 +2,20 @@
 // JSON text, except a file for the printer, which follows its request as one binary message. What the helper says
 // goes to the program's b3d_lan_incoming; camera JPEGs (binary) to b3d_lan_camera_frame, camera video (binary H.264) to
 // B3DCam below. Helper address: index.html?bridge=ws://host:8770 (default ws://localhost:8770).
+//
+// THE HELPER'S DOOR (farm-helper/bambu-home/pairing.mjs): the helper answers only our pages and only a browser paired
+// with it once, by the code the helper shows. This page keeps that token (localStorage 'b3d-helper-token', per origin)
+// and puts it on the line's address; without one, the helper answers every printer request "pair first" and this page
+// shows the box: where to download the helper (one program per system, no install) and where to type the code.
 var B3DLan = (function () {
   const url = new URLSearchParams(location.search).get('bridge') || 'ws://localhost:8770';
+  const TOKEN = 'b3d-helper-token';
+  // Where the helper is downloaded from (scripts/helper/pack.mjs makes these; latest/ always holds the newest).
+  const DOWNLOADS = 'https://slicers.boolean3d.com/helper/latest/';
+  const SYSTEMS = [
+    ['win-x64', 'Windows'], ['darwin-arm64', 'Mac (Apple silicon)'], ['darwin-x64', 'Mac (Intel)'],
+    ['linux-x64', 'Linux'], ['linux-arm64', 'Raspberry Pi'],
+  ];
   let ws = null;
   let queue = []; // sent before the link was open
   let retry = null;
@@ -15,8 +27,18 @@ var B3DLan = (function () {
   let personAsked = false;
   try { personAsked = localStorage.getItem('b3d-lan-linked') === '1'; } catch (e) {}
   if (new URLSearchParams(location.search).get('bridge')) personAsked = true; // an address naming the helper: their own setup
+  if (token()) personAsked = true; // paired before: the person gave the browser's permission then
   let parked = null; // the program's printer search, sent once the person asks
   const background = (m) => { if (typeof m !== 'string') return false; try { const r = JSON.parse(m); return r.op === 'discover' || r.op === 'disconnect'; } catch (e) { return false; } };
+  let opened = false;   // the link opened at least once (the helper is there)
+  let helper = null;    // {id, name, version, paired} from the helper's hello answer
+  let wants = false;    // the person asked for a printer (connect, Connect by IP, send, print): the box may show
+  function token() { try { return localStorage.getItem(TOKEN) || ''; } catch (e) { return ''; } }
+  function lineUrl() {
+    const t = token();
+    if (!t) return url;
+    try { const u = new URL(url, location.href); u.searchParams.set('token', t); return u.href; } catch (e) { return url; }
+  }
   function deliver(text) {
     const p = stringToNewUTF8(text);
     // posted to the program's thread, which frees p after the call (page-extras.js); before main runs: dropped
@@ -54,7 +76,7 @@ var B3DLan = (function () {
     const words = document.createElement('span'); words.textContent = SIGN_IN;
     const go = document.createElement('a'); go.textContent = 'Sign in'; go.href = 'https://boolean3d.com/#/slicers'; go.target = '_blank'; go.rel = 'noopener';
     go.style.cssText = 'padding:5px 12px;background:#00ae42;color:#fff;border-radius:4px;text-decoration:none';
-    const x = document.createElement('button'); x.textContent = '\u00d7'; x.title = 'Close';
+    const x = document.createElement('button'); x.textContent = '×'; x.title = 'Close';
     x.style.cssText = 'border:0;background:none;font-size:18px;cursor:pointer;color:#666';
     x.onclick = function () { box.remove(); };
     box.append(words, go, x);
@@ -69,29 +91,150 @@ var B3DLan = (function () {
     askSignIn();
     if (r.id !== undefined) deliver(JSON.stringify({ id: r.id, stage: 'error', error: SIGN_IN, code: -1 }));
   }
+
+  // ── THE HELPER BOX: download it, or type its code ──────────────────────────────────────────────
+  // Shown when the person asked for a printer and the helper is not there (download) or not paired (code). Plain
+  // words, the person's: printer, helper, code. Never at start-up by itself.
+  let hbox = null, hwords = null, hinput = null, hstatus = null, hlinks = null, hrow = null, hpair = null, hideAt = null;
+  function helperBox() {
+    if (hbox && hbox.isConnected) return hbox;
+    hbox = document.createElement('div');
+    hbox.id = 'b3d-helper-box';
+    hbox.style.cssText = 'position:fixed;top:72px;left:50%;transform:translateX(-50%);z-index:2147483000;width:min(440px,calc(100vw - 32px));' +
+      'padding:14px 16px;background:#fff;color:#222;border:1px solid #ccc;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.18);font:14px system-ui,sans-serif;line-height:1.4';
+    const title = document.createElement('div'); title.textContent = 'Connect your printer'; title.style.cssText = 'font-weight:600;font-size:15px;margin-right:24px';
+    const x = document.createElement('button'); x.textContent = '×'; x.title = 'Close';
+    x.style.cssText = 'position:absolute;top:8px;right:10px;border:0;background:none;font-size:20px;cursor:pointer;color:#666';
+    x.onclick = function () { hbox.remove(); };
+    hwords = document.createElement('p'); hwords.style.cssText = 'margin:8px 0';
+    hlinks = document.createElement('p'); hlinks.style.cssText = 'margin:8px 0;display:flex;flex-wrap:wrap;gap:6px 10px';
+    const likely = likelySystem();
+    for (const [system, words] of SYSTEMS) {
+      const a = document.createElement('a');
+      a.textContent = words; a.href = DOWNLOADS + 'boolean3d-helper-' + system + '.zip'; a.rel = 'noopener';
+      a.style.cssText = 'padding:5px 10px;border-radius:4px;text-decoration:none;color:#fff;white-space:nowrap;background:' + (system === likely ? '#00ae42' : '#6b7280');
+      hlinks.appendChild(a);
+    }
+    hrow = document.createElement('div'); hrow.style.cssText = 'display:flex;gap:8px;align-items:center;margin-top:8px';
+    hinput = document.createElement('input');
+    hinput.placeholder = 'Code from the helper'; hinput.maxLength = 7; hinput.autocapitalize = 'characters'; hinput.spellcheck = false;
+    hinput.style.cssText = 'flex:1;padding:6px 8px;font:16px ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;border:1px solid #bbb;border-radius:4px;color:#222;background:#fff';
+    hinput.onkeydown = function (e) { if (e.key === 'Enter') pairNow(); e.stopPropagation(); };
+    hinput.onkeyup = function (e) { e.stopPropagation(); };
+    hpair = document.createElement('button'); hpair.textContent = 'Pair';
+    hpair.style.cssText = 'padding:6px 14px;background:#00ae42;color:#fff;border:0;border-radius:4px;cursor:pointer;font:14px system-ui,sans-serif';
+    hpair.onclick = pairNow;
+    hrow.append(hinput, hpair);
+    hstatus = document.createElement('p'); hstatus.style.cssText = 'margin:8px 0 0;color:#555;min-height:1.2em';
+    hbox.append(title, x, hwords, hlinks, hrow, hstatus);
+    document.body.appendChild(hbox);
+    return hbox;
+  }
+  function likelySystem() {
+    const ua = navigator.userAgent || '';
+    if (/Windows/i.test(ua)) return 'win-x64';
+    if (/Macintosh/i.test(ua)) return 'darwin-arm64';
+    if (/Linux/i.test(ua) && /aarch64|arm/i.test(ua)) return 'linux-arm64';
+    if (/Linux/i.test(ua)) return 'linux-x64';
+    return 'win-x64';
+  }
+  function showHelperBox(state) {
+    helperBox();
+    clearTimeout(hideAt);
+    if (state === 'download') {
+      hwords.textContent = 'Your printer is on your own network, and a web page cannot reach it by itself. A small helper program does that. ' +
+        'Download it for a computer on the printer\'s network that stays on (this one is fine), open it, and type the code it shows here.';
+      hlinks.style.display = '';
+      hstatus.textContent = 'The helper talks to your printer and to this page only.';
+    } else if (state === 'code') {
+      hwords.textContent = 'The helper is running' + (helper && helper.name ? ' on ' + helper.name : '') + '. Type the code it shows (in its window, or at http://localhost:8770 on that computer).';
+      hlinks.style.display = 'none';
+      hstatus.textContent = '';
+    }
+    hrow.style.display = 'flex'; hinput.disabled = false; hpair.disabled = false;
+    if (state === 'code') hinput.focus();
+  }
+  function pairNow() {
+    const code = (hinput.value || '').toUpperCase().replace(/[\s-]/g, '');
+    if (code.length < 6) { hstatus.textContent = 'The code is 6 letters and digits, as the helper shows it.'; return; }
+    if (!ws || ws.readyState !== 1) { hstatus.textContent = 'The helper is not reachable yet. Is it open? This page looks for it at ' + url + '.'; open(); return; }
+    hstatus.textContent = 'Pairing…'; hpair.disabled = true;
+    ws.send(JSON.stringify({ op: 'pair', code: code, name: browserName() }));
+  }
+  function browserName() {
+    const ua = navigator.userAgent || '';
+    const b = /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'a browser';
+    const o = /Windows/.test(ua) ? 'Windows' : /Macintosh/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : '';
+    return (b + (o ? ' on ' + o : '')).slice(0, 60);
+  }
+  // What the helper says about itself and this line: handled here, never delivered to the program.
+  function fromHelper(r) {
+    if (r.ev === 'helper') {
+      helper = r;
+      if (r.paired) { if (hbox && hbox.isConnected) hbox.remove(); }
+      else if (wants) showHelperBox('code');
+      return true;
+    }
+    if (r.ev === 'pair') { if (wants) showHelperBox('code'); return true; }
+    if (r.ev === 'paired') {
+      if (r.ok && r.token) {
+        try { localStorage.setItem(TOKEN, r.token); } catch (e) {}
+        if (helper) helper.paired = true;
+        if (hbox && hbox.isConnected) {
+          hwords.textContent = 'Paired with ' + ((r.helper && r.helper.name) || 'the helper') + '. Your printers appear under Device.';
+          hlinks.style.display = 'none'; hrow.style.display = 'none'; hinput.value = ''; hstatus.textContent = '';
+          hideAt = setTimeout(function () { if (hbox) hbox.remove(); }, 4000);
+        }
+        // the printer list again, now that this line may hear it
+        ws.send(JSON.stringify({ op: 'discover', on: true }));
+      } else if (r.ok) {
+        if (hbox && hbox.isConnected) hbox.remove();
+      } else {
+        if (hbox && hbox.isConnected) { hstatus.textContent = r.error || 'That is not the code the helper shows.'; hpair.disabled = false; hinput.select(); }
+      }
+      return true;
+    }
+    return false;
+  }
+  // Something the person asked for, which needs the helper: remember it, and if the helper is not there, say so.
+  function wanted(m) {
+    if (typeof m !== 'string') return;
+    let r; try { r = JSON.parse(m); } catch (e) { return; }
+    if (!r || r.op === 'discover' || r.op === 'disconnect' || r.op === 'camera_got' || r.op === 'hello') return;
+    wants = true;
+    if (!opened) showHelperBox('download');
+    else if (helper && !helper.paired) showHelperBox('code');
+  }
+
   function open() {
     if (!personAsked) return;
     if (accountCheck && !signedIn()) return;
     if (ws && ws.readyState <= 1) return;
-    ws = new WebSocket(url);
+    ws = new WebSocket(lineUrl());
     ws.binaryType = 'arraybuffer';
     ws.onopen = function () {
+      opened = true;
       console.log('b3d-lan: helper linked at ' + url);
       try { localStorage.setItem('b3d-lan-linked', '1'); } catch (e) {}
       // z31: this page confirms camera pictures (camera_got), so the helper holds back video, not the reports
-      ws.send(JSON.stringify({ op: 'hello', camera_acks: true }));
+      ws.send(JSON.stringify({ op: 'hello', camera_acks: true, name: browserName() }));
       const q = queue; queue = [];
       for (const m of q) ws.send(m);
     };
     ws.onmessage = function (e) {
-      if (typeof e.data === 'string') return deliver(e.data);
+      if (typeof e.data === 'string') {
+        let r = null; try { r = JSON.parse(e.data); } catch (x) {}
+        if (r && fromHelper(r)) return;
+        return deliver(e.data);
+      }
       const b = new Uint8Array(e.data), nl = b.indexOf(10);
       if (nl > 0 && nl <= 64) ws.send(JSON.stringify({ op: 'camera_got', dev_id: new TextDecoder().decode(b.subarray(0, nl)) }));   // z31
       picture(b);
     };
     ws.onclose = function () {
-      console.log('b3d-lan: helper link closed, retrying');
+      helper = null;
       clearTimeout(retry);
+      console.log('b3d-lan: helper link closed, retrying');
       retry = setTimeout(open, 3000);
     };
     ws.onerror = function () {};
@@ -102,6 +245,7 @@ var B3DLan = (function () {
       personAsked = true;
     }
     if (accountCheck && !signedIn()) return refused(m);
+    wanted(m);
     if (ws && ws.readyState === 1) ws.send(m);
     else { queue.push(m); open(); }
   }
@@ -127,6 +271,9 @@ var B3DLan = (function () {
       }
       send(bytes.slice().buffer);
     },
+    // For a page that wants the box by hand (a Help link), and for tests.
+    helper: function () { return helper; },
+    askHelper: function () { wants = true; showHelperBox(opened ? 'code' : 'download'); },
   };
 })();
 
