@@ -39,13 +39,13 @@
   var QUIET = 1000;
 
   function linked() { return !!(Module.b3dHome && Module.b3dHome.linked && Module.b3dHome.linked()); }
+  // A refusal keeps the door's code (callers branch on it); no answer at all is 'network'.
+  function failure(code, message) { var e = new Error(message); e.code = code; return e; }
   function ask(op, body) {
-    return Module.b3dHome.ask(op, body || {}).then(function (r) { return r.json(); }).then(function (a) {
-      if (!a || a.ok === false) {
-        var err = new Error((a && a.error) || 'The project could not be reached.');
-        err.code = a && a.code;
-        throw err;
-      }
+    return Module.b3dHome.ask(op, body || {}).then(function (r) {
+      return r.json().catch(function () { throw failure('server_down', 'The project answered ' + r.status + '.'); });
+    }, function (e) { throw failure('network', 'The project could not be reached (' + (e && e.message || e) + ').'); }).then(function (a) {
+      if (!a || a.ok === false) throw failure((a && a.code) || 'refused', (a && a.error) || 'The project could not be reached.');
       return a;
     });
   }
@@ -254,19 +254,27 @@
         return gzip(data);
       }).then(function (g) {
         z = g;
-        return ask('put', { project: e.project, sha256: s, stored: z.length });
+        return ask('put', e.file ? { project: e.project, file: e.file, sha256: s, stored: z.length } : { project: e.project, sha256: s, stored: z.length });
       }).then(function (p) {
         if (!p.upload) return;
         return fetch(Module.b3dHome.beside(p.upload), { method: 'PUT', headers: { 'Content-Type': 'application/gzip' }, body: z }).then(function (r) {
-          if (!r.ok) throw new Error('the file could not go up (' + r.status + ')');
-        });
+          // 409: the same bytes arrived a moment ago (another tab): the door's check decides.
+          if (!r.ok && r.status !== 409) throw failure(r.status >= 500 ? 'server_down' : 'refused', 'the file could not go up (' + r.status + ')');
+        }, function (e) { throw failure('network', 'the file could not go up (' + (e && e.message || e) + ')'); });
       }).then(function () {
         var body = { project: e.project, sha256: s, bytes: data.length, stored: z.length, parent: e.version, tool: TOOL };
         if (e.file) body.file = e.file; else body.path = e.path;
         return ask('save', body);
       }).then(function (v) {
-        e.file = v.file; e.version = v.version; e.sha = s; e.number = v.number; keep();
-        console.log('b3d projects: ' + e.path + ' version ' + v.number + (v.same ? ' (same bytes)' : '') + (v.behind ? ' (the project had a newer one: both kept)' : ''));
+        var waited = e.waiting;
+        e.file = v.file; e.version = v.version; e.sha = s; e.number = v.number; delete e.waiting; delete e.waitAbs; delete e.tries; keep();
+        console.log('b3d projects: ' + e.path + ' version ' + v.number + (v.same ? ' (same bytes)' : ''));
+        var name = e.path.split('/').pop();
+        // Somebody saved between this file's opening and this save: both kept, this one newest (as Fusion does).
+        if (v.behind) {
+          notice('Saved as version ' + v.number + ' of ' + name + '. ' + (v.newer_mine ? 'You saved version ' + v.newer_number + ' from another tab'
+            : (v.newer_by || 'Someone') + ' saved version ' + v.newer_number) + ' while you worked; it is kept in the project.', 'refused');
+        } else if (waited) notice(name + ' is in your project now (version ' + v.number + ').', 'info');
         if (!e.part || e.linked) return;
         return ask('link', e.partVersion ? { from: v.version, to: e.partVersion } : { from: v.version, part: e.part }).then(function (l) {
           e.linked = l.link; keep();
@@ -274,13 +282,41 @@
         });
       });
     }).catch(function (err) {
+      console.error('b3d projects: ' + (e.path || abs) + ' did not go up: ' + err.message);
       if (REFUSED[err.code]) {
         notice('“' + (e.path || abs).split('/').pop() + '” was not saved to Boolean3d: ' + err.message + ' Your copy stays in this browser.', 'refused');
         return;
       }
-      console.error('b3d projects: ' + (e.path || abs) + ' did not go up: ' + err.message + ' (it goes up on the next start)');
+      if (!AGAIN[err.code]) {
+        if (err.code && err.code !== 'refused') notice((e.path || abs).split('/').pop() + ' was not saved to your project: ' + err.message, 'refused');
+        return;
+      }
+      // Kept here (this browser's storage); tried again on a growing wait, at once when the network is back, and on
+      // the next start.
+      e.tries = (e.tries || 0) + 1;
+      if (!e.waiting) {
+        e.waiting = true; e.waitAbs = abs; keep();
+        notice('Saved on this computer. ' + (e.path || abs).split('/').pop() + ' goes up to your project when the network is back.', 'info');
+      }
+      later(abs, at, Math.min(2000 * Math.pow(2, e.tries - 1), 60000));
     });
   }
+  // Worth trying again: no network, the server down a moment, bytes that arrived damaged or not at all, being tidied.
+  var AGAIN = { network: 1, server_down: 1, busy: 1, bad_upload: 1, not_uploaded: 1, rate_limited: 1 };
+  var retry = {};
+  function later(abs, at, ms) {
+    clearTimeout(retry[abs]);
+    retry[abs] = setTimeout(function () { delete retry[abs]; line = line.then(function () { return save(abs, at); }); }, ms);
+  }
+  // The network back: everything waiting goes up now.
+  function pendingNow() {
+    Object.keys(retry).forEach(function (abs) { clearTimeout(retry[abs]); delete retry[abs]; });
+    Object.keys(reg).forEach(function (k) {
+      var e = reg[k];
+      if (e.waiting && e.here && e.here !== e.sha) line = line.then(function () { return save(e.waitAbs || k, k); });
+    });
+  }
+  if (typeof addEventListener === 'function') addEventListener('online', function () { setTimeout(pendingNow, 500); });
 
   function watch() {
     var FS = Module.FS;

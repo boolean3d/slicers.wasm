@@ -48,7 +48,9 @@ function makeDoor() {
         const top = d.files[file].newest;
         const behind = !!top && b.parent !== top;
         const z = d.blobs[b.sha256], v = d.addVersion(file, zlib.gunzipSync(z), b.parent);
-        return { ok: true, file, version: v.id, number: v.number, behind, same: false };
+        const newer = behind ? d.versions[top] : null;
+        return { ok: true, file, version: v.id, number: v.number, behind, same: false,
+          ...(newer ? { newer_number: newer.number, newer_by: d.savedBy || null, newer_mine: !d.savedBy } : {}) };
       }
       case 'link': { const id = uuid(); d.links.push({ id, from: b.from, to: b.to, part: b.part }); return { ok: true, link: id, to: b.to, pinned: 4 }; }
       default: return { ok: false, error: 'no call ' + op };
@@ -60,6 +62,7 @@ function makeDoor() {
 /** One tab: the script run on a stand-in page, its program started (preRun done). */
 async function tab({ door, search = '', storage = new Map(), opfs = new Map(), linked = true }) {
   const files = new Map();   // path -> Uint8Array
+  const notices = [];        // what the page said (no document here: the notice line logs it)
   const FS = {
     mkdirTree() {},
     writeFile(p, data) { const s = this.open(p, 'w'); files.set(p, Uint8Array.from(data)); this.close(s); },
@@ -88,7 +91,7 @@ async function tab({ door, search = '', storage = new Map(), opfs = new Map(), l
   };
   const ctx = {
     Module, URLSearchParams, Response, Blob, TextEncoder, crypto: globalThis.crypto, CompressionStream, DecompressionStream,
-    setTimeout, clearTimeout, setInterval, clearInterval, console: { log() {}, warn() {}, error() {} }, fetch,
+    setTimeout, clearTimeout, setInterval, clearInterval, console: { log() {}, warn(t) { notices.push(String(t)); }, error() {} }, fetch,
     location: { pathname: '/bambu/2.08/', search },
     navigator: { storage: { getDirectory: async () => dir } },
     localStorage: { getItem: (k) => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v) },
@@ -102,7 +105,7 @@ async function tab({ door, search = '', storage = new Map(), opfs = new Map(), l
   Module.calledRun = true;
   const write = (p, text) => FS.writeFile(p, enc(text));
   const settle = async () => { await wait(1100); await Module.b3dProjects.idle(); await wait(20); await Module.b3dProjects.idle(); };
-  return { Module, files, FS, write, settle, P: Module.b3dProjects, storage, opfs };
+  return { Module, files, FS, write, settle, P: Module.b3dProjects, storage, opfs, notices };
 }
 const saves = (door) => door.calls.filter(([op]) => op === 'save').map(([, b]) => b);
 
@@ -211,4 +214,60 @@ test('a second browser opens the project and gets the newest version', async () 
   a.write('/home/web_user/Projects/Lamp/plate.3mf', 'two'); await a.settle();
   const b = await tab({ door, search: `?project=${p}&open=plate.3mf` });
   assert.equal(dec(b.files.get('/home/web_user/Projects/Lamp/plate.3mf')), 'two');
+});
+
+test('no network: the save waits on this computer, says so once, and goes up by itself when it can', async () => {
+  const door = makeDoor(), p = door.addProject('Lamp');
+  const f = door.addFile(p, 'plate.3mf', enc('one'));
+  const t = await tab({ door, search: `?project=${p}` });
+  const ask = t.Module.b3dHome.ask;
+  t.Module.b3dHome.ask = async () => { throw new TypeError('Failed to fetch'); };
+  t.write('/home/web_user/Projects/Lamp/plate.3mf', 'offline edit'); await t.settle();
+  assert.equal(saves(door).length, 0);
+  assert.equal(t.notices.filter((n) => /Saved on this computer/.test(n)).length, 1, 'said once');
+  await wait(2200); await t.P.idle();
+  assert.equal(t.notices.filter((n) => /Saved on this computer/.test(n)).length, 1, 'a second failed try says nothing new');
+  t.Module.b3dHome.ask = ask;   // the network is back
+  await wait(4200); await t.P.idle(); await wait(20); await t.P.idle();
+  assert.deepEqual(saves(door).map((s) => [s.file, dec(zlib.gunzipSync(door.blobs[s.sha256]))]), [[f, 'offline edit']]);
+  assert.ok(t.notices.some((n) => /is in your project now \(version 2\)/.test(n)), 'says it went up');
+});
+
+test('bytes that arrived damaged (bad_upload): sent again, then a version', async () => {
+  const door = makeDoor(), p = door.addProject('Lamp');
+  door.addFile(p, 'plate.3mf', enc('one'));
+  const t = await tab({ door, search: `?project=${p}` });
+  const answer = door.answer;
+  let bad = 1;
+  door.answer = (op, b) => {
+    if (op === 'save' && bad) { bad--; delete door.blobs[b.sha256]; return { ok: false, code: 'bad_upload', error: 'The file arrived damaged.' }; }
+    return answer(op, b);
+  };
+  t.write('/home/web_user/Projects/Lamp/plate.3mf', 'two'); await t.settle();
+  await wait(2200); await t.P.idle(); await wait(20); await t.P.idle();
+  assert.equal(saves(door).length, 1);
+  assert.equal(door.calls.filter(([op]) => op === 'put').length, 2, 'the bytes went up a second time');
+});
+
+test('someone saved in between: both kept, this one newest, and the notice says who', async () => {
+  const door = makeDoor(), p = door.addProject('Lamp');
+  const f = door.addFile(p, 'plate.3mf', enc('one'));
+  const t = await tab({ door, search: `?project=${p}` });
+  door.addVersion(f, enc('theirs'), door.files[f].newest); door.savedBy = 'Ana';
+  t.write('/home/web_user/Projects/Lamp/plate.3mf', 'mine'); await t.settle();
+  assert.equal(Object.values(door.versions).filter((v) => v.file === f).length, 3, 'v1, theirs, mine');
+  assert.ok(t.notices.some((n) => /Saved as version 3 of plate\.3mf\. Ana saved version 2 while you worked/.test(n)), t.notices.join(' | '));
+});
+
+test('a refused save (view only): said in the account\'s words, not tried again', async () => {
+  const door = makeDoor(), p = door.addProject('Lamp');
+  door.addFile(p, 'plate.3mf', enc('one'));
+  const t = await tab({ door, search: `?project=${p}` });
+  const answer = door.answer;
+  door.answer = (op, b) => op === 'put' ? (door.calls.push([op, b]), { ok: false, code: 'not_allowed', error: 'You can view this project but not change it.' }) : answer(op, b);
+  t.write('/home/web_user/Projects/Lamp/plate.3mf', 'two'); await t.settle();
+  await wait(2200); await t.P.idle();
+  assert.equal(door.calls.filter(([op]) => op === 'put').length, 1, 'asked once');
+  assert.ok(t.notices.some((n) => /was not saved to Boolean3d: You can view this project but not change it/.test(n)));
+  assert.ok(!t.notices.some((n) => /Saved on this computer/.test(n)));
 });
