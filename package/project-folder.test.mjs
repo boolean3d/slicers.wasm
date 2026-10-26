@@ -94,6 +94,8 @@ async function tab({ door, search = '', storage = new Map(), opfs = new Map(), l
     localStorage: { getItem: (k) => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v) },
   };
   vm.runInNewContext(SRC, ctx);
+  // The program copies Module.arguments as its script loads, before preRun: later changes count only in that array.
+  Module.startedWith = Module.arguments || [];
   for (const f of Module.preRun) f();
   for (let i = 0; i < 200 && Module.deps; i++) await wait(10);
   assert.equal(Module.deps, 0, 'the program starts');
@@ -111,7 +113,7 @@ test('?project=&open=: the project is a folder before the program starts, the fi
   const t = await tab({ door, search: `?project=${p}&open=plate.3mf` });
   assert.equal(dec(t.files.get('/home/web_user/Projects/Desk lamp/plate.3mf')), 'v1 bytes');
   assert.equal(dec(t.files.get('/home/web_user/Projects/Desk lamp/board/lamp.kicad_pcb')), 'pcb');
-  assert.deepEqual([...t.Module.arguments], ['/home/web_user/Projects/Desk lamp/plate.3mf']);
+  assert.deepEqual([...t.Module.startedWith], ['/home/web_user/Projects/Desk lamp/plate.3mf'], 'the array the program started with');
   await t.settle();
   assert.equal(saves(door).length, 0, 'putting the files there is not a save');
 });

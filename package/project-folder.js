@@ -237,6 +237,10 @@
   // Before the program starts: the project folders' working copies back from this browser's storage, then the project
   // in the address opened (its file as the program's argument). Saves that did not go up, go up after.
   var q = new URLSearchParams(location.search), wantProject = q.get('project'), wantOpen = q.get('open');
+  // The program copies Module.arguments when its script loads, before preRun: the array it will start with is set
+  // here, and filled once the project is in the file system (or left empty when the file is not there).
+  var startArgs = null;
+  if (wantProject && wantOpen) { Module.arguments = Module.arguments || []; startArgs = Module.arguments; }
   Module.preRun = Module.preRun || [];
   Module.preRun.push(function () {
     Module.addRunDependency('b3d-projects');
@@ -254,7 +258,7 @@
         opened[o.dir.slice(ROOT.length + 1)] = { project: o.project.id, projectName: o.project.name };
         if (wantOpen) {
           var abs = o.dir + '/' + wantOpen.replace(/^\/+/, '');
-          if (read(abs)) { Module.arguments = [abs]; console.log('b3d projects: opening ' + abs); }
+          if (read(abs)) { startArgs.length = 0; startArgs.push(abs); console.log('b3d projects: opening ' + abs); }
         }
       });
     }).catch(function (e) { console.error('b3d projects: ' + e.message); }).then(function () {
