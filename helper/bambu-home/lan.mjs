@@ -7,7 +7,7 @@ import net from "node:net";
 import os from "node:os";
 import { randomBytes } from "node:crypto";
 import { inflateRawSync } from "node:zlib";
-import { cameraFrames, ftpsUpload, mqttLink } from "../bambu.mjs";
+import { cameraVideo, ftpsUpload, jpegPictures, mqttLink } from "../bambu.mjs";
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -156,35 +156,55 @@ export async function sendPrint({ link, ip, code, model, shelf, ftpPort = 990, n
 }
 
 /**
- * One camera per printer, shared by whoever watches: the first watcher starts ffmpeg on the printer's stream, the last
- * one to stop stops it. Each watcher hears every JPEG frame (a Buffer) and, once, why it ended.
+ * One camera per printer, shared by whoever watches: the first watcher starts ffmpeg on the printer's stream (its own
+ * H.264, copied, never decoded: cameraVideo), the last one to stop stops it; a printer is read once whatever watches.
+ * A "video" watcher hears every picture as it came ({data, key}, H.264); a "jpeg" watcher hears `fps` JPEGs a second
+ * (a Buffer each), decoded here only while one watches. Each hears, once, why it ended.
  * `input`: ffmpeg's input arguments instead of the printer's stream (a test picture).
  */
-export function cameraHub({ fps = 2, input = null, say = () => {}, frames = cameraFrames } = {}) {
-  const running = new Map();   // serial -> {watchers: Set, stop}
-  function watch({ serial, ip, code }, onFrame, onEnd = () => {}) {
+export function cameraHub({ fps = 2, input = null, say = () => {}, video = cameraVideo, stills = jpegPictures } = {}) {
+  const running = new Map();   // serial -> {watchers: Set, stop, jpeg}
+  function endAll(r, why, kind = null) {
+    for (const x of [...r.watchers]) if (!kind || x.kind === kind) { r.watchers.delete(x); x.onEnd(why); }
+  }
+  // The JPEG maker runs while a jpeg watcher does.
+  function stillsFor(r) {
+    const want = [...r.watchers].some((x) => x.kind === "jpeg");
+    if (want && !r.jpeg) {
+      const j = r.jpeg = { push: () => {}, stop: () => {} };
+      stills({ fps,
+        onFrame: (f) => { for (const x of r.watchers) if (x.kind === "jpeg") x.onFrame(f); },
+        onEnd: (why) => { if (r.jpeg !== j) return; r.jpeg = null; if (why) say(`camera pictures: ${why}`); endAll(r, why, "jpeg"); },
+      }).then((s) => { j.push = s.push; j.stop = s.stop; if (r.jpeg !== j) s.stop(); });
+    } else if (!want && r.jpeg) { const j = r.jpeg; r.jpeg = null; j.stop(); }
+  }
+  function watch({ serial, ip, code }, onFrame, onEnd = () => {}, kind = "jpeg") {
     let r = running.get(serial);
-    const w = { onFrame, onEnd };
+    const w = { onFrame, onEnd, kind };
     if (!r) {
-      r = { watchers: new Set(), stop: () => {} };
+      r = { watchers: new Set(), stop: () => {}, jpeg: null };
+      const me = r;
       running.set(serial, r);
-      frames({ host: ip, code, fps, input,
-        onFrame: (f) => { for (const x of r.watchers) x.onFrame(f); },
+      video({ host: ip, code, input,
+        onFrame: (p) => { me.jpeg?.push(p); for (const x of me.watchers) if (x.kind === "video") x.onFrame(p); },
         onEnd: (why) => {
-          if (running.get(serial) === r) running.delete(serial);
+          if (running.get(serial) === me) running.delete(serial);
           if (why) say(`camera: ${why}`);
-          for (const x of r.watchers) x.onEnd(why);
-          r.watchers.clear();
-        } }).then((stop) => { r.stop = stop; if (!r.watchers.size) stop(); });
+          if (me.jpeg) { const j = me.jpeg; me.jpeg = null; j.stop(); }
+          endAll(me, why);
+        } }).then((stop) => { me.stop = stop; if (!me.watchers.size) stop(); });
     }
     r.watchers.add(w);
+    stillsFor(r);
     return () => {
-      if (!r.watchers.delete(w) || r.watchers.size) return;
+      if (!r.watchers.delete(w)) return;
+      stillsFor(r);
+      if (r.watchers.size) return;
       if (running.get(serial) === r) running.delete(serial);
       r.stop();
     };
   }
-  const close = () => { for (const r of running.values()) r.stop(); running.clear(); };
+  const close = () => { for (const r of running.values()) { r.jpeg?.stop(); r.stop(); } running.clear(); };
   return { watch, close };
 }
 
@@ -224,4 +244,28 @@ export function platePicture(bytes, plate = 1, most = 290000) {
     if (png && png.length >= 8 && png.length <= most && png.readUInt32BE(0) === 0x89504e47) return png;
   }
   return null;
+}
+
+/** The bed-slinger models (A1, A1 mini): their Y and Z move the other way to a CoreXY's (Bambu Studio DevAxisCtrl.cpp). */
+const BED_SLINGERS = /^(N1|N2S|A1)/i;
+/**
+ * The printer's own requests for one of the printers page's controls (the door's controlOf), as Bambu Studio sends them
+ * on the LAN (BambuStudio src/slic3r/GUI/DeviceCore/DevAxisCtrl.cpp Ctrl_GoHome / Ctrl_Axis, DevLampCtrl.cpp
+ * command_set_chamber_light, DeviceManager.cpp command_set_nozzle / command_set_bed / publish_gcode): G-code lines for
+ * home, move and temperatures, ledctrl for the lamp. Speeds are Bambu Studio's (3000 mm/min across, 900 up and down).
+ */
+export function controlRequests(c, { model = null, printing = false } = {}) {
+  const seq = () => String(Date.now() % 1e8);
+  const gcode = (param) => ({ print: { sequence_id: seq(), command: "gcode_line", param } });
+  if (c?.do === "home") return [gcode(printing ? "G28 X\n" : "G28 \n")];
+  if (c?.do === "jog" && ["X", "Y", "Z"].includes(c.axis) && Number.isFinite(c.mm)) {
+    const mm = BED_SLINGERS.test(String(model || "")) && c.axis !== "X" ? -c.mm : c.mm;
+    return [gcode(`M211 S \nM211 X1 Y1 Z1\nM1002 push_ref_mode\nG91 \nG1 ${c.axis}${mm.toFixed(1)} F${c.axis === "Z" ? 900 : 3000}\nM1002 pop_ref_mode\nM211 R\n`)];
+  }
+  if (c?.do === "temp" && Number.isInteger(c.target)) return [gcode(`${c.heater === "bed" ? "M140" : "M104"} S${c.target}\n`)];
+  if (c?.do === "light" && typeof c.on === "boolean") {
+    return ["chamber_light", "chamber_light2"].map((node) => ({ system: { sequence_id: seq(), command: "ledctrl", led_node: node, led_mode: c.on ? "on" : "off",
+      led_on_time: 500, led_off_time: 500, loop_times: 1, interval_time: 1000 } }));
+  }
+  return [];
 }

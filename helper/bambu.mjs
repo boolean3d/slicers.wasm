@@ -243,49 +243,133 @@ export function listenForPrinters(onPrinter, { port = 2021 } = {}) {
 export const rtspsCamera = (model) => /^(BL-P00[12]|C13|O1)/.test(String(model || ""));
 
 /**
- * Camera frames, live: ffmpeg reads the printer's stream and hands JPEG frames, `fps` a second, each to onFrame
- * (a Buffer). `input`: ffmpeg's input arguments instead of the printer's stream (a test picture). Returns stop().
- * A printer allows one live view at a time, so ffmpeg must never outlive its watchers: a stream that sends no picture
- * for `stallMs` is ended (ffmpeg waits on a silent stream for ever), and an ffmpeg still there `graceMs` after
- * SIGTERM (it finishes its blocked read first) gets SIGKILL.
+ * One ffmpeg, watched. A printer allows one live view at a time, so ffmpeg must never outlive its watchers: a stream
+ * that sends nothing for `stallMs` is ended (ffmpeg waits on a silent stream for ever), and an ffmpeg still there
+ * `graceMs` after SIGTERM (it finishes its blocked read first) gets SIGKILL. Returns {stop, stdin}.
  */
-export async function cameraFrames({ host, code, fps = 4, width = 960, input = null, onFrame, onEnd = () => {}, spawn = null,
-  stallMs = 20000, graceMs = 2000 }) {
+async function watchedFfmpeg(args, { onData, onEnd, spawn = null, stallMs = 20000, graceMs = 2000, stdin = false }) {
   const run = spawn ?? (await import("node:child_process")).spawn;
-  const from = input ?? ["-rtsp_transport", "tcp", "-i", `rtsps://bblp:${encodeURIComponent(code)}@${host}:322/streaming/live/1`];
-  const ff = run("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", ...from, "-an", "-vf", `fps=${fps},scale=${width}:-2`,
-    "-q:v", "7", "-f", "image2pipe", "-vcodec", "mjpeg", "pipe:1"], { stdio: ["ignore", "pipe", "pipe"] });
-  let buf = Buffer.alloc(0), err = "", stalled = false, closed = false, killer = null;
+  const ff = run("ffmpeg", ["-hide_banner", "-loglevel", "error", ...(stdin ? [] : ["-nostdin"]), ...args],
+    { stdio: [stdin ? "pipe" : "ignore", "pipe", "pipe"] });
+  let err = "", stalled = false, closed = false, killer = null, watchdog = null;
   const kill = () => {
+    try { ff.stdin?.destroy(); } catch { /* gone already */ }
     try { ff.kill("SIGTERM"); } catch { /* gone already */ }
     if (!killer && !closed) { killer = setTimeout(() => { try { ff.kill("SIGKILL"); } catch { /* gone already */ } }, graceMs); killer.unref?.(); }
   };
-  let watchdog = null;
   const quiet = () => {
     clearTimeout(watchdog);
     watchdog = setTimeout(() => { stalled = true; kill(); }, stallMs);
     watchdog.unref?.();
   };
   quiet();
-  ff.stdout.on("data", (d) => {
-    quiet();
-    buf = Buffer.concat([buf, d]);
-    // A JPEG runs from FF D8 to FF D9; ffmpeg's mjpeg frames carry no thumbnails, so the first FF D9 ends it.
-    for (;;) {
-      const s = buf.indexOf(Buffer.from([0xff, 0xd8]));
-      if (s < 0) { buf = Buffer.alloc(0); break; }
-      const e = buf.indexOf(Buffer.from([0xff, 0xd9]), s + 2);
-      if (e < 0) { buf = buf.subarray(s); break; }
-      onFrame(Buffer.from(buf.subarray(s, e + 2)));
-      buf = buf.subarray(e + 2);
-    }
-    if (buf.length > 4e6) buf = Buffer.alloc(0);
-  });
+  ff.stdout.on("data", (d) => { quiet(); onData(d); });
   ff.stderr.on("data", (d) => { err = (err + d).slice(-400); });
+  ff.stdin?.on("error", () => {});
   ff.on("error", (e) => onEnd(e.code === "ENOENT" ? "ffmpeg is not installed (sudo apt install ffmpeg)" : e.message));
   ff.on("close", (status) => {
     closed = true; clearTimeout(watchdog); clearTimeout(killer);
     onEnd(stalled ? "The camera stopped sending pictures." : status ? err.trim().split("\n").pop() || `ffmpeg stopped (${status})` : null);
   });
-  return () => { clearTimeout(watchdog); kill(); };
+  return { stop: () => { clearTimeout(watchdog); kill(); }, stdin: ff.stdin };
+}
+
+/**
+ * H.264 (Annex B, an access unit delimiter before every picture, as h264_metadata=aud=insert writes it) cut into
+ * whole pictures: the returned push(bytes) hands each finished picture to onPicture({data, key}), `key` when it holds
+ * an IDR slice (the printer sends its SPS and PPS with every one). A picture is finished when the next one's
+ * delimiter arrives.
+ */
+export function accessUnits(onPicture, most = 8e6) {
+  const aud = Buffer.from([0, 0, 1, 9]), start = Buffer.from([0, 0, 1]);
+  let buf = Buffer.alloc(0);
+  const keyOf = (au) => {
+    for (let i = au.indexOf(start); i >= 0 && i + 3 < au.length; i = au.indexOf(start, i + 3))
+      if ((au[i + 3] & 0x1f) === 5) return true;
+    return false;
+  };
+  return (d) => {
+    buf = buf.length ? Buffer.concat([buf, d]) : Buffer.from(d);
+    for (;;) {
+      let s = buf.indexOf(aud);
+      if (s < 0) { if (buf.length > most) buf = Buffer.alloc(0); return; }
+      if (s > 0 && buf[s - 1] === 0) s--;
+      let e = buf.indexOf(aud, s + 4);
+      if (e < 0) { buf = buf.subarray(s); if (buf.length > most) buf = Buffer.alloc(0); return; }
+      if (buf[e - 1] === 0) e--;
+      const au = Buffer.from(buf.subarray(s, e));
+      buf = buf.subarray(e);
+      onPicture({ data: au, key: keyOf(au) });
+    }
+  };
+}
+
+/**
+ * The printer's certificate is not one a computer can check: ffmpeg 9 checks certificates by default and refused it
+ * ("Peer certificate failed verification"), so it is told -tls_verify 0. Older ffmpeg (6.1, Ubuntu 24.04)
+ * never checks and refuses that option on an RTSPS input ("Option not found", only once the stream is open), which
+ * stopped every camera on such a machine. So the first camera tries it and, refused, drops it for good. The access code is the lock.
+ */
+let certArgs = ["-tls_verify", "0"];
+
+/**
+ * The camera's video, live and untouched: ffmpeg copies the printer's own H.264 (X1 and H2: RTSPS, 30 pictures a
+ * second) without decoding it and hands each picture to onFrame({data, key}) as soon as it is whole. `input`: ffmpeg's
+ * input arguments instead of the printer's stream (a test picture, encoded to H.264 the way the printer sends it: no
+ * B-frames, an IDR every second). Returns stop(). See watchedFfmpeg for the one-live-view rule.
+ */
+export async function cameraVideo({ host, code, input = null, onFrame, onEnd = () => {}, spawn = null, stallMs = 20000, graceMs = 2000 }) {
+  const from = () => input
+    ? [...input, "-an", "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-bf", "0", "-g", "30", "-pix_fmt", "yuv420p"]
+    : ["-rtsp_transport", "tcp", ...certArgs, "-fflags", "nobuffer", "-flags", "low_delay",
+      "-i", `rtsps://bblp:${encodeURIComponent(code)}@${host}:322/streaming/live/1`, "-an", "-c:v", "copy"];
+  let ff = null, stopped = false;
+  const start = async () => {
+    const tried = certArgs;
+    ff = await watchedFfmpeg([...from(), "-bsf:v", "h264_metadata=aud=insert", "-flush_packets", "1", "-f", "h264", "pipe:1"], {
+      onData: accessUnits(onFrame), spawn, stallMs, graceMs,
+      onEnd: (why) => {
+        if (!input && !stopped && tried.length && /Option not found/.test(String(why))) { certArgs = []; start(); }
+        else onEnd(why);
+      },
+    });
+  };
+  await start();
+  return () => { stopped = true; ff.stop(); };
+}
+
+/**
+ * JPEG pictures made here from the camera's video (cameraVideo) for whoever takes stills (the account page, an older
+ * Bambu Studio tab): {push(picture), stop()}. It starts at the next IDR picture and hands about `fps` JPEGs a second,
+ * each to onFrame (a Buffer). The printer is still read once; this only decodes what is already here.
+ */
+export async function jpegPictures({ fps = 4, width = 960, onFrame, onEnd = () => {}, spawn = null, stallMs = 20000, graceMs = 2000 }) {
+  let buf = Buffer.alloc(0), started = false;
+  const ff = await watchedFfmpeg(["-fflags", "nobuffer", "-flags", "low_delay", "-f", "h264", "-i", "pipe:0",
+    "-an", "-vf", `fps=${fps},scale=${width}:-2`, "-q:v", "7", "-f", "image2pipe", "-vcodec", "mjpeg", "pipe:1"], {
+    stdin: true, spawn, stallMs, graceMs, onEnd,
+    onData: (d) => {
+      buf = Buffer.concat([buf, d]);
+      // A JPEG runs from FF D8 to FF D9; ffmpeg's mjpeg frames carry no thumbnails, so the first FF D9 ends it.
+      for (;;) {
+        const s = buf.indexOf(Buffer.from([0xff, 0xd8]));
+        if (s < 0) { buf = Buffer.alloc(0); break; }
+        const e = buf.indexOf(Buffer.from([0xff, 0xd9]), s + 2);
+        if (e < 0) { buf = buf.subarray(s); break; }
+        onFrame(Buffer.from(buf.subarray(s, e + 2)));
+        buf = buf.subarray(e + 2);
+      }
+      if (buf.length > 4e6) buf = Buffer.alloc(0);
+    },
+  });
+  return {
+    push: (picture) => {
+      if (!started && !picture.key) return;
+      // A decoder that falls behind skips to the next IDR picture rather than queueing.
+      if (ff.stdin?.writableLength > 2e6) { started = false; return; }
+      started = true;
+      try { ff.stdin?.write(picture.data); } catch { /* ended */ }
+    },
+    stop: ff.stop,
+  };
 }
