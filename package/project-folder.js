@@ -17,6 +17,12 @@
 //
 // The address /<app>/?project=<id>[&open=<path in it>] opens that project before the program starts, and with open=
 // gives that file to the program as its argument (KiCad opens a board's whole folder through its .kicad_pro).
+// The address /<app>/?link=<token>&share=<project-share address>[&open=<path>] opens what a project link shows, signed
+// out too: its files under Links/<project name>/, view only (nothing there goes up; the person is told so).
+//
+// Who may do what is the account's (the server's one gate): a project shared to view opens, and a save of it is
+// refused; the refusal is shown in the program's window in the server's words (Module.b3dNotice), the working copy
+// stays in this browser.
 //
 // Module.b3dProjects: list(), open(project) -> {dir, project, files}, file(project, file) -> {bytes, name, entry},
 //   track(path, entry), untrack(path), part(path, {part, version, project, projectName}, bytes), save(path), entries(), idle().
@@ -35,7 +41,11 @@
   function linked() { return !!(Module.b3dHome && Module.b3dHome.linked && Module.b3dHome.linked()); }
   function ask(op, body) {
     return Module.b3dHome.ask(op, body || {}).then(function (r) { return r.json(); }).then(function (a) {
-      if (!a || a.ok === false) throw new Error((a && a.error) || 'The project could not be reached.');
+      if (!a || a.ok === false) {
+        var err = new Error((a && a.error) || 'The project could not be reached.');
+        err.code = a && a.code;
+        throw err;
+      }
       return a;
     });
   }
@@ -45,6 +55,45 @@
   function gzip(data) { return through(data, new CompressionStream('gzip')); }
   function gunzip(data) { return through(data, new DecompressionStream('gzip')); }
   function folderName(s) { return String(s || 'Project').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '').trim().slice(0, 120) || 'Project'; }
+
+  // ── Telling the person ───────────────────────────────────────────
+  // One line over the program, in the account's words: kind 'refused' stays until closed, 'info' goes by itself.
+  // Module.b3dNotice(text, kind) for the other scripts of the package.
+  var noticeBox = null, noticeTimer = null;
+  function notice(text, kind) {
+    if (typeof document === 'undefined' || !document.body) { console.warn('b3d projects: ' + text); return; }
+    if (!noticeBox) {
+      noticeBox = document.createElement('div');
+      noticeBox.setAttribute('role', 'status');
+      noticeBox.setAttribute('data-testid', 'b3d-notice');
+      noticeBox.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:2147483001;max-width:min(640px,92vw);'
+        + 'display:flex;gap:12px;align-items:flex-start;padding:10px 14px;border-radius:6px;box-shadow:0 6px 24px rgba(0,0,0,.25);'
+        + 'font:13px/1.4 "Segoe UI",system-ui,-apple-system,sans-serif';
+      document.body.appendChild(noticeBox);
+    }
+    var refused = kind === 'refused';
+    noticeBox.style.background = refused ? '#fff4e5' : '#ffffff';
+    noticeBox.style.color = '#262e30';
+    noticeBox.style.border = '1px solid ' + (refused ? '#e8a33d' : '#c9cfd1');
+    noticeBox.textContent = '';
+    var words = document.createElement('div');
+    words.style.flex = '1';
+    words.textContent = text;
+    var close = document.createElement('button');
+    close.textContent = '\u00d7';
+    close.setAttribute('aria-label', 'Close');
+    close.style.cssText = 'border:0;background:none;font-size:18px;line-height:1;cursor:pointer;color:#6b7375;padding:0 2px';
+    close.onclick = function () { noticeBox.style.display = 'none'; };
+    noticeBox.appendChild(words);
+    noticeBox.appendChild(close);
+    noticeBox.style.display = 'flex';
+    clearTimeout(noticeTimer);
+    if (!refused) noticeTimer = setTimeout(function () { noticeBox.style.display = 'none'; }, 12000);
+    console.log('b3d projects: ' + text);
+  }
+  Module.b3dNotice = notice;
+  // A refusal of the account (not a network fault): it says why, and asking again would say the same.
+  var REFUSED = { not_yours: 1, not_found: 1, not_allowed: 1, fixed: 1, full: 1, too_big: 1 };
 
   // ── Which file each path is ──────────────────────────────────────
   // path (absolute) -> {project, projectName, file, path (inside the project), version, sha (the account's bytes of
@@ -127,6 +176,9 @@
       }, Promise.resolve()).then(function () {
         keep();
         console.log('b3d projects: ' + a.project.name + ' at ' + dir + ', ' + files.length + ' files');
+        if (a.project.role === 'view' || a.project.role === 'download') {
+          notice('You can view “' + a.project.name + '” but not change it: your saves stay in this browser. Ask its owner for edit.', 'info');
+        }
         return { dir: dir, project: a.project, files: a.files };
       });
     });
@@ -221,7 +273,13 @@
           console.log('b3d projects: ' + e.path + ' made from the part\'s version ' + l.pinned);
         });
       });
-    }).catch(function (err) { console.error('b3d projects: ' + (e.path || abs) + ' did not go up: ' + err.message + ' (it goes up on the next start)'); });
+    }).catch(function (err) {
+      if (REFUSED[err.code]) {
+        notice('“' + (e.path || abs).split('/').pop() + '” was not saved to Boolean3d: ' + err.message + ' Your copy stays in this browser.', 'refused');
+        return;
+      }
+      console.error('b3d projects: ' + (e.path || abs) + ' did not go up: ' + err.message + ' (it goes up on the next start)');
+    });
   }
 
   function watch() {
@@ -238,10 +296,11 @@
   // Before the program starts: the project folders' working copies back from this browser's storage, then the project
   // in the address opened (its file as the program's argument). Saves that did not go up, go up after.
   var q = new URLSearchParams(location.search), wantProject = q.get('project'), wantOpen = q.get('open');
+  var wantLink = q.get('link'), shareAt = q.get('share');
   // The program copies Module.arguments when its script loads, before preRun: the array it will start with is set
   // here, and filled once the project is in the file system (or left empty when the file is not there).
   var startArgs = null;
-  if (wantProject && wantOpen) { Module.arguments = Module.arguments || []; startArgs = Module.arguments; }
+  if ((wantProject || (wantLink && shareAt)) && wantOpen) { Module.arguments = Module.arguments || []; startArgs = Module.arguments; }
   Module.preRun = Module.preRun || [];
   Module.preRun.push(function () {
     Module.addRunDependency('b3d-projects');
@@ -254,6 +313,7 @@
         if (reg[k].here !== reg[k].sha) pending.push(k);
       });
     }, Promise.resolve()).then(function () {
+      if (wantLink && shareAt) return openLink(wantLink, shareAt, wantOpen);
       if (!wantProject || !linked()) return;
       return open(wantProject).then(function (o) {
         opened[o.dir.slice(ROOT.length + 1)] = { project: o.project.id, projectName: o.project.name };
@@ -274,6 +334,41 @@
       }, 200);
     });
   });
+
+  // ── A link ───────────────────────────────────────────────────────
+  // What the link shows, under Links/<project name>/ (not Projects/: nothing there goes up). With open=, that file only
+  // (and it is the program's argument); else every file. Each file's bytes are checked against the version's SHA-256.
+  var LINKS = HOME + '/Links';
+  function openLink(token, share, only) {
+    var at = share + (share.indexOf('?') < 0 ? '?' : '&');
+    return fetch(at + new URLSearchParams({ link: token }), { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (a) {
+      if (!a || !a.ok) { notice((a && a.error) || 'This link does not open.', 'refused'); return; }
+      var dir = LINKS + '/' + folderName(a.project.name);
+      var files = a.files.filter(function (f) { return f.path && f.version && (!only || f.path === only.replace(/^\/+/, '')); });
+      return files.reduce(function (p, f) {
+        return p.then(function () {
+          return fetch(at + new URLSearchParams({ link: token, version: f.version.id }), { cache: 'no-store' });
+        }).then(function (r) {
+          if (!r.ok) return r.json().then(function (b) { throw new Error(b.error || 'That file could not be fetched.'); });
+          return r.arrayBuffer();
+        }).then(function (b) {
+          var data = new Uint8Array(b);
+          return sha256(data).then(function (s) {
+            if (f.version.sha256 && s !== f.version.sha256) throw new Error('That file came back changed.');
+            put(dir + '/' + f.path, data);
+            console.log('b3d projects: link ' + f.path + ' version ' + f.version.number + ', ' + data.length + ' bytes');
+          });
+        });
+      }, Promise.resolve()).then(function () {
+        if (only && startArgs) {
+          var abs = dir + '/' + only.replace(/^\/+/, '');
+          if (read(abs)) { startArgs.length = 0; startArgs.push(abs); console.log('b3d projects: opening ' + abs); }
+        }
+        var by = a.owner ? ' shared by ' + a.owner : '';
+        notice('“' + a.project.name + '”' + by + ', opened from a link: view only. Changes you make stay in this browser.', 'info');
+      });
+    }).catch(function (e) { notice('This link did not open: ' + e.message, 'refused'); });
+  }
 
   Module.b3dProjects = {
     list: list, open: function (id) {
