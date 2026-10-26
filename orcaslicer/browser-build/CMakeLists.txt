@@ -404,6 +404,28 @@ orca_gui_patch(libslic3r_gui slic3r/GUI/OpenGLManager.cpp
 #endif // SLIC3R_OPENGL_ES")
 
 # --- the program: Orca's own src/OrcaSlicer.cpp (CLI + GUI entry, unchanged) ------------------------
+# Stealth Mode: the browser build never reaches Bambu's cloud (no network plug-in, no sign-in,
+# no printer config download, above), so it always runs as Orca's Stealth Mode does: no HMS look-ups on bambulab.com,
+# no preset sync. The Preferences box cannot turn it off here.
+orca_gui_patch(libslic3r libslic3r/AppConfig.cpp
+    FIND "bool AppConfig::get_stealth_mode()
+{"
+    REPLACE "bool AppConfig::get_stealth_mode()
+{
+#ifdef __EMSCRIPTEN__
+    return true; // the browser build has no Bambu cloud to talk to
+#endif // __EMSCRIPTEN__")
+# The setup wizard: the built-in network module counts as installed (GUI_App patch above), which Orca stores as
+# "true"; the filament page (resources/web/guide/22/22.js) shows Finish only for "1", otherwise Next on to the
+# Stealth Mode and network plug-in pages, both about Bambu's cloud and plug-in (desktop 2.3.2 stores "true" too, so it
+# always shows them). Hand the page the "1" it checks for: installed, so the wizard ends after the filaments.
+orca_gui_patch(libslic3r_gui slic3r/GUI/WebGuideDialog.cpp
+    FIND "        m_ProfileJson[\"network_plugin_install\"] = wxGetApp().app_config->get(\"app\",\"installed_networking\");"
+    REPLACE "#ifdef __EMSCRIPTEN__
+        m_ProfileJson[\"network_plugin_install\"] = wxGetApp().app_config->get_bool(\"installed_networking\") ? \"1\" : \"0\";
+#else
+        m_ProfileJson[\"network_plugin_install\"] = wxGetApp().app_config->get(\"app\",\"installed_networking\");
+#endif // __EMSCRIPTEN__")
 # Resources: Orca's resources/ preloaded at /orca/resources (see start-up.js; with a start list the package fetches
 # each file when first read). resources/web is in the program's files too: dialogs check a page exists before
 # loading it (WipingDialog: "Flushing volumes" stayed blank without it), as Bambu Studio's list has it.

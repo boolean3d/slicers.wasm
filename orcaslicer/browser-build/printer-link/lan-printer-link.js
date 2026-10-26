@@ -7,6 +7,16 @@ var B3DLan = (function () {
   let ws = null;
   let queue = []; // sent before the link was open
   let retry = null;
+  // LOCAL NETWORK (z49): a page reaching the home network makes the browser ask the person first (Chrome: "wants to
+  // access other apps and services on this device"). So the page never reaches it on its own: the program's start (its
+  // agent start, the printer search at start) waits until the person asks for a printer (Device tab, the printer list,
+  // Print/Send: asked() from the program; or any request of theirs: connect, Connect by IP, send, print), unless this
+  // browser has linked to the helper before (the person said yes then; the browser remembers it).
+  let personAsked = false;
+  try { personAsked = localStorage.getItem('b3d-lan-linked') === '1'; } catch (e) {}
+  if (new URLSearchParams(location.search).get('bridge')) personAsked = true; // an address naming the helper: their own setup
+  let parked = null; // the program's printer search, sent once the person asks
+  const background = (m) => { if (typeof m !== 'string') return false; try { const r = JSON.parse(m); return r.op === 'discover' || r.op === 'disconnect'; } catch (e) { return false; } };
   function deliver(text) {
     const p = stringToNewUTF8(text);
     // posted to the program's thread, which frees p after the call (page-extras.js); before main runs: dropped
@@ -60,12 +70,14 @@ var B3DLan = (function () {
     if (r.id !== undefined) deliver(JSON.stringify({ id: r.id, stage: 'error', error: SIGN_IN, code: -1 }));
   }
   function open() {
+    if (!personAsked) return;
     if (accountCheck && !signedIn()) return;
     if (ws && ws.readyState <= 1) return;
     ws = new WebSocket(url);
     ws.binaryType = 'arraybuffer';
     ws.onopen = function () {
       console.log('b3d-lan: helper linked at ' + url);
+      try { localStorage.setItem('b3d-lan-linked', '1'); } catch (e) {}
       // z31: this page confirms camera pictures (camera_got), so the helper holds back video, not the reports
       ws.send(JSON.stringify({ op: 'hello', camera_acks: true }));
       const q = queue; queue = [];
@@ -85,6 +97,10 @@ var B3DLan = (function () {
     ws.onerror = function () {};
   }
   function send(m) {
+    if (!personAsked) {
+      if (background(m)) { if (JSON.parse(m).op === 'discover') parked = m; return; }
+      personAsked = true;
+    }
     if (accountCheck && !signedIn()) return refused(m);
     if (ws && ws.readyState === 1) ws.send(m);
     else { queue.push(m); open(); }
@@ -92,6 +108,13 @@ var B3DLan = (function () {
   return {
     start: open,
     send: send,
+    // The person asked for their printer (z49 in the program: Device tab, printer list, Print/Send).
+    asked: function () {
+      if (personAsked) return;
+      personAsked = true;
+      const m = parked; parked = null;
+      if (m) send(m); else open();
+    },
     // The request, then the file's bytes (path '' = no file).
     sendFile: function (req, path) {
       send(req);

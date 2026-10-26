@@ -19,7 +19,10 @@
 //
 // Everything else passes through untouched.
 self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
+// claim() not awaited: Firefox kept a first visit's worker 'activating' ~60 s until the claim settled (the program page
+// is busy starting), and holds every web-view frame's request until 'activated': the setup wizard stayed blank that long.
+// The frames are new pages, controlled anyway; claim only adds the already open program page, whenever it settles.
+self.addEventListener('activate', () => { self.clients.claim(); });
 const BRIDGE = '<style>:where(html){font-family:sans-serif}</style><script>(function(){try{var f=window.frameElement;if(f&&f.dataset.wxwv&&parent.wxwvBridge)parent.wxwvBridge(window,f);}catch(e){}})();</script>';
 
 // ---- a printer's page on the house network ----

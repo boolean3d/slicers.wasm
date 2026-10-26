@@ -230,17 +230,11 @@ addToLibrary({
     _free(ptr);
   },
 
-  // the window icon (phase 2c): the worker's RGBA pixels become the page's favicon
+  // the window icon (phase 2c): not shown, see below
   wxpage_set_icon_image__proxy: 'async',
+  // The program's window icon is the slicer maker's logo: the tab keeps the page's own icon (the package's index.html),
+  // so the icon is not drawn into the page (the rule of these builds: no maker logos on our pages).
   wxpage_set_icon_image: function(ptr, w, h) {
-    try {
-      var px = new Uint8ClampedArray(HEAPU8.buffer, ptr, w * h * 4);
-      var c = document.createElement('canvas'); c.width = w; c.height = h;
-      c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(px), w, h), 0, 0);
-      var link = document.querySelector("link[rel*='icon']") || document.createElement('link');
-      link.type = 'image/png'; link.rel = 'shortcut icon'; link.href = c.toDataURL('image/png');
-      document.getElementsByTagName('head')[0].appendChild(link);
-    } catch (e) { console.log('icon image: ' + e); }
     _free(ptr);
   },
 

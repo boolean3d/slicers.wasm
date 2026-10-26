@@ -930,6 +930,36 @@ index 21ca9101..34b0691d 100644
      struct LastSliderStatus {
          bool hovered { false };
          bool edited  { false };
+diff --git a/src/slic3r/GUI/MainFrame.cpp b/src/slic3r/GUI/MainFrame.cpp
+index 7e7bdb04..06cd766e 100644
+--- a/src/slic3r/GUI/MainFrame.cpp
++++ b/src/slic3r/GUI/MainFrame.cpp
+@@ -78,6 +78,17 @@
+ #include <slic3r/GUI/CreatePresetsDialog.hpp>
+ 
+ 
++#ifdef __EMSCRIPTEN__
++#include <emscripten/em_asm.h>
++#endif
++namespace Slic3r {
++// b3d z49: the person asked for their printer: the page may now reach the home network (agent/b3d-lan.js)
++#ifdef __EMSCRIPTEN__
++static void b3d_lan_person_asks() { MAIN_THREAD_ASYNC_EM_ASM({ if (typeof B3DLan !== 'undefined' && B3DLan.asked) B3DLan.asked(); }); }
++#else
++static void b3d_lan_person_asks() {}
++#endif
++}
+ namespace Slic3r {
+ namespace GUI {
+ 
+@@ -1232,6 +1243,7 @@ void MainFrame::init_tabpanel() {
+         int sel = m_tabpanel->GetSelection();
+         //wxString page_text = m_tabpanel->GetPageText(sel);
+         m_last_selected_tab = m_tabpanel->GetSelection();
++        if (sel == tpMonitor) b3d_lan_person_asks(); // b3d z49
+         if (panel == m_plater) {
+             if (sel == tp3DEditor) {
+                 wxPostEvent(m_plater, SimpleEvent(EVT_GLVIEWTOOLBAR_3D));
 diff --git a/src/slic3r/GUI/Preferences.cpp b/src/slic3r/GUI/Preferences.cpp
 index 1a52f886..b6e05cdc 100644
 --- a/src/slic3r/GUI/Preferences.cpp
@@ -977,11 +1007,59 @@ index 1a52f886..b6e05cdc 100644
  
      g_sizer->AddSpacer(FromDIP(10));
      sizer_page->Add(g_sizer, 0, wxEXPAND);
+diff --git a/src/slic3r/GUI/SelectMachine.cpp b/src/slic3r/GUI/SelectMachine.cpp
+index 464a1332..ef7b1911 100644
+--- a/src/slic3r/GUI/SelectMachine.cpp
++++ b/src/slic3r/GUI/SelectMachine.cpp
+@@ -39,6 +39,17 @@
+ #include "BitmapCache.hpp"
+ #include "BindDialog.hpp"
+ 
++#ifdef __EMSCRIPTEN__
++#include <emscripten/em_asm.h>
++#endif
++namespace Slic3r {
++// b3d z49: the person asked for their printer: the page may now reach the home network (agent/b3d-lan.js)
++#ifdef __EMSCRIPTEN__
++static void b3d_lan_person_asks() { MAIN_THREAD_ASYNC_EM_ASM({ if (typeof B3DLan !== 'undefined' && B3DLan.asked) B3DLan.asked(); }); }
++#else
++static void b3d_lan_person_asks() {}
++#endif
++}
+ namespace Slic3r { namespace GUI {
+ 
+ wxDEFINE_EVENT(EVT_SWITCH_PRINT_OPTION, wxCommandEvent);
+@@ -1455,6 +1466,7 @@ int SelectMachineDialog::convert_filament_map_nozzle_id_to_task_nozzle_id(int no
+ 
+ void SelectMachineDialog::prepare(int print_plate_idx)
+ {
++    b3d_lan_person_asks(); // b3d z49
+     m_print_plate_idx = print_plate_idx;
+ }
+ 
 diff --git a/src/slic3r/GUI/SelectMachinePop.cpp b/src/slic3r/GUI/SelectMachinePop.cpp
-index ddca6df8..8d334dc7 100644
+index ddca6df8..f0c41870 100644
 --- a/src/slic3r/GUI/SelectMachinePop.cpp
 +++ b/src/slic3r/GUI/SelectMachinePop.cpp
-@@ -355,6 +355,9 @@ SelectMachinePopup::SelectMachinePopup(wxWindow *parent)
+@@ -30,6 +30,17 @@
+ 
+ #include "DeviceCore/DevManager.h"
+ 
++#ifdef __EMSCRIPTEN__
++#include <emscripten/em_asm.h>
++#endif
++namespace Slic3r {
++// b3d z49: the person asked for their printer: the page may now reach the home network (agent/b3d-lan.js)
++#ifdef __EMSCRIPTEN__
++static void b3d_lan_person_asks() { MAIN_THREAD_ASYNC_EM_ASM({ if (typeof B3DLan !== 'undefined' && B3DLan.asked) B3DLan.asked(); }); }
++#else
++static void b3d_lan_person_asks() {}
++#endif
++}
+ namespace Slic3r { namespace GUI {
+ 
+ wxDEFINE_EVENT(EVT_UPDATE_WINDOWS_POSITION, wxCommandEvent);
+@@ -355,6 +366,9 @@ SelectMachinePopup::SelectMachinePopup(wxWindow *parent)
      m_sizxer_scrolledWindow->Add(own_title, 0, wxEXPAND | wxLEFT, FromDIP(15));
      m_sizxer_scrolledWindow->Add(m_sizer_my_devices, 0, wxEXPAND, 0);
      m_sizxer_scrolledWindow->Add(m_panel_ping_code, 0, wxEXPAND, 0);
@@ -991,7 +1069,15 @@ index ddca6df8..8d334dc7 100644
      m_sizxer_scrolledWindow->Add(m_panel_direct_connection, 0, wxEXPAND, 0);
      m_sizxer_scrolledWindow->Add(other_title, 0, wxEXPAND | wxLEFT, FromDIP(15));
      m_sizxer_scrolledWindow->Add(m_sizer_other_devices, 0, wxEXPAND, 0);
-@@ -851,7 +854,7 @@ void SelectMachinePopup::OnLeftUp(wxMouseEvent &event)
+@@ -382,6 +396,7 @@ void SelectMachinePopup::Popup(wxWindow *WXUNUSED(focus))
+ {
+     BOOST_LOG_TRIVIAL(trace) << "get_print_info: start";
+     start_ssdp(true);
++    b3d_lan_person_asks(); // b3d z49
+     if (m_refresh_timer) {
+         m_refresh_timer->Stop();
+         m_refresh_timer->Start(MACHINE_LIST_REFRESH_INTERVAL);
+@@ -851,7 +866,7 @@ void SelectMachinePopup::OnLeftUp(wxMouseEvent &event)
  
          //pin code
          auto pc_rect = m_panel_ping_code->ClientToScreen(wxPoint(0, 0));

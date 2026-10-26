@@ -10006,6 +10006,34 @@ index 65564d1..fa367b7 100644
  #define wxUSE_THEME_WIN32   0
  #endif
  
+diff --git a/src/aui/framemanager.cpp b/src/aui/framemanager.cpp
+index 246a89e..725f940 100644
+--- a/src/aui/framemanager.cpp
++++ b/src/aui/framemanager.cpp
+@@ -3938,9 +3938,11 @@ void wxAuiManager::Repaint(wxDC* dc)
+ 
+     // if the frame has a toolbar, the client area
+     // origin will not be (0,0).
++#ifndef __WXWASM__   // z46: the port's wxClientDC of a frame already starts at its client area origin
+     wxPoint pt = m_frame->GetClientAreaOrigin();
+     if (pt.x != 0 || pt.y != 0)
+         dc->SetDeviceOrigin(pt.x, pt.y);
++#endif
+ 
+     // render all the items
+     Render(dc);
+@@ -4099,9 +4101,11 @@ void wxAuiManager::UpdateButtonOnScreen(wxAuiDockUIPart* button_ui_part,
+ 
+     // if the frame has a toolbar, the client area
+     // origin will not be (0,0).
++#ifndef __WXWASM__   // z46: the port's wxClientDC of a frame already starts at its client area origin
+     wxPoint pt = m_frame->GetClientAreaOrigin();
+     if (pt.x != 0 || pt.y != 0)
+         cdc.SetDeviceOrigin(pt.x, pt.y);
++#endif
+ 
+     if (hit_test->pane)
+     {
 diff --git a/src/common/appcmn.cpp b/src/common/appcmn.cpp
 index 404429d..d787ea0 100644
 --- a/src/common/appcmn.cpp
@@ -26562,7 +26590,7 @@ index 0000000..00425d4
 +#endif
 diff --git a/src/wasm/webview_wasm.cpp b/src/wasm/webview_wasm.cpp
 new file mode 100644
-index 0000000..05b5411
+index 0000000..8050afc
 --- /dev/null
 +++ b/src/wasm/webview_wasm.cpp
 @@ -0,0 +1,310 @@
@@ -26623,8 +26651,8 @@ index 0000000..05b5411
 +    void  wxpage_wv_load(int id, const char *url, const char *user, const char *password);
 +    void  wxpage_wv_set_html(int id, const char *html);
 +    void  wxpage_wv_reload(int id);
-+    // The value of the script as text (malloc'd on the page, freed here), or 0 if it threw or there is no page
-+    char *wxpage_wv_run(int id, const char *js);
++    // The value of the script as text (malloc'd on the page, freed here), or 0 if it threw or there is no page; want 0: run as the page's own task, value not kept
++    char *wxpage_wv_run(int id, const char *js, int want);
 +    void  wxpage_wv_handler(int id, const char *name, int add);
 +    void  wxpage_wv_user_script(int id, const char *js);   // js == NULL removes them all
 +    void  wxpage_wv_user_agent(int id, const char *ua);
@@ -26809,7 +26837,7 @@ index 0000000..05b5411
 +
 +bool wxWebViewWasm::RunScript(const wxString& javascript, wxString* output) const
 +{
-+    char *result = wxpage_wv_run(m_elementId, javascript.utf8_str());
++    char *result = wxpage_wv_run(m_elementId, javascript.utf8_str(), output != nullptr);
 +    if (!result)
 +        return false;
 +    if (output)
