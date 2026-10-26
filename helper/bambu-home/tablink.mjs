@@ -75,7 +75,8 @@ const safeName = (s) => String(s || "print").replace(/[\\/:*?"<>|\u0000-\u001f]/
 export function startTabLink({ port = 8770, host = "0.0.0.0", pool, shelf, cameras, heard = new Map(), pairing = null, name = null, version = null,
   mqttPort = 8883, ftpPort = 990, cameraInput = null, say = console.log, onPrinted = () => {}, page = null }) {
   const tabs = new Set();
-  const whoAmI = () => ({ id: pairing?.helperId ?? null, name: name || os.hostname(), version });
+  // bySecret: the browser that downloaded it may still pair by itself (pairing.mjs 2b), so a page holding a secret sends it
+  const whoAmI = () => ({ id: pairing?.helperId ?? null, name: name || os.hostname(), version, bySecret: !!pairing?.bySecret });
   const heardPrinter = (serial) => {
     const p = heard.get(serial);
     if (p) for (const t of tabs) if (t.discovering && t.paired) t.sendText(JSON.stringify({ ev: "ssdp", info: ssdpInfo(p) }));

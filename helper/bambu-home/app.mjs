@@ -5,4 +5,5 @@ import { isSea } from "node:sea";
 import { main } from "./helper.mjs";
 
 // argv[1] is the program itself in both cases (Node puts the executable there for a single-executable too)
-main(process.argv.slice(2), { packaged: isSea() }).then((code) => { if (code !== null) process.exit(code); });
+// its own path: the page that downloaded it named the file after a one-time secret (pairing.mjs 2b)
+main(process.argv.slice(2), { packaged: isSea(), programPath: process.execPath }).then((code) => { if (code !== null) process.exit(code); });

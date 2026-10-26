@@ -8,6 +8,12 @@
 //      `code` command); the person types it once in the page. The page gets a token it keeps (its own storage, per
 //      origin) and sends on every later line. A wrong code five times makes a new code. An unpaired line is answered,
 //      but every request on it gets "pair this browser first" and no printer is reached.
+//   2b. The browser that downloaded it, by itself: that page makes a long one-time secret and names the downloaded
+//      file after it (boolean3d-helper-<secret>.exe, the browser's own "save as" name: the address fetched carries no
+//      secret, so no server ever sees it). The helper finds the secret in its own path (the file, or the folder a zip
+//      opened into) and takes it once, as it takes the code: the page's line sends it, gets the token. It works for one
+//      pairing only (its hash is kept as used in the helper file), and a wrong code or secret five times ends it for
+//      this run (the code goes on working). Someone on the network who never saw that file cannot guess it (60 bits).
 //   3. Who the helper is: a key pair (Ed25519) made on its first start and kept in the helper file; its id is the
 //      public key's fingerprint. A tab, the account and a future relay all know the helper by that id; the private
 //      key signs whatever asks "is it really you" (sign) and never leaves this computer.
@@ -22,6 +28,11 @@ const HERE = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
 /** The letters a code is made of: no 0/O, 1/I/L, so it reads the same from any screen. Same as the account's codes. */
 export const CODE_LETTERS = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
 const CODE_LENGTH = 6;
+/** The download secret's length (12 of CODE_LETTERS: ~59 bits) and where it sits in a path. */
+export const SECRET_LENGTH = 12;
+const SECRET_IN_PATH = new RegExp(`boolean3d-helper-([${CODE_LETTERS}]{${SECRET_LENGTH}})(?![${CODE_LETTERS}])`, "i");
+/** The download secret in a path (the helper's own program path), or null. "(1)" and other suffixes do not matter. */
+export const secretIn = (p) => { const m = SECRET_IN_PATH.exec(String(p ?? "")); return m ? m[1].toUpperCase() : null; };
 /** Wrong codes on one code before a new one is made. */
 export const MOST_TRIES = 5;
 /** Paired browsers kept; the oldest goes when one more pairs. */
@@ -63,7 +74,7 @@ export const idOf = (publicKey) => createHash("sha256").update(Buffer.from(publi
  * each change given to `save(patch)`). Returns {helperId, publicKey, sign, code, showCode, origins, allowsOrigin, pair,
  * verify, forget, paired}.
  */
-export function pairing(state = {}, { save = () => {}, say = () => {} } = {}) {
+export function pairing(state = {}, { save = () => {}, say = () => {}, secret = null } = {}) {
   if (!state.identity?.publicKey || !state.identity?.privateKey) { state.identity = makeIdentity(); save({ identity: state.identity }); }
   const privateKey = createPrivateKey(state.identity.privateKey);
   const publicKey = createPublicKey(privateKey).export({ type: "spki", format: "der" }).toString("base64url");
@@ -71,20 +82,33 @@ export function pairing(state = {}, { save = () => {}, say = () => {} } = {}) {
   const paired = Array.isArray(state.paired) ? state.paired.filter((p) => typeof p?.hash === "string") : [];
   const extra = Array.isArray(state.origins) ? state.origins.filter((o) => typeof o === "string") : [];
   let code = makeCode(), tries = 0;
+  // the download secret: once, unless already used (kept as hashes) or ended by wrong tries
+  const used = Array.isArray(state.usedSecrets) ? state.usedSecrets.filter((h) => typeof h === "string") : [];
+  let downloadSecret = secret && String(secret).length === SECRET_LENGTH && !used.includes(sha256(secret)) ? String(secret).toUpperCase() : null;
+  const same = (a, b) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
   const keep = () => save({ paired });
   function pair(typed, { origin = null, name = null } = {}) {
+    const s = String(typed ?? "").toUpperCase().replace(/[\s-]/g, "");
+    const bySecret = !!downloadSecret && same(s, downloadSecret);
     const c = cleanCode(typed);
-    if (!c || c.length !== code.length || !timingSafeEqual(Buffer.from(c), Buffer.from(code))) {
-      if (++tries >= MOST_TRIES) { code = makeCode(); tries = 0; say(`a wrong code ${MOST_TRIES} times: the code is now ${showCode(code)}`); }
+    if (!bySecret && (!c || c.length !== code.length || !same(c, code))) {
+      if (++tries >= MOST_TRIES) {
+        code = makeCode(); tries = 0; say(`a wrong code ${MOST_TRIES} times: the code is now ${showCode(code)}`);
+        if (downloadSecret) { downloadSecret = null; say("the browser that downloaded the helper now pairs by the code too"); }
+      }
       return null;
+    }
+    if (bySecret) {
+      used.push(sha256(downloadSecret)); while (used.length > 20) used.shift();
+      downloadSecret = null; save({ usedSecrets: used });
     }
     const token = randomBytes(32).toString("base64url");
     paired.push({ hash: sha256(token), origin: origin ? String(origin).slice(0, 200) : null, name: name ? String(name).slice(0, 80) : null, madeAt: new Date().toISOString() });
     while (paired.length > MOST_PAIRED) paired.shift();
     code = makeCode(); tries = 0;
     keep();
-    say(`paired a browser${origin ? ` at ${origin}` : ""}; the next code is ${showCode(code)}`);
+    say(`paired a browser${origin ? ` at ${origin}` : ""}${bySecret ? " (the one that downloaded the helper)" : ""}; the next code is ${showCode(code)}`);
     return token;
   }
   /** The paired browser a token names, or null. */
@@ -100,6 +124,8 @@ export function pairing(state = {}, { save = () => {}, say = () => {} } = {}) {
     /** A signature (base64url) over `bytes`, by the helper's private key: how it proves it is the helper with this id. */
     sign: (bytes) => signBytes(null, Buffer.isBuffer(bytes) ? bytes : Buffer.from(String(bytes)), privateKey).toString("base64url"),
     get code() { return code; },
+    /** The browser that downloaded it can still pair by itself (the download secret is live). */
+    get bySecret() { return !!downloadSecret; },
     get showCode() { return showCode(code); },
     origins: [...OUR_ORIGINS, ...extra],
     allowsOrigin: (origin) => originAllowed(origin, extra),

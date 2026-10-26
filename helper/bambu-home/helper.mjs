@@ -36,11 +36,11 @@ import { activeSlot, hmsCode, listenForPrinters, mqttLink, nozzleOf, rtspsCamera
 import { createHash } from "node:crypto";
 import { cameraHub, controlRequests, fileShelf, linkPool, platePicture, sendPrint } from "./lan.mjs";
 import { startTabLink } from "./tablink.mjs";
-import { pairing as pairingOf } from "./pairing.mjs";
+import { pairing as pairingOf, secretIn } from "./pairing.mjs";
 import { autostart } from "./autostart.mjs";
 import { prusaLink, reportOf as prusaReportOf } from "../prusalink.mjs";
 
-export const VERSION = "5";
+export const VERSION = "6";
 /** Where Bambu Studio in a browser tab finds the helper (ws://<this computer>:8770). */
 export const TAB_PORT = 8770;
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -104,7 +104,8 @@ export function startHelper(cfg, { fetch: get = fetch, discover = true, loop = t
   let cam = null;               // {stop, last, sending, until}
 
   // Who may talk to it (pairing.mjs): the helper file keeps its identity and the paired browsers. `pairing` false: open (tests).
-  const pair = cfg.pairing === false ? null : pairingOf(cfg, { save, say });
+  // `downloadSecret`: the one the downloaded program's own name carries (app.mjs), so the browser that downloaded it pairs by itself.
+  const pair = cfg.pairing === false ? null : pairingOf(cfg, { save, say, secret: cfg.downloadSecret ?? null });
   const page = (req) => helperPage(req, { pairing: pair, heard, name: cfg.name, forget: () => { pair?.forget(); say("every paired browser forgotten, as asked"); } });
   // tabPort false: no tab link on this network (a tab's line can still come through the box relay, attachTab).
   const tab = startTabLink({ port: cfg.tabPort === false ? false : (cfg.tabPort ?? TAB_PORT), host: cfg.tabHost, pool, shelf, cameras, heard,
@@ -112,7 +113,8 @@ export function startHelper(cfg, { fetch: get = fetch, discover = true, loop = t
   tab.port.then((p) => {
     if (!p) return;
     say(`Bambu Studio in a browser on this network: its printer link is ws://<this computer>:${p}`);
-    if (pair) say(`To pair a browser, type this code in its page: ${pair.showCode}   (also at http://localhost:${p}/ on this computer)`);
+    if (pair?.bySecret) say("The browser you downloaded this helper with links to it by itself: go back to the slicer's page.");
+    if (pair) say(`${pair.bySecret ? "Another browser" : "To pair a browser"}, type this code in its page: ${pair.showCode}   (also at http://localhost:${p}/ on this computer)`);
   }, () => {});
 
   // The printers on this network, from their announcements (an address can change when the router restarts).
@@ -322,7 +324,7 @@ async function findPrinter(serial, ms = 20000) {
 
 // ── The command line ───────────────────────────────────────────────
 function arg(args, name) { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; }
-async function command(argv, packaged) {
+async function command(argv, packaged, programPath) {
   const [cmd, ...args] = argv;
   const file = arg(args, "--file") || path.join(os.homedir(), ".boolean3d-bambu.json");
   const read = () => { try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { return {}; } };
@@ -392,7 +394,8 @@ async function command(argv, packaged) {
     return 0;
   }
   if (cmd === "run" || (!cmd && packaged)) {
-    const h = startHelper(cfg, { save: (patch) => write({ ...read(), ...patch }) });
+    // the download secret in the program's own name or folder (pairing.mjs 2b); never written to the helper file
+    const h = startHelper({ ...cfg, downloadSecret: secretIn(programPath) }, { save: (patch) => write({ ...read(), ...patch }) });
     process.on("SIGINT", () => { h.stop(); process.exit(0); });
     process.on("SIGTERM", () => { h.stop(); process.exit(0); });
     return null;
@@ -432,8 +435,9 @@ const USAGE = `Boolean3d printer helper ${VERSION}
   pair, prusa: see the top of helper.mjs`;
 
 /** Runs the command line; `packaged`: the downloaded helper (no command = run). Resolves to an exit code, or null to keep going. */
-export async function main(argv, { packaged = false } = {}) { return command(argv, packaged); }
+export async function main(argv, { packaged = false, programPath = null } = {}) { return command(argv, packaged, programPath); }
 
 if (import.meta.url === pathToFileURL(process.argv[1] || "").href) {
-  main(process.argv.slice(2)).then((code) => { if (code !== null) process.exit(code); });
+  // its own path: a copy unpacked into a folder named after a download secret pairs by it too (pairing.mjs 2b)
+  main(process.argv.slice(2), { programPath: process.argv[1] }).then((code) => { if (code !== null) process.exit(code); });
 }

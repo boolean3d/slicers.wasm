@@ -2351,10 +2351,10 @@ index 0000000..d37002c
 +</html>
 diff --git a/build/wasm/wx.js b/build/wasm/wx.js
 new file mode 100644
-index 0000000..104696e
+index 0000000..3c02862
 --- /dev/null
 +++ b/build/wasm/wx.js
-@@ -0,0 +1,1525 @@
+@@ -0,0 +1,1526 @@
 +if (typeof navigator !== 'undefined') {
 +  var browserInfo = (function () {
 +    var ua = navigator.userAgent;
@@ -2542,12 +2542,13 @@ index 0000000..104696e
 +  // next rAF), so the event is handled in the frame the page forwarded it instead of the one after.
 +  var wxWakeOnInput = true;   // R10: input ends the frame wait at once (one loop pass), else one frame of lag
 +  var wxFrameWaiter = null;
++  // z50: resolves 1 when an animation frame ended the wait (the pass paints), 0 when input did (handled now, painted at the frame)
 +  var wxWaitFrame = function () {
 +    return new Promise(function (resolve) {
 +      var done = false;
-+      var fin = function () { if (done) return; done = true; wxFrameWaiter = null; resolve(); };
-+      if (wxWakeOnInput) wxFrameWaiter = fin;
-+      requestAnimationFrame(fin);
++      var fin = function (frame) { if (done) return; done = true; wxFrameWaiter = null; resolve(frame); };
++      if (wxWakeOnInput) wxFrameWaiter = function () { fin(0); };
++      requestAnimationFrame(function () { fin(1); });
 +    });
 +  };
 +  // GL canvases (wxgl-N) the page transferred to this worker; registered so emscripten_webgl_create_context('#wxgl-N') finds them
@@ -27277,10 +27278,10 @@ index 0000000..8050afc
 +#endif // wxUSE_WEBVIEW && __WXWASM__
 diff --git a/src/wasm/window.cpp b/src/wasm/window.cpp
 new file mode 100644
-index 0000000..5036b05
+index 0000000..a54508b
 --- /dev/null
 +++ b/src/wasm/window.cpp
-@@ -0,0 +1,860 @@
+@@ -0,0 +1,863 @@
 +/////////////////////////////////////////////////////////////////////////////
 +// Name:        wx/wasm/window.cpp
 +// Purpose:     wxWasmWindow implementation
@@ -27300,6 +27301,9 @@ index 0000000..5036b05
 +#include "wx/log.h"
 +#include "wx/menu.h"
 +#include "wx/nonownedwnd.h"
++#include "wx/notebook.h"
++#include "wx/statbox.h"
++#include "wx/toplevel.h"
 +#include "wx/notebook.h"
 +#include "wx/statbox.h"
 +#include "wx/toplevel.h"
