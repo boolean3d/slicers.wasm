@@ -13,6 +13,9 @@
 // A folder is also a project (project-folder.js): opened here, it lists the project's own 3MF files (each at its newest
 // version) beside the parts. Either one picked is handed to project-folder.js with the path it lands at (Uploads/<name>),
 // so the program's next save of it goes up as a new version (a part's 3MF: as a new project file made from that part).
+//
+// Projects and parts shared with the person are listed too (the door decides, by the sharing gate), a shared folder
+// saying who shared it. A save into a project shared to view is refused by the server, in its words (project-folder.js).
 (function () {
   if (typeof Module === 'undefined' || typeof HTMLInputElement === 'undefined') return;
   var APP = (location.pathname.split('/')[1] || 'slicer').replace(/[^\w-]/g, '');
@@ -148,7 +151,8 @@
       var top = el('div', { class: 'b3dd-place' + (at === null ? ' on' : ''), onclick: function () { go(null); } }, [icon(DISK), 'Boolean3d']);
       side.appendChild(top);
       kidsOf(null).forEach(function (f) {
-        side.appendChild(el('div', { class: 'b3dd-place sub' + (at === f.id || trail(at).some(function (t) { return t.id === f.id; }) ? ' on' : ''), title: f.name,
+        side.appendChild(el('div', { class: 'b3dd-place sub' + (at === f.id || trail(at).some(function (t) { return t.id === f.id; }) ? ' on' : ''),
+          title: f.owner ? f.name + ' (shared by ' + f.owner + ')' : f.name,
           onclick: function () { go(f.id); } }, [icon(FOLDER), f.name]));
       });
       side.appendChild(el('div', { class: 'b3dd-sep' }));
@@ -175,7 +179,7 @@
       subs.forEach(function (f) {
         grid.appendChild(el('div', { class: 'b3dd-item', title: f.name, ondblclick: function () { go(f.id); }, onclick: function () { go(f.id); } }, [
           el('div', { class: 'b3dd-pic' }, [(function () { var s = icon(FOLDER.replace(/16/g, '56')); return s; })()]),
-          el('div', { class: 'b3dd-name' }, [f.name]), el('div', { class: 'b3dd-when' }, ['Folder'])]));
+          el('div', { class: 'b3dd-name' }, [f.name]), el('div', { class: 'b3dd-when' }, [f.owner ? 'Shared by ' + f.owner : 'Folder'])]));
       });
       here.forEach(function (p) {
         var card = el('div', { class: 'b3dd-item', title: p.name, onclick: function () {
