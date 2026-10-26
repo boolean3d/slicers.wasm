@@ -26921,10 +26921,10 @@ index 0000000000..05b5411058
 +#endif // wxUSE_WEBVIEW && __WXWASM__
 diff --git a/src/wasm/window.cpp b/src/wasm/window.cpp
 new file mode 100644
-index 0000000000..21466f9cf6
+index 0000000000..ca11caec2f
 --- /dev/null
 +++ b/src/wasm/window.cpp
-@@ -0,0 +1,878 @@
+@@ -0,0 +1,849 @@
 +/////////////////////////////////////////////////////////////////////////////
 +// Name:        wx/wasm/window.cpp
 +// Purpose:     wxWasmWindow implementation
@@ -26947,35 +26947,6 @@ index 0000000000..21466f9cf6
 +#include "wx/notebook.h"
 +#include "wx/statbox.h"
 +#include "wx/toplevel.h"
-+#include "wx/notebook.h"
-+#include "wx/statbox.h"
-+#include "wx/toplevel.h"
-+#include "wx/notebook.h"
-+#include "wx/statbox.h"
-+#include "wx/toplevel.h"
-+#include "wx/notebook.h"
-+#include "wx/statbox.h"
-+#include "wx/toplevel.h"
-+#include "wx/notebook.h"
-+#include "wx/statbox.h"
-+#include "wx/toplevel.h"
-+#include "wx/notebook.h"
-+#include "wx/statbox.h"
-+#include "wx/toplevel.h"
-+#include "wx/notebook.h"
-+#include "wx/statbox.h"
-+#include "wx/toplevel.h"
-+#include "wx/notebook.h"
-+#include "wx/statbox.h"
-+#include "wx/toplevel.h"
-+#include "wx/notebook.h"
-+#include "wx/statbox.h"
-+#include "wx/toplevel.h"
-+#include "wx/notebook.h"
-+#include "wx/statbox.h"
-+#include "wx/toplevel.h"
-+#include "wx/notebook.h"
-+#include "wx/statbox.h"
 +#include "wx/wasm/private/display.h"
 +#include "wx/weakref.h"
 +
