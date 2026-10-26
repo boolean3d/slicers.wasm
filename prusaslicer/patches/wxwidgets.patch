@@ -21884,10 +21884,10 @@ index 0000000000..fe57ed6e90
 +#endif // wxUSE_DRAG_AND_DROP
 diff --git a/src/wasm/evtloop.cpp b/src/wasm/evtloop.cpp
 new file mode 100644
-index 0000000000..04ab3a72aa
+index 0000000000..d911487918
 --- /dev/null
 +++ b/src/wasm/evtloop.cpp
-@@ -0,0 +1,212 @@
+@@ -0,0 +1,193 @@
 +/////////////////////////////////////////////////////////////////////////////
 +// Name:        wx/wasm/evtloop.cpp
 +// Purpose:     wxGUIEventLoop implementation
@@ -21948,9 +21948,6 @@ index 0000000000..04ab3a72aa
 +// came for 50 ms (frames throttled); every other pass (the first, a yield's) paints
 +static bool s_paintThisPass = true;
 +static double s_lastPaintMs = 0;
-+#include "wx/nonownedwnd.h"   // z51
-+static int s_dPasses = 0, s_dFrame = 0, s_dInput = 0, s_dPaints = 0, s_dNeeded = 0, s_dOverdue = 0;
-+static double s_dSince = 0;
 +
 +static void wxWasmYieldToBrowser()
 +{
@@ -21976,26 +21973,10 @@ index 0000000000..04ab3a72aa
 +        {
 +            wxTheApp->ProcessPendingEvents();
 +            const double nowMs = emscripten_get_now();
-+            s_dPasses++; if (s_paintThisPass) s_dFrame++; else s_dInput++;   // z51
-+            {
-+                bool need = false;
-+                for (wxWindowList::iterator it = wxTopLevelWindows.begin(); it != wxTopLevelWindows.end(); ++it)
-+                    if (static_cast<wxNonOwnedWindow*>(*it)->NeedsPaint()) need = true;
-+                if (need) s_dNeeded++;
-+            }
 +            if (s_paintThisPass || nowMs - s_lastPaintMs > 50)   // z50
 +            {
-+                if (!s_paintThisPass) s_dOverdue++;
-+                s_dPaints++;
 +                wxTheApp->Paint();
 +                s_lastPaintMs = nowMs;
-+            }
-+            if (nowMs - s_dSince > 3000)
-+            {
-+                if (s_dSince > 0)
-+                    emscripten_console_logf("wx: loop %.1fs: %d passes (%d frame, %d input), %d Paint() (%d overdue), %d passes found a window needing paint",
-+                                            (nowMs - s_dSince) / 1000, s_dPasses, s_dFrame, s_dInput, s_dPaints, s_dOverdue, s_dNeeded);
-+                s_dSince = nowMs; s_dPasses = s_dFrame = s_dInput = s_dPaints = s_dNeeded = s_dOverdue = 0;
 +            }
 +            s_paintThisPass = true;
 +            if (counter++ % 3 == 0)
@@ -26940,10 +26921,10 @@ index 0000000000..05b5411058
 +#endif // wxUSE_WEBVIEW && __WXWASM__
 diff --git a/src/wasm/window.cpp b/src/wasm/window.cpp
 new file mode 100644
-index 0000000000..a6d0d2c225
+index 0000000000..21466f9cf6
 --- /dev/null
 +++ b/src/wasm/window.cpp
-@@ -0,0 +1,872 @@
+@@ -0,0 +1,878 @@
 +/////////////////////////////////////////////////////////////////////////////
 +// Name:        wx/wasm/window.cpp
 +// Purpose:     wxWasmWindow implementation
@@ -26963,6 +26944,12 @@ index 0000000000..a6d0d2c225
 +#include "wx/log.h"
 +#include "wx/menu.h"
 +#include "wx/nonownedwnd.h"
++#include "wx/notebook.h"
++#include "wx/statbox.h"
++#include "wx/toplevel.h"
++#include "wx/notebook.h"
++#include "wx/statbox.h"
++#include "wx/toplevel.h"
 +#include "wx/notebook.h"
 +#include "wx/statbox.h"
 +#include "wx/toplevel.h"
