@@ -130,6 +130,20 @@
     var lift = document.createElement('style');
     lift.textContent = '#credit,#kicad-credit{top:' + HEIGHT + 'px!important}';
     document.head.appendChild(lift);
+    // The port's page header: the port places every program window (and the text box under the caret) its height
+    // lower (page-bridge.js wxpage_set_window_rect, the first element of class "header"), and tells the program the
+    // page's top (#main-window's offsetTop) at each resize, which maps the mouse. The first window's arrival is
+    // such a resize, so the program learns the bar's height before anyone points at it.
+    bar.classList.add('header');
+    var wc = document.getElementById('window-container');
+    if (wc && window.MutationObserver) {
+      var told = new MutationObserver(function () {
+        if (!wc.firstChild) return;
+        told.disconnect();
+        setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 0);
+      });
+      told.observe(wc, { childList: true });
+    }
     draw();
     learn(0);
   }
