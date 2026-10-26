@@ -3,6 +3,8 @@
 The open-source Bambu Studio, OrcaSlicer and PrusaSlicer, running in your browser. Unofficial: not made or
 endorsed by Bambu Lab, the OrcaSlicer team or Prusa.
 
+**Try it in your browser: [slicers.boolean3d.com](https://slicers.boolean3d.com)** · Made by [Boolean3d](https://boolean3d.com), CAD for free in your browser. Design a part there and open it straight in these slicers.
+
 ![Bambu Studio in a browser tab, a Gridfinity bin sliced for an X1 Carbon](docs/bambu-studio-in-a-tab.png)
 
 The full desktop Bambu Studio, OrcaSlicer and PrusaSlicer, running in a browser tab. Unofficial.
