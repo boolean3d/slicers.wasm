@@ -17,7 +17,8 @@
   var PAGE = /\/(index\.html)?$/, NEVER = /\/wxwebview-sw\.js$|\/(relay|fetch)$/;
   var net = self.fetch.bind(self);
   function mine(r) {
-    if (r.method !== 'GET' || r.headers.has('range')) return null;
+    // x-b3d-install: the install's own download (install-and-lazy-load.js), which must reach the network, never the copy it replaces
+    if (r.method !== 'GET' || r.headers.has('range') || r.headers.has('x-b3d-install')) return null;
     var url = new URL(r.url);
     if (url.origin !== app.origin || url.pathname.indexOf(app.pathname) !== 0 || NEVER.test(url.pathname)) return null;
     url.search = ''; url.hash = '';

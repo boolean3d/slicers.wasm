@@ -133,15 +133,43 @@
       .then(function (t) { return JSON.parse(t); }, function () { return null; });
   }
   function writeFile(dir, name, body) {
-    return dir.getFileHandle(name, { create: true }).then(function (h) { return h.createWritable(); }).then(function (w) {
+    var handle;
+    return dir.getFileHandle(name, { create: true }).then(function (h) { handle = h; return h.createWritable(); }).then(function (w) {
       if (body && typeof body.pipeTo === 'function') return body.pipeTo(w);   // closes w when the stream ends
       return w.write(body).then(function () { return w.close(); });
-    });
+    }).then(function () { return handle; });
   }
   function names(dir) {
     var out = {}, it = dir.entries();
     function step() { return it.next().then(function (r) { if (r.done) return out; if (r.value[1].kind === 'file') out[r.value[0]] = 1; return step(); }); }
     return step();
+  }
+  // name -> size of every object. getFileHandle(create) makes the file empty before a byte arrives, so a visit that
+  // stopped mid-download (a reload, a closed tab) leaves an empty or short object under its name: an object counts
+  // as had only when its size is the listed size.
+  function sizes(dir) {
+    var out = {}, jobs = [], it = dir.entries();
+    function step() {
+      return it.next().then(function (r) {
+        if (r.done) return Promise.all(jobs).then(function () { return out; });
+        var n = r.value[0], h = r.value[1];
+        if (h.kind === 'file') jobs.push(h.getFile().then(function (f) { out[n] = f.size; }, function () {}));
+        return step();
+      });
+    }
+    return step();
+  }
+  // An object appears under its name only whole: written as <name>.part, its size checked, then renamed (move); a
+  // browser without move copies it over. A .part left by a stopped visit is removed with the other unused objects.
+  function putObject(dir, name, body, size, counted) {
+    return writeFile(dir, name + '.part', body).then(function (h) {
+      if (size && counted() !== size) throw new Error(name + ': ' + counted() + ' bytes, listed ' + size);
+      return dir.removeEntry(name).catch(function () {}).then(function () {
+        if (typeof h.move === 'function') return h.move(name);
+        return h.getFile().then(function (f) { return writeFile(dir, name, f); })
+          .then(function () { return dir.removeEntry(name + '.part'); });
+      });
+    });
   }
   function install() {
     var s, list = installList();
@@ -149,8 +177,18 @@
       if (!st) return null;
       s = st;
       return readJson(s.app, L.cache + '.json').then(function (done) {
-        if (done && done.complete && done.files) { s.files = done.files; return s; }
-        return fillStore(s, list).then(function () { return s; });
+        if (!(done && done.complete && done.files)) return fillStore(s, list).then(function () { return s; });
+        // Complete: the start files (the program itself) checked by size on every visit, a few handles; a short one
+        // (an install by a loader before the whole-object rule) sends the install over again, which keeps the whole objects.
+        return Promise.all((L.startFiles || []).map(function (f) {
+          var n = done.files[abs(f[0])];
+          return n ? s.objects.getFileHandle(n).then(function (h) { return h.getFile(); })
+            .then(function (file) { return file.size === f[1]; }, function () { return false; }) : false;
+        })).then(function (ok) {
+          if (ok.every(Boolean)) { s.files = done.files; return s; }
+          console.error('slicer install: a start file in the copy is not whole; installing again');
+          return fillStore(s, list).then(function () { return s; });
+        });
       });
     }).catch(function (e) {
       console.error('slicer install: ' + e);
@@ -171,10 +209,10 @@
           if (j && j.headers) Object.keys(j.headers).forEach(function (k) { iso[k] = j.headers[k]; });
         });
       }));
-    }).then(function () { return names(s.objects); }).then(function (have) {
+    }).then(function () { return sizes(s.objects); }).then(function (have) {
       var todo = list.filter(function (f) {
         var n = files[f[0]];
-        if (have[n] || want[n]) { got += f[1]; if (!want[n]) reused += f[1]; return false; }
+        if (have[n] === f[1] || want[n]) { got += f[1]; if (!want[n]) reused += f[1]; return false; }
         want[n] = 1; return true;
       });
       var word = update ? 'Updating ' : 'Downloading ';
@@ -188,7 +226,7 @@
       function download(f, tries) {
         tries = tries || 0;
         var counted = 0;
-        return fetch(f[0]).then(function (r) {
+        return fetch(f[0], { headers: { 'x-b3d-install': '1' } }).then(function (r) {
           if (!r.ok) throw new Error(f[0] + ' ' + r.status);
           if (r.headers.get('content-type')) types[files[f[0]]] = r.headers.get('content-type');
           // the host's isolation headers: a page of the web view answered from the copy needs them (the slicer page is
@@ -196,10 +234,9 @@
           r.headers.forEach(function (v, k) { if (/^cross-origin-/.test(k)) iso[k] = v; });
           // counted as it arrives, for the install screen
           var count = new TransformStream({ transform: function (chunk, ctl) { counted += chunk.length; got += chunk.length; ctl.enqueue(chunk); } });
-          return writeFile(s.objects, files[f[0]], r.body.pipeThrough(count)).then(function () {
-            if (f[1] && counted !== f[1]) console.error('slicer install: ' + f[0] + ': ' + counted + ' bytes, listed ' + f[1]);
-          });
+          return putObject(s.objects, files[f[0]], r.body.pipeThrough(count), f[1], function () { return counted; });
         }).catch(function (e) {
+          console.error('slicer install: ' + f[0] + ': ' + e);
           got -= counted;
           if (e && e.name === 'QuotaExceededError') throw e;
           if (tries >= 4) {   // no network: keep trying, the screen says so
