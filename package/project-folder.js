@@ -62,11 +62,18 @@
   var noticeBox = null, noticeTimer = null;
   function notice(text, kind) {
     if (typeof document === 'undefined' || !document.body) { console.warn('b3d projects: ' + text); return; }
+    // A passing line said while the program starts would go before anyone sees it: it waits until the program's first
+    // window is on the page and the start notice (credit.js) is gone.
+    var up = function () { return !!document.querySelector('#window-container .window') && !document.getElementById('credit'); };
+    if (kind !== 'refused' && !up()) {
+      var later = setInterval(function () { if (up()) { clearInterval(later); notice(text, kind); } }, 300);
+      return;
+    }
     if (!noticeBox) {
       noticeBox = document.createElement('div');
       noticeBox.setAttribute('role', 'status');
       noticeBox.setAttribute('data-testid', 'b3d-notice');
-      noticeBox.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:2147483001;max-width:min(640px,92vw);'
+      noticeBox.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);z-index:2147483001;max-width:min(640px,92vw);'
         + 'display:flex;gap:12px;align-items:flex-start;padding:10px 14px;border-radius:6px;box-shadow:0 6px 24px rgba(0,0,0,.25);'
         + 'font:13px/1.4 "Segoe UI",system-ui,-apple-system,sans-serif';
       document.body.appendChild(noticeBox);
@@ -86,6 +93,9 @@
     close.onclick = function () { noticeBox.style.display = 'none'; };
     noticeBox.appendChild(words);
     noticeBox.appendChild(close);
+    // Under the workspace bar when the package has one (it sits above everything, the notice included).
+    var bar = document.getElementById('b3d-bar');
+    noticeBox.style.top = ((bar ? bar.getBoundingClientRect().bottom : 0) + 12) + 'px';
     noticeBox.style.display = 'flex';
     clearTimeout(noticeTimer);
     if (!refused) noticeTimer = setTimeout(function () { noticeBox.style.display = 'none'; }, 12000);
