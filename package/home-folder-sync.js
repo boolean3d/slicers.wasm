@@ -162,8 +162,8 @@ var b3dKeyring = (function () {
   var APP = (location.pathname.split('/')[1] || 'slicer').replace(/[^\w-]/g, '');
   // Not kept: remade at every start (logs), copied from the program's own files (system and printers: the makers'
   // profiles; ota, plugins; hms: the printer error texts, copied from the program's resources when missing), caches, and
-  // printer files exported to the computer (G-code).
-  var SKIP = /^\.(BambuStudio|OrcaSlicer|config\/(BambuStudio|OrcaSlicer|PrusaSlicer))\/(log|system|printers|ota|plugins|cache|tmp|cameratools|hms)(\/|$)|\.ini\.\d+$|^\.cache(\/|$)|\.(gcode|bgcode|gcode\.3mf)$|\.lock$|(^|\/)\.\w*machine_id$/i;
+  // printer files exported to the computer (G-code), and the project folders (Projects/: project-folder.js keeps them, as versions).
+  var SKIP = /^Projects(\/|$)|^\.(BambuStudio|OrcaSlicer|config\/(BambuStudio|OrcaSlicer|PrusaSlicer))\/(log|system|printers|ota|plugins|cache|tmp|cameratools|hms)(\/|$)|\.ini\.\d+$|^\.cache(\/|$)|\.(gcode|bgcode|gcode\.3mf)$|\.lock$|(^|\/)\.\w*machine_id$/i;
   var COPIES = '.b3d-copies';
   var KEYRING = '.local/share/keyrings/b3d-secrets.json', SECRET = 'b3d-secret:';
   var PRODUCT = { bambu: 'BambuStudio', orca: 'OrcaSlicer', prusa: 'PrusaSlicer' }[APP] || APP;

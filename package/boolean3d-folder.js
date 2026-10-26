@@ -9,6 +9,10 @@
 // part's last save stored, with its picture, as Open in slicer makes it) and given to the input as the picked file,
 // so the program opens it exactly as a file from the disk: on the plate, in Recent, kept with the home folder.
 // Nothing is uploaded or downloaded by the person, and nothing in the account changes.
+//
+// A folder is also a project (project-folder.js): opened here, it lists the project's own 3MF files (each at its newest
+// version) beside the parts. Either one picked is handed to project-folder.js with the path it lands at (Uploads/<name>),
+// so the program's next save of it goes up as a new version (a part's 3MF: as a new project file made from that part).
 (function () {
   if (typeof Module === 'undefined' || typeof HTMLInputElement === 'undefined') return;
   var APP = (location.pathname.split('/')[1] || 'slicer').replace(/[^\w-]/g, '');
@@ -29,6 +33,8 @@
   };
 
   function ask(op, body) { return Module.b3dHome.ask(op, body); }
+  var UPLOADS = '/home/web_user/Uploads';   // wxWASM_UPLOAD_DIR: where the program's picker puts what was picked
+  function projects() { return Module.b3dProjects || null; }
   function el(tag, attrs, kids) {
     var e = document.createElement(tag);
     for (var k in attrs || {}) { if (k === 'style') e.style.cssText = attrs[k]; else if (k.slice(0, 2) === 'on') e.addEventListener(k.slice(2), attrs[k]); else e.setAttribute(k, attrs[k]); }
@@ -67,6 +73,7 @@
   function choose(input) {
     if (!document.getElementById('b3dd-css')) document.head.appendChild(el('style', { id: 'b3dd-css' }, [CSS]));
     var folders = {}, parts = [], at = null, picked = null, busy = false, done = false;
+    var projectFiles = {};   // folder id -> its project's 3MF files ([] while asked), from project-folder.js
     var root = el('div', { class: 'b3dd', style: '--b3dd-accent:' + ACCENT, role: 'dialog', 'aria-label': 'Open' });
     var side = el('div', { class: 'b3dd-side' }), path = el('div', { class: 'b3dd-path' }), grid = el('div', { class: 'b3dd-grid' });
     var say = el('span', {}, ['']);
@@ -101,20 +108,33 @@
       if (done) return; done = true;
       root.remove();
       bypass = true;
+      // A file from the computer is no project file, even under the name of one opened before.
+      if (projects()) input.addEventListener('change', function () {
+        Array.prototype.forEach.call(input.files || [], function (f) { projects().untrack(UPLOADS + '/' + f.name); });
+      }, { once: true });
       try { click.call(input); } finally { bypass = false; }
     }
     function fileName(p) { return (p.name || 'Part').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '').trim().slice(0, 120) + '.3mf'; }
     function take(p) {
       if (busy) return; busy = true; open.disabled = true;
       say.textContent = 'Opening ' + p.name + '…';
-      ask('part', { id: p.id }).then(function (r) {
+      var made = null;   // the part's version this 3MF is of (the door's x-b3d-version)
+      (p.projectFile ? projects().file(p.folder, p.id).then(function (got) {
+        projects().track(UPLOADS + '/' + got.name, got.entry);
+        console.log('b3d disk: ' + got.entry.path + ' version ' + p.number + ' ' + got.bytes.length + ' bytes');
+        return new File([got.bytes], got.name, { type: 'model/3mf', lastModified: Date.parse(p.updated) || Date.now() });
+      }) : ask('part', { id: p.id }).then(function (r) {
         if ((r.headers.get('content-type') || '').indexOf('json') >= 0) return r.json().then(function (a) { throw new Error(a.error || 'The part could not be opened.'); });
         if (!r.ok) throw new Error('The part could not be opened.');
+        made = r.headers.get('x-b3d-version');
         return r.arrayBuffer();
       }).then(function (b) {
         console.log('b3d disk: ' + p.name + ' ' + b.byteLength + ' bytes');
-        finish(new File([b], fileName(p), { type: 'model/3mf', lastModified: Date.parse(p.updated) || Date.now() }));
-      }, function (e) {
+        var f = new File([b], fileName(p), { type: 'model/3mf', lastModified: Date.parse(p.updated) || Date.now() });
+        if (!projects()) return f;
+        return projects().part(UPLOADS + '/' + f.name, { part: p.id, version: made, project: p.folder,
+          projectName: (folders[p.folder] || {}).name }, new Uint8Array(b)).then(function () { return f; });
+      })).then(finish, function (e) {
         busy = false; open.disabled = !picked;
         say.textContent = e.message || 'The part could not be opened.';
       });
@@ -142,6 +162,16 @@
       trail(id).forEach(function (f) { path.appendChild(document.createTextNode(' › ')); path.appendChild(el('a', { onclick: function () { go(f.id); } }, [f.name])); });
       grid.textContent = '';
       var subs = kidsOf(id), here = parts.filter(function (p) { return (p.folder || null) === id; });
+      if (id && projects() && !projectFiles[id]) {
+        projectFiles[id] = [];
+        Module.b3dHome.ask('project', { project: id }).then(function (r) { return r.json(); }).then(function (a) {
+          if (!a || !a.ok) return;
+          projectFiles[id] = a.files.filter(function (f) { return f.kind === 'file' && f.version && /\.3mf$/i.test(f.path || ''); })
+            .map(function (f) { return { id: f.id, name: f.path, folder: id, updated: f.at, number: f.number, projectFile: true }; });
+          if (at === id && !done && projectFiles[id].length) go(id);
+        }).catch(function (e) { console.warn('b3d disk: project files: ' + e.message); });
+      }
+      here = (projectFiles[id] || []).concat(here);
       subs.forEach(function (f) {
         grid.appendChild(el('div', { class: 'b3dd-item', title: f.name, ondblclick: function () { go(f.id); }, onclick: function () { go(f.id); } }, [
           el('div', { class: 'b3dd-pic' }, [(function () { var s = icon(FOLDER.replace(/16/g, '56')); return s; })()]),
@@ -150,11 +180,12 @@
       here.forEach(function (p) {
         var card = el('div', { class: 'b3dd-item', title: p.name, onclick: function () {
           Array.prototype.forEach.call(grid.querySelectorAll('.b3dd-item.on'), function (c) { c.classList.remove('on'); });
-          card.classList.add('on'); picked = p; open.disabled = busy; say.textContent = fileName(p);
+          card.classList.add('on'); picked = p; open.disabled = busy; say.textContent = p.projectFile ? p.name : fileName(p);
         }, ondblclick: function () { take(p); } }, [
           el('div', { class: 'b3dd-pic' }, [p.picture ? el('img', { crossorigin: 'anonymous', alt: '', loading: 'lazy', src: Module.b3dHome.beside(p.picture) }) : null]),
           el('div', { class: 'b3dd-name' }, [p.name]),
-          el('div', { class: 'b3dd-when' }, [p.updated ? new Date(p.updated).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : ''])]);
+          el('div', { class: 'b3dd-when' }, [(p.projectFile ? 'Version ' + p.number + ' · ' : '')
+            + (p.updated ? new Date(p.updated).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '')])]);
         grid.appendChild(card);
       });
       if (!subs.length && !here.length) grid.appendChild(el('div', { class: 'b3dd-note' }, ['Nothing to open in this folder.']));
