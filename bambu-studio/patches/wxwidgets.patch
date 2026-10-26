@@ -27278,10 +27278,10 @@ index 0000000..8050afc
 +#endif // wxUSE_WEBVIEW && __WXWASM__
 diff --git a/src/wasm/window.cpp b/src/wasm/window.cpp
 new file mode 100644
-index 0000000..3a7ede6
+index 0000000..a6d0d2c
 --- /dev/null
 +++ b/src/wasm/window.cpp
-@@ -0,0 +1,869 @@
+@@ -0,0 +1,872 @@
 +/////////////////////////////////////////////////////////////////////////////
 +// Name:        wx/wasm/window.cpp
 +// Purpose:     wxWasmWindow implementation
@@ -27301,6 +27301,9 @@ index 0000000..3a7ede6
 +#include "wx/log.h"
 +#include "wx/menu.h"
 +#include "wx/nonownedwnd.h"
++#include "wx/notebook.h"
++#include "wx/statbox.h"
++#include "wx/toplevel.h"
 +#include "wx/notebook.h"
 +#include "wx/statbox.h"
 +#include "wx/toplevel.h"

@@ -491,8 +491,8 @@ var B3DHelper = (typeof document === 'undefined' || (typeof ENVIRONMENT_IS_PTHRE
       searchBox = wrap;
       return wrap;
     }
-    function showHelperBox(step) {
-      if (step === hstep && hbox && hbox.isConnected && step !== 'printers') return;
+    function showHelperBox(step, why) {
+      if (step === hstep && hbox && hbox.isConnected && step !== 'printers' && step !== 'allow') return;
       helperBox();
       clearTimeout(hideAt); clearTimeout(looking);
       hstep = step; codeBox = null;
@@ -546,6 +546,16 @@ var B3DHelper = (typeof document === 'undefined' || (typeof ENVIRONMENT_IS_PTHRE
         add(progress(2));
         if (lna === 'prompt') add(el('p', 'margin:8px 0 0;font-weight:600', LNA_ASK));
         codeBox = add(codeRow('The helper is running' + (helper && helper.name ? ' on ' + helper.name : '') + '. Type the code it shows (in its window, or at http://localhost:8770 on that computer).'));
+      } else if (step === 'allow' || step === 'allowing') {
+        add(el('p', 'margin:8px 0 0;font-weight:600', 'Let this slicer control your printer?'));
+        add(el('p', 'margin:6px 0 0', 'That is moving the head, heating, the light and its settings. Printing, pausing and stopping a print need no yes.'));
+        if (typeof why === 'string') add(el('p', css.muted, why));
+        const row = add(el('div', 'display:flex;gap:8px;align-items:center;margin-top:10px'));
+        const yes = el('button', css.button, step === 'allowing' ? 'Asking the helper…' : 'Yes, let it'); yes.disabled = step === 'allowing';
+        const no = el('button', css.small, 'Not now');
+        yes.onclick = function () { if (!ws || ws.readyState !== 1) { showHelperBox('allow', 'The helper is not reachable. Is it still open?'); return; } ws.send(JSON.stringify({ op: 'allow', what: 'control' })); showHelperBox('allowing'); };
+        no.onclick = function () { hbox.remove(); hstep = null; };
+        row.append(yes, no);
       } else if (step === 'printers') {
         add(progress(3));
         add(el('p', 'margin:8px 0 0;color:#00ae42;font-weight:600', 'Linked with the helper' + (helper && helper.name ? ' on ' + helper.name : '') + '.'));
@@ -612,6 +622,15 @@ var B3DHelper = (typeof document === 'undefined' || (typeof ENVIRONMENT_IS_PTHRE
       }
       if (r.ev === 'pair') { if ((boxUp() || wants) && hstep !== 'linking') showHelperBox('code'); return true; }
       if (r.ev === 'searched') { if (searchBox && searchBox.isConnected) searchBox.done(r); return true; }
+      // CONTROL, ASKED ONCE: a paired browser watches and prints from the start; the first time the program moves, heats
+      // or sets something on the printer, the helper keeps that message and asks (ev needs); yes = op allow, kept in the
+      // helper for this browser, the kept message goes to the printer. Printing, pausing and stopping need no yes.
+      if (r.ev === 'needs') { if (r.what === 'control' && hstep !== 'allowing') showHelperBox('allow'); return true; }
+      if (r.ev === 'allowed') {
+        if (r.ok) { if (boxUp() && (hstep === 'allow' || hstep === 'allowing')) { hbox.remove(); hstep = null; } }
+        else if (hstep === 'allowing') showHelperBox('allow', r.error || 'The helper could not keep that. Is it the newest one?');
+        return true;
+      }
       if (r.ev === 'paired') {
         if (r.ok && r.token) {
           try { localStorage.setItem(TOKEN, r.token); localStorage.removeItem(SECRET); } catch (e) {}

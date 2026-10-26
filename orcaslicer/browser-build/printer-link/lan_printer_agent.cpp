@@ -185,7 +185,8 @@ int b3d_bind_detect(void *, std::string dev_ip, std::string sec_link, detectResu
 {
     const int id = g_next_id++;
     auto      w  = open_waiter(id);
-    page_send(json{{"op", "detect"}, {"id", id}, {"ip", dev_ip}}.dump());
+    // the access code goes along: a printer no announcement reached still says its model to the helper (get_version)
+    page_send(json{{"op", "detect"}, {"id", id}, {"ip", dev_ip}, {"code", sec_link}}.dump());
     json r = next_answer(w, 15000);
     close_waiter(id);
     if (r.is_null()) return fail("detect: the helper did not answer", -1);
