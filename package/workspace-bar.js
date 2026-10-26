@@ -80,9 +80,10 @@
     if (project) p.set('project', project);
     p.set('hub', HUB);
     if (ws === 'electronics') {
-      var pro = newest(function (x) { return /\.kicad_pro$/i.test(x); });
+      // The host's /kicad/ opens the program a file belongs to (?open= a .kicad_pro: the project manager).
+      var pro = newest(function (x) { return /\.kicad_pro$/i.test(x); }) || newest(function (x) { return /\.kicad_(pcb|sch)$/i.test(x); });
       if (pro) p.set('open', pro.path);
-      return location.origin + '/kicad/' + (pro ? 'kicad/' : '') + '?' + p;
+      return location.origin + '/kicad/?' + p;
     }
     var mf = newest(function (x) { return /\.3mf$/i.test(x); });
     if (mf) p.set('open', mf.path);
