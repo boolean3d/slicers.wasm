@@ -116,7 +116,7 @@ if [ -n "${CLEAN:-}" ]; then $CLEAN "$OUT"; fi
 # The workbench's names -> this repository's, then the folder replaces the app folder.
 python3 "$HERE/rename-workbench-files.py" $APP "$OUT"
 # Every file the build names must be in the folder.
-for f in $(grep -o -E '(CMAKE_CURRENT_SOURCE_DIR\}|/w/browser-port/browser-build)/[^ ";@)]*' "$OUT/browser-build/CMakeLists.txt" | sed 's#^[^/]*/##; s#^w/browser-port/browser-build/##' | grep -v '\$' | sort -u); do
+for f in $(grep -o -E '(CMAKE_CURRENT_SOURCE_DIR\}|/w/browser-port/browser-build)/[^ ";@)>]*' "$OUT/browser-build/CMakeLists.txt" | sed 's#^[^/]*/##; s#^w/browser-port/browser-build/##' | grep -v '\$' | sort -u); do
   [ "$f" = shims ] || [ -e "$OUT/browser-build/$f" ] || { echo "sync-workbench.sh: browser-build/CMakeLists.txt reads $f, not in the folder"; exit 1; }
 done
 rm -rf "$DEST" && mv "$OUT" "$DEST"
