@@ -147,6 +147,7 @@ test('a new file in the project folder becomes a project file at its path; the p
   t.write(dir + '~amp.kicad_pcb.lck', 'lock');
   t.write(dir + 'amp-backups/amp-2026.zip', 'zip');
   t.write(dir + 'fp-info-cache', 'cache');
+  t.write(dir + '.history/.git/HEAD', 'ref: refs/heads/master');
   t.write('/home/web_user/.config/elsewhere.txt', 'not a project');
   await t.settle();
   assert.deepEqual(saves(door).map((s) => [s.project, s.path, s.file]), [[p, 'amp.kicad_pcb', undefined]]);

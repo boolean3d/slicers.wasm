@@ -27,8 +27,9 @@
   var TOOL = { bambu: 'bambu', orca: 'orca', prusa: 'prusa', kicad: 'kicad' }[APP] || null;
   var REG = 'b3d-projects-' + APP;
   // Not versions: the programs' own lock, backup, autosave, cache and temporary files (KiCad: *.lck, *-backups/,
-  // _autosave-*, fp-info-cache, ~ files, *.kicad_prl = this computer's window settings; the slicers: .tmp).
-  var SKIP = /(^|\/)(~[^/]*|_autosave-[^/]*|fp-info-cache|[^/]*\.(lck|tmp|bak|kicad_prl))$|(^|\/)[^/]*-backups(\/|$)|(^|\/)\.b3d/i;
+  // _autosave-*, fp-info-cache, ~ files, *.kicad_prl = this computer's window settings, .history/ = its local history,
+  // a git folder the project's versions stand in for; the slicers: .tmp).
+  var SKIP = /(^|\/)(~[^/]*|_autosave-[^/]*|fp-info-cache|[^/]*\.(lck|tmp|bak|kicad_prl))$|(^|\/)([^/]*-backups|\.history)(\/|$)|(^|\/)\.b3d/i;
   var QUIET = 1000;
 
   function linked() { return !!(Module.b3dHome && Module.b3dHome.linked && Module.b3dHome.linked()); }
