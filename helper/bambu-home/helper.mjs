@@ -32,7 +32,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { activeSlot, hmsCode, listenForPrinters, mqttLink, nozzleOf, rtspsCamera, slotNumber, slotsOf } from "../bambu.mjs";
+import { activeSlot, hmsCode, listenForPrinters, mqttLink, searchForPrinters, nozzleOf, rtspsCamera, slotNumber, slotsOf } from "../bambu.mjs";
 import { createHash } from "node:crypto";
 import { cameraHub, controlRequests, fileShelf, linkPool, platePicture, sendPrint } from "./lan.mjs";
 import { startTabLink } from "./tablink.mjs";
@@ -40,7 +40,7 @@ import { pairing as pairingOf, secretIn } from "./pairing.mjs";
 import { autostart } from "./autostart.mjs";
 import { prusaLink, reportOf as prusaReportOf } from "../prusalink.mjs";
 
-export const VERSION = "6";
+export const VERSION = "9";
 /** Where Bambu Studio in a browser tab finds the helper (ws://<this computer>:8770). */
 export const TAB_PORT = 8770;
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -109,24 +109,38 @@ export function startHelper(cfg, { fetch: get = fetch, discover = true, loop = t
   const page = (req) => helperPage(req, { pairing: pair, heard, name: cfg.name, forget: () => { pair?.forget(); say("every paired browser forgotten, as asked"); } });
   // tabPort false: no tab link on this network (a tab's line can still come through the box relay, attachTab).
   const tab = startTabLink({ port: cfg.tabPort === false ? false : (cfg.tabPort ?? TAB_PORT), host: cfg.tabHost, pool, shelf, cameras, heard,
-    pairing: pair, name: cfg.name, version: VERSION, page, mqttPort: cfg.mqttPort, ftpPort: cfg.ftpPort, cameraInput: cfg.cameraInput ?? null, say, onPrinted: (p) => keep(p) });
+    pairing: pair, name: cfg.name, version: VERSION, page, search: (o) => searchNow(o), mqttPort: cfg.mqttPort, ftpPort: cfg.ftpPort, cameraInput: cfg.cameraInput ?? null, say, onPrinted: (p) => keep(p) });
   tab.port.then((p) => {
     if (!p) return;
-    say(`Bambu Studio in a browser on this network: its printer link is ws://<this computer>:${p}`);
+    say(`Slicers in a browser on this network (Bambu Studio, OrcaSlicer, PrusaSlicer) reach it at ws://<this computer>:${p}`);
     if (pair?.bySecret) say("The browser you downloaded this helper with links to it by itself: go back to the slicer's page.");
     if (pair) say(`${pair.bySecret ? "Another browser" : "To pair a browser"}, type this code in its page: ${pair.showCode}   (also at http://localhost:${p}/ on this computer)`);
   }, () => {});
 
-  // The printers on this network, from their announcements (an address can change when the router restarts).
-  const stopListen = discover ? listenForPrinters((f) => {
-    const was = heard.get(f.serial);
-    heard.set(f.serial, { ...was, ...f, at: Date.now() });
-    if (!was || was.ip !== f.ip) say(`heard ${f.serial} (${f.model}, "${f.name}") at ${f.ip}`);
+  // The printers on this network, from their announcements (an address can change when the router restarts), and from
+  // the helper's own search (bambu.mjs searchForPrinters): a firewall with no rule for the helper drops the announcements.
+  const onHeard = (f) => {
+    const was = heard.get(f.serial), known = Object.fromEntries(Object.entries(f).filter(([, v]) => v != null));
+    heard.set(f.serial, { ...was, ...known, at: Date.now() });
+    if (!was || was.ip !== f.ip) say(`heard ${f.serial} (${f.model ?? was?.model ?? "model not said"}, "${f.name ?? was?.name ?? f.serial}") at ${f.ip}`);
     tab?.heardPrinter(f.serial);
     if (f.serial !== cfg.serial) return;
     if (f.model) model = f.model;
     if (f.ip && f.ip !== ip && !cfg.ip) { ip = f.ip; save({ heardIp: ip, printerModel: model }); dropLink(); }
-  }, { port: cfg.ssdpPort ?? 2021 }) : () => {};
+  };
+  const stopListen = discover ? listenForPrinters(onHeard, { port: cfg.ssdpPort ?? 2021 }) : () => {};
+  // By itself: an SSDP search soon after start, then each minute while no printer is known, else every ten minutes.
+  // A tab's "Search my network" or typed address (tablink op search) knocks too: {knock: true, hosts?}.
+  function searchNow(o = {}) {
+    return searchForPrinters(onHeard, { port: cfg.mqttPort ?? 8883, ssdpPort: cfg.ssdpPort ?? 2021, hosts: cfg.searchHosts ?? null, stopped: () => stopped, ...o })
+      .catch(() => 0);
+  }
+  let searchTimer = null;
+  const search = () => {
+    if (stopped) return;
+    searchNow().then(() => { if (!stopped) { searchTimer = setTimeout(search, heard.size ? 600000 : 60000); searchTimer.unref?.(); } });
+  };
+  if (discover && cfg.search !== false) { searchTimer = setTimeout(search, 1500); searchTimer.unref?.(); }
 
   function dropLink() { if (link) { const l = link; link = null; pool.give(l); } }
 
@@ -274,13 +288,13 @@ export function startHelper(cfg, { fetch: get = fetch, discover = true, loop = t
       await new Promise((r) => { timer = setTimeout(r, poll); });
     }
   })();
-  else if (loop) say(`Boolean3d helper ${VERSION} running for Bambu Studio on this network (not linked to an account).`);
+  else if (loop) say(`Boolean3d helper ${VERSION} running for your printers on this network (not linked to an account).`);
 
   return {
     sync, get link() { return link; }, heard, tabPort: tab?.port ?? Promise.resolve(null), webPort: shelf.port, pairing: pair,
     /** A browser tab's line from elsewhere (the printer box's relay, box.mjs), served like a tab on this network. */
     attachTab: (line, opts) => tab?.attach(line, opts),
-    stop() { stopped = true; clearTimeout(timer); stopListen(); cam?.stop(); cameras.close(); tab?.close(); pool.close(); shelf.close(); },
+    stop() { stopped = true; clearTimeout(timer); clearTimeout(searchTimer); stopListen(); cam?.stop(); cameras.close(); tab?.close(); pool.close(); shelf.close(); },
   };
 }
 

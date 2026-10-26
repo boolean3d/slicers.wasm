@@ -15,6 +15,7 @@
 // - The FTPS data connection must resume the control connection's TLS session (the printer refuses otherwise).
 // It says who it is: the MQTT client id is boolean3d-helper-*; it never sends a Bambu Studio name or certificate.
 
+import os from "node:os";
 import tls from "node:tls";
 import dgram from "node:dgram";
 import { EventEmitter } from "node:events";
@@ -90,6 +91,8 @@ export function mqttLink({ host, port = 8883, serial, code, keepalive = 30 }) {
   });
   ev.request = (obj) => send(publishPacket(`device/${serial}/request`, JSON.stringify(obj)));
   ev.pushall = () => ev.request({ pushing: { sequence_id: String(Date.now() % 1e8), command: "pushall" } });
+  /** Asks the printer what it is (get_version); the answer comes as a report with info.command "get_version" (modelCodeOf). */
+  ev.getVersion = () => ev.request(getVersionRequest());
   ev.close = () => { clearInterval(ping); open = false; if (sock && !sock.destroyed) { send(Buffer.from([0xe0, 0])); sock.end(); } };
   ev.report = report;
   ev.isOpen = () => open;
@@ -227,15 +230,114 @@ export function ftpsUpload({ host, port = 990, code, name, bytes, timeout = 6000
 // ── Finding printers: listen for their SSDP announcements (sends nothing) ──
 export function listenForPrinters(onPrinter, { port = 2021 } = {}) {
   const s = dgram.createSocket({ type: "udp4", reuseAddr: true });
-  s.on("message", (b, from) => {
-    const t = b.toString(), h = (k) => t.match(new RegExp(`^${k}:\\s*(.*)$`, "mi"))?.[1]?.trim();
-    const serial = h("USN");
-    if (!serial) return;
-    onPrinter({ serial, ip: h("Location") ?? from.address, model: h("DevModel.bambu.com") ?? null, name: h("DevName.bambu.com") ?? null, firmware: h("DevVersion.bambu.com") ?? null });
-  });
+  s.on("message", (b, from) => { const f = readAnnouncement(b.toString(), from.address); if (f) onPrinter(f); });
   s.on("error", () => {});
   s.bind(port);
   return () => s.close();
+}
+
+/** A Bambu printer's SSDP announcement (or its answer to a search), read; null when it is not one. */
+export function readAnnouncement(t, fromAddress) {
+  const h = (k) => t.match(new RegExp(`^${k}:\\s*(.*)$`, "mi"))?.[1]?.trim();
+  const serial = h("USN");
+  if (!serial) return null;
+  return { serial, ip: h("Location") ?? fromAddress, model: h("DevModel.bambu.com") ?? null, name: h("DevName.bambu.com") ?? null, firmware: h("DevVersion.bambu.com") ?? null };
+}
+
+// ── Finding printers when their announcements never arrive ──
+// A computer's firewall can drop the announcements (Windows does, for a program it has no rule for, until the person
+// allows it), so the helper also asks, with traffic a firewall lets back in: answers to its own asks. By itself it sends only an
+// SSDP search (as Bambu Studio does; a printer that answers says who it is, as in its announcements). Only when the
+// person asks (the box's "Search my network", or an address they typed) does it knock on the printer port (MQTT over
+// TLS, 8883) at the addresses of this computer's own networks, or at that one address: a Bambu printer's certificate
+// names its serial. Nothing goes to any address outside the computer's own networks.
+
+/** The addresses of this computer's own IPv4 networks, each capped to the 1022 around its own address (a /22). */
+export function localHosts(ifaces = os.networkInterfaces(), { maxBits = 10 } = {}) {
+  const toN = (a) => a.split(".").reduce((n, x) => n * 256 + Number(x), 0);
+  const toA = (n) => [n >>> 24, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join(".");
+  const out = new Set();
+  for (const list of Object.values(ifaces)) for (const i of list || []) {
+    if (i.internal || (i.family !== "IPv4" && i.family !== 4) || !i.netmask || i.address.startsWith("169.254.")) continue;
+    const me = toN(i.address), mask = toN(i.netmask);
+    let bits = 0;
+    while (bits < 32 && !((mask >>> bits) & 1)) bits++;   // host bits of the network
+    if (bits < 2) continue;                                // a point-to-point line
+    bits = Math.min(bits, maxBits);
+    const base = ((me >>> bits) << bits) >>> 0, size = 2 ** bits;
+    for (let k = 1; k < size - 1; k++) { const n = (base + k) >>> 0; if (n !== me) out.add(toA(n)); }
+  }
+  return [...out];
+}
+
+/**
+ * Look for printers once: an SSDP search, and with `knock` (only when the person asked) a knock on `port` at each of
+ * `hosts` (default: this computer's own networks). Calls onPrinter({serial, ip, ...}) for each one found; resolves
+ * with how many were found.
+ */
+export async function searchForPrinters(onPrinter, { hosts = null, port = 8883, ssdpPort = 2021, timeoutMs = 900, at = 64, waitMs = 2500, stopped = () => false, knock = false } = {}) {
+  const found = new Set();
+  const got = (f) => { if (!f?.serial) return; found.add(f.serial); onPrinter(f); };
+  const s = dgram.createSocket({ type: "udp4" });
+  const asked = new Promise((resolve) => {
+    s.on("message", (b, from) => { if (!stopped()) got(readAnnouncement(b.toString(), from.address)); });
+    s.on("error", () => resolve());
+    s.bind(0, () => {
+      s.unref();
+      try { s.setBroadcast(true); } catch { /* no broadcast here */ }
+      const ask = "M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1990\r\nMAN: \"ssdp:discover\"\r\nMX: 1\r\nST: urn:bambulab-com:device:3dprinter:1\r\n\r\n";
+      for (const [a, p] of [["255.255.255.255", ssdpPort], ["239.255.255.250", 1990]]) s.send(ask, p, a, () => {});
+      setTimeout(resolve, waitMs);
+    });
+  });
+  const list = knock ? (hosts ?? localHosts()) : [];
+  let next = 0;
+  const knockAt = (ip) => new Promise((resolve) => {
+    const c = tls.connect({ host: ip, port, rejectUnauthorized: false }, () => {
+      const cn = c.getPeerCertificate()?.subject?.CN || "";
+      c.destroy();
+      if (cn && !stopped()) got({ serial: cn, ip });
+      resolve();
+    });
+    c.unref?.();
+    c.setTimeout(timeoutMs, () => { c.destroy(); resolve(); });
+    c.on("error", () => resolve());
+  });
+  const worker = async () => { while (next < list.length && !stopped()) await knockAt(list[next++]); };
+  await Promise.all([asked, ...Array.from({ length: Math.min(at, list.length) }, worker)]);
+  try { s.close(); } catch { /* closed already */ }
+  return found.size;
+}
+
+// ── The model, from the printer itself ──
+/**
+ * Model codes as Bambu Studio's own printer profiles name them (resources/profiles/BBL/machine/*.json "model_id";
+ * the same code a printer announces as DevModel.bambu.com), by the product name a printer answers in get_version.
+ */
+export const MODEL_CODES = {
+  "Bambu Lab A1 mini": "N1", "Bambu Lab A1": "N2S", "Bambu Lab A2L": "N9", "Bambu Lab P1P": "C11", "Bambu Lab P1S": "C12",
+  "Bambu Lab P2S": "N7", "Bambu Lab X1 Carbon": "BL-P001", "Bambu Lab X1": "BL-P002", "Bambu Lab X1E": "C13", "Bambu Lab X2D": "N6",
+  "Bambu Lab H2C": "O1C2", "Bambu Lab H2D Pro": "O1E", "Bambu Lab H2D": "O1D", "Bambu Lab H2S": "O1S",
+};
+export const getVersionRequest = () => ({ info: { sequence_id: String(Date.now() % 1e8), command: "get_version" } });
+/**
+ * The model code from a get_version answer ({command: "get_version", module: [...]}) or null. A printer that announces
+ * nothing (a firewall drops SSDP) still says what it is here: newer firmware names the product on its main module
+ * (product_name "Bambu Lab H2S"); older firmware names it by the main board's hardware version and project name, as
+ * ha-bambulab reads it (pybambu/utils.py get_printer_type: AP02 = X1E, N1 = A1 mini, AP04 + C11 = P1P, AP04 + C12 = P1S,
+ * AP05 + N2S = A1, AP05 and no project = X1 Carbon).
+ */
+export function modelCodeOf(info) {
+  const modules = Array.isArray(info?.module) ? info.module : [];
+  for (const m of modules) { const code = MODEL_CODES[String(m?.product_name || "").trim()]; if (code) return code; }
+  const main = modules.find((m) => /^AP0/.test(String(m?.hw_ver || ""))) || modules.find((m) => m?.name === "ota");
+  if (!main) return null;
+  const hw = String(main.hw_ver || ""), project = String(main.project_name || "");
+  if (hw.startsWith("AP02")) return "C13";
+  if (project === "N1") return "N1";
+  if (hw.startsWith("AP04")) return project === "C11" ? "C11" : project === "C12" ? "C12" : null;
+  if (hw.startsWith("AP05")) return project === "N2S" ? "N2S" : project === "" ? "BL-P001" : null;
+  return null;
 }
 
 // ── The camera: X1 and H2 printers stream on RTSPS port 322 (user bblp, the access code) ──

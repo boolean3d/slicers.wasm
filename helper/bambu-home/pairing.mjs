@@ -39,6 +39,9 @@ export const MOST_TRIES = 5;
 const MOST_PAIRED = 50;
 /** What the page is told when its line is not paired (shown by the page in its own words). */
 export const PAIR_FIRST = "Pair this browser with the helper first: type the code the helper shows.";
+/** What a paired browser may do from the start: watch and print. Control (move, heat, light, settings) is asked once, in the page, the first time it is used. */
+export const PAIRED_MAY = ["watch", "print"];
+export const OWNER_MAY = ["watch", "print", "control"];
 
 export const sha256 = (s) => createHash("sha256").update(s).digest("hex");
 const makeCode = () => Array.from(randomBytes(CODE_LENGTH), (b) => CODE_LETTERS[b % CODE_LETTERS.length]).join("");
@@ -104,7 +107,7 @@ export function pairing(state = {}, { save = () => {}, say = () => {}, secret = 
       downloadSecret = null; save({ usedSecrets: used });
     }
     const token = randomBytes(32).toString("base64url");
-    paired.push({ hash: sha256(token), origin: origin ? String(origin).slice(0, 200) : null, name: name ? String(name).slice(0, 80) : null, madeAt: new Date().toISOString() });
+    paired.push({ hash: sha256(token), origin: origin ? String(origin).slice(0, 200) : null, name: name ? String(name).slice(0, 80) : null, madeAt: new Date().toISOString(), may: [...PAIRED_MAY] });
     while (paired.length > MOST_PAIRED) paired.shift();
     code = makeCode(); tries = 0;
     keep();
@@ -118,6 +121,17 @@ export function pairing(state = {}, { save = () => {}, say = () => {}, secret = 
     return paired.find((p) => p.hash.length === h.length && timingSafeEqual(Buffer.from(p.hash), Buffer.from(h))) ?? null;
   }
   function forget() { paired.length = 0; keep(); code = makeCode(); tries = 0; }
+  /** What a paired browser may do on every printer: watch and print from the start (a record from before this field too); control once allowed. */
+  const mayOf = (who) => (Array.isArray(who?.may) ? who.may.filter((w) => OWNER_MAY.includes(w)) : [...PAIRED_MAY]);
+  /** The person said yes to `what` (control) for the browser this token names: kept, so it is asked once. */
+  function allow(token, what) {
+    const who = verify(token);
+    if (!who || !OWNER_MAY.includes(what)) return null;
+    who.may = mayOf(who); if (!who.may.includes(what)) who.may.push(what);
+    keep();
+    say(`a browser${who.origin ? ` at ${who.origin}` : ""} may now ${what} the printers (the person said yes in its page)`);
+    return [...who.may];
+  }
 
   return {
     helperId, publicKey,
@@ -129,7 +143,7 @@ export function pairing(state = {}, { save = () => {}, say = () => {}, secret = 
     get showCode() { return showCode(code); },
     origins: [...OUR_ORIGINS, ...extra],
     allowsOrigin: (origin) => originAllowed(origin, extra),
-    pair, verify, forget,
+    pair, verify, forget, allow, mayOf,
     get paired() { return paired.map((p) => ({ origin: p.origin, name: p.name, madeAt: p.madeAt })); },
   };
 }

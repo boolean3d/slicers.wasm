@@ -38,7 +38,7 @@
 import http from "node:http";
 import os from "node:os";
 import tls from "node:tls";
-import { rtspsCamera } from "../bambu.mjs";
+import { modelCodeOf, rtspsCamera } from "../bambu.mjs";
 import { sendPrint } from "./lan.mjs";
 import { wsAccept } from "./ws.mjs";
 import { tunnel } from "./tunnel.mjs";
@@ -73,7 +73,7 @@ const safeName = (s) => String(s || "print").replace(/[\\/:*?"<>|\u0000-\u001f]/
  * from the account, OWNER when not given). Returns {port: Promise<number|null>, heardPrinter, attach(line, {may}), close()}.
  */
 export function startTabLink({ port = 8770, host = "0.0.0.0", pool, shelf, cameras, heard = new Map(), pairing = null, name = null, version = null,
-  mqttPort = 8883, ftpPort = 990, cameraInput = null, say = console.log, onPrinted = () => {}, page = null }) {
+  mqttPort = 8883, ftpPort = 990, cameraInput = null, say = console.log, onPrinted = () => {}, page = null, search = null }) {
   const tabs = new Set();
   // bySecret: the browser that downloaded it may still pair by itself (pairing.mjs 2b), so a page holding a secret sends it
   const whoAmI = () => ({ id: pairing?.helperId ?? null, name: name || os.hostname(), version, bySecret: !!pairing?.bySecret });
@@ -81,25 +81,55 @@ export function startTabLink({ port = 8770, host = "0.0.0.0", pool, shelf, camer
     const p = heard.get(serial);
     if (p) for (const t of tabs) if (t.discovering && t.paired) t.sendText(JSON.stringify({ ev: "ssdp", info: ssdpInfo(p) }));
   };
+  // The printer said what it is (its get_version answer, bambu.mjs modelCodeOf): a printer whose announcements never
+  // arrived (a firewall) is still listed as its model, and the camera knows its kind (H2S run 3: listed by its serial,
+  // the camera refused as a P1's).
+  const learned = (serial, ip, info) => {
+    const code = modelCodeOf(info);
+    if (!code) return;
+    const was = heard.get(serial);
+    if (was?.model === code) return;
+    heard.set(serial, { ...was, serial, ip: was?.ip || ip, model: code, name: was?.name || null, at: Date.now() });
+    say(`${serial} says it is a ${code}`);
+    heardPrinter(serial);
+  };
+  /** With the access code, the printer itself says its model (a link, get_version, the link given back). */
+  async function askModel(serial, ip, code) {
+    let link; try { link = await pool.take(serial, ip, code); } catch { return ""; }
+    const info = await new Promise((r) => {
+      const t = setTimeout(() => { link.off("report", on); r(null); }, 6000);
+      const on = (_, msg) => { if (msg?.info?.command === "get_version") { clearTimeout(t); link.off("report", on); r(msg.info); } };
+      link.on("report", on); link.getVersion();
+    });
+    pool.give(link);
+    if (info) learned(serial, ip, info);
+    return heard.get(serial)?.model || "";
+  }
 
-  /** Who is at an address: the printer's certificate names its serial; its announcements its model and name. */
-  const detect = (ip) => new Promise((resolve) => {
-    const s = tls.connect({ host: ip, port: mqttPort, rejectUnauthorized: false }, () => {
+  /** Who is at an address: the printer's certificate names its serial; its announcements its model and name; with the
+   *  access code (the program's Connect by IP has it) the printer itself says its model when no announcement did. */
+  const detect = (ip, code = null) => new Promise((resolve) => {
+    const s = tls.connect({ host: ip, port: mqttPort, rejectUnauthorized: false }, async () => {
       const cn = s.getPeerCertificate()?.subject?.CN || "";
       s.destroy();
+      if (!cn) return resolve({ ok: false });
       const h = heard.get(cn) || [...heard.values()].find((x) => x.ip === ip);
-      resolve(cn ? { ok: true, dev_id: cn, model_id: h?.model || "", dev_name: h?.name || cn, version: h?.firmware || "" } : { ok: false });
+      let model = h?.model || "";
+      if (!model && code) model = await askModel(cn, ip, code);
+      resolve({ ok: true, dev_id: cn, model_id: model, dev_name: heard.get(cn)?.name || h?.name || cn, version: h?.firmware || "" });
     });
     s.setTimeout(8000, () => { s.destroy(); resolve({ ok: false }); });
     s.on("error", () => resolve({ ok: false }));
   });
 
   /** A line, served. `paired`: it may reach printers (a token, or a line the relay vouched for); else only hello and pair. */
-  function open(tab, { paired = true, origin = null, may = null } = {}) {
+  function open(tab, { paired = true, origin = null, may = null, token = null } = {}) {
     tabs.add(tab);
     tab.paired = paired;
-    // what this line may do, per printer: {dev_id: [...]}, or the same for every printer (OWNER for a line paired here)
-    const mayOn = (devId) => (may && typeof may === "object" ? (Array.isArray(may[devId]) ? may[devId] : Array.isArray(may["*"]) ? may["*"] : []) : OWNER);
+    tab.may = may; tab.token = token;
+    let held = null;   // a control message a browser paired here sent before its yes: sent to the printer on the yes
+    // what this line may do, per printer: {dev_id: [...]}, or the same for every printer; OWNER only with no pairing at all (tests)
+    const mayOn = (devId) => (tab.may && typeof tab.may === "object" ? (Array.isArray(tab.may[devId]) ? tab.may[devId] : Array.isArray(tab.may["*"]) ? tab.may["*"] : []) : OWNER);
     const allowed = (devId, what) => mayOn(devId).includes(what);
     say(paired ? "tab linked" : `tab linked, not paired${origin ? ` (${origin})` : ""}`);
     const mine = new Map();     // dev_id -> {link, ip, code, off}   this tab's links
@@ -118,10 +148,11 @@ export function startTabLink({ port = 8770, host = "0.0.0.0", pool, shelf, camer
         return send({ ev: "connect", dev_id: m.dev_id, status: 1, msg: e.code === "ACCESS_CODE" ? "5" : e.message });
       }
       if (tab.gone) { pool.give(link); return; }
-      const onReport = (_, msg) => send({ ev: "msg", dev_id: m.dev_id, msg: JSON.stringify(msg) });
+      const onReport = (_, msg) => { if (msg?.info?.command === "get_version") learned(m.dev_id, m.ip, msg.info); send({ ev: "msg", dev_id: m.dev_id, msg: JSON.stringify(msg) }); };
       const onClose = () => { if (mine.get(m.dev_id)?.link === link) { mine.delete(m.dev_id); send({ ev: "connect", dev_id: m.dev_id, status: 2, msg: "" }); } };
       link.on("report", onReport);
       link.on("close", onClose);
+      if (!heard.get(m.dev_id)?.model) link.getVersion();   // no announcement reached this computer: the printer says what it is
       const entry = { link, ip: m.ip, code: m.code, off: () => { link.off("report", onReport); link.off("close", onClose); } };
       mine.set(m.dev_id, entry);
       send({ ev: "connect", dev_id: m.dev_id, status: 0, msg: "", may: mayOn(m.dev_id) });
@@ -245,13 +276,22 @@ export function startTabLink({ port = 8770, host = "0.0.0.0", pool, shelf, camer
         if (tab.paired || !pairing) return send({ ev: "paired", ok: true, helper: whoAmI() });
         const token = pairing.pair(m.code, { origin, name: typeof m.name === "string" ? m.name : null });
         if (!token) return send({ ev: "paired", ok: false, error: "That is not the code the helper shows. Look again: it changes after five wrong tries." });
-        tab.paired = true;
+        tab.paired = true; tab.token = token; tab.may = { "*": pairing.mayOf(pairing.verify(token)) };
         say("a browser paired");
         send({ ev: "paired", ok: true, token, helper: whoAmI() });
         if (tab.discovering) heardSoFar();
         return;
       }
       if (!tab.paired) return unpaired(m);
+      // the person said yes in the page (control, asked once): kept for this browser; the message that asked goes on
+      if (m.op === "allow") {
+        const may = tab.token && pairing ? pairing.allow(tab.token, m.what) : null;
+        if (!may) return send({ ev: "allowed", ok: false, what: m.what, error: "Only a browser paired with this helper can be allowed more." });
+        tab.may = { "*": may };
+        send({ ev: "allowed", ok: true, what: m.what, may });
+        if (held) { const h = held; held = null; tab.onText(JSON.stringify(h)); }
+        return;
+      }
       // beyond what this line may do with that printer: refused in words, nothing reaches the printer
       const needs = { verify: "print", upload: "print", print: "print", camera: "watch", detect: "watch" }[m.op];
       if (needs && m.dev_id !== undefined && !allowed(m.dev_id, needs)) {
@@ -263,7 +303,12 @@ export function startTabLink({ port = 8770, host = "0.0.0.0", pool, shelf, camer
         // a printer's own message: stop/pause/resume are printing, the rest (move, heat, lamp, settings) is control
         const r = parse(m.msg, {});
         const cmd = r?.print?.command;
-        if (!(["stop", "pause", "resume"].includes(cmd) && allowed(m.dev_id, "print"))) return say(`dropped a ${cmd || "control"} message: not allowed on ${m.dev_id}`);
+        if (!(["stop", "pause", "resume"].includes(cmd) && allowed(m.dev_id, "print"))) {
+          say(`dropped a ${cmd || "control"} message: not allowed on ${m.dev_id}`);
+          // a browser paired here is asked once, in its page (ev needs); the message waits for the yes
+          if (tab.token && pairing) { held = m; send({ ev: "needs", dev_id: m.dev_id, what: "control", cmd: cmd || "" }); }
+          return;
+        }
       }
       if (m.op === "discover") {
         tab.discovering = m.on !== false;
@@ -271,12 +316,23 @@ export function startTabLink({ port = 8770, host = "0.0.0.0", pool, shelf, camer
       } else if (m.op === "connect") connect(m);
       else if (m.op === "disconnect") disconnect(m.dev_id);
       else if (m.op === "send") { const l = mine.get(m.dev_id); if (l?.link.isOpen()) l.link.request(parse(m.msg, {})); }
-      else if (m.op === "detect") detect(m.ip).then((r) => send({ id: m.id, ...r }));
+      else if (m.op === "detect") detect(m.ip, typeof m.code === "string" && m.code ? m.code : null).then((r) => send({ id: m.id, ...r }));
+      else if (m.op === "search") searchFor(m);
       else if (m.op === "verify") job(m, null);
       else if (m.op === "upload" || m.op === "print") pending = m;
       else if (m.op === "camera") camera(m);
       else if (m.op === "camera_got") { const f = inFlight.get(m.dev_id); if (f?.sizes.length) f.bytes -= f.sizes.shift(); }
     };
+    // The person asked: "Search my network" (no ip) knocks at this computer's own networks; a typed address, at that one.
+    // The printers found come as ssdp events, as heard ones do; the answer says how many.
+    function searchFor(m) {
+      const ip = typeof m.ip === "string" ? m.ip.trim() : "";
+      if (ip && !/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.test(ip)) return send({ id: m.id, ev: "searched", ok: false, found: 0, error: "That is not an address like 192.168.1.50." });
+      if (!search) return send({ id: m.id, ev: "searched", ok: false, found: 0 });
+      tab.discovering = true;
+      say(ip ? `a browser asked for the printer at ${ip}` : "a browser asked to search the network for printers");
+      search({ knock: true, ...(ip ? { hosts: [ip] } : {}) }).then((n) => send({ id: m.id, ev: "searched", ok: true, found: n, ip: ip || null }));
+    }
     tab.onBinary = (b) => { if (pending && tab.paired) { const m = pending; pending = null; job(m, b); } else pending = null; };
     tab.onClose = () => {
       tab.gone = true;
@@ -311,13 +367,14 @@ export function startTabLink({ port = 8770, host = "0.0.0.0", pool, shelf, camer
     // a token pairs the line it was made for: the same page origin (a browser names it); a program names none
     const who = pairing ? pairing.verify(u.searchParams.get("token")) : null;
     const paired = !pairing || (!!who && (!origin || !who.origin || who.origin === origin));
+    const token = who ? u.searchParams.get("token") : null;
     if (to && !paired) {
       say(`refused a line to ${to}: not paired`);
       sock.end("HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\n\r\n" + PAIR_FIRST + "\r\n");
       return;
     }
     const line = wsAccept(req, sock, head);
-    if (line) (to ? tunnel(line, to, { say }) : open(line, { paired, origin }));
+    if (line) (to ? tunnel(line, to, { say }) : open(line, { paired, origin, may: who ? { "*": pairing.mayOf(who) } : null, token }));
   });
   const ready = new Promise((r) => server.listen(port, host, () => r(server.address().port)));
   return { port: ready, heardPrinter, attach, close: () => { server.close(); for (const t of tabs) t.end(); } };
