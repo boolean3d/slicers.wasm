@@ -132,28 +132,11 @@
     document.head.appendChild(lift);
     // The port's page header: the port places every program window (and the text box under the caret) its height
     // lower (page-bridge.js wxpage_set_window_rect, the first element of class "header"), and tells the program the
-    // page's top (#main-window's offsetTop) at each resize, which maps the mouse. The first window's arrival is
-    // such a resize, so the program learns the bar's height before anyone points at it.
+    // page's top (#main-window's offsetTop) at each resize, which it takes off the window's size and off every mouse
+    // and finger position (wasm/app.cpp FillMouse, shared wx edit z55). The first window's arrival is such a resize,
+    // so the program learns the bar's height before anyone points at it. Programs built before z55 (Bambu b53, Orca
+    // oto27, Prusa b26, KiCad k27 and older) take clicks the bar's height too low: never serve this bar with them.
     bar.classList.add('header');
-    // The port reads the mouse and fingers from clientX/Y as they come (wasm/app.cpp FillMouse: the page's top is
-    // only taken off the window's size), so with the windows lowered a click would land the bar's height too low.
-    // Every input message leaves the page through wxPage.post: there each point is moved up by the bar's height.
-    // (The port taking wxPageMainTop off the points itself needs the four programs built again.)
-    var lowered = setInterval(function () {
-      var wp = window.Module && window.Module.wxPage;
-      if (!wp || wp.b3dBar) return;
-      clearInterval(lowered);
-      wp.b3dBar = true;
-      var post = wp.post;
-      wp.post = function (m, transfer) {
-        if (m && m.wx === 'in') {
-          var top = bar.offsetHeight;
-          if (typeof m.cy === 'number') m.cy -= top;
-          if (m.touches) for (var i = 0; i < m.touches.length; i++) m.touches[i].cy -= top;
-        }
-        return post.call(wp, m, transfer);
-      };
-    }, 50);
     var wc = document.getElementById('window-container');
     if (wc && window.MutationObserver) {
       var told = new MutationObserver(function () {
