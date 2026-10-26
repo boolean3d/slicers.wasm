@@ -132,7 +132,7 @@ addToLibrary({
     // the printer's 401 with it; resolves once the worker has it, so the page's first request already carries it.
     Module.wxwvLanLogin = function (href, login) {
       var m = /[/]__lan[/]([^/]+)[/]([0-9]+)([/]|$)/.exec(href);
-      var w = navigator.serviceWorker && navigator.serviceWorker.controller;
+      var w = navigator.serviceWorker && (navigator.serviceWorker.controller || Module.wxwvWorker);
       if (!m || !w) return Promise.resolve();
       return new Promise(function (resolve) {
         var ch = new MessageChannel();
@@ -178,10 +178,15 @@ addToLibrary({
         var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
         if (a && out(a.href)) e.preventDefault();
       }, true);
+      // This wrapper is the program page's function, so WebKit resolves a relative address given to the frame's own
+      // open against the program page (guide/0/load.js: window.open('../11/index.html', '_self') -> /bambu/11/, a 404).
+      // Resolved here against the frame's page, as the page meant it.
       var open = win.open;
       win.open = function (url) {
         if (url && out(String(url))) return null;
-        return open.apply(win, arguments);
+        var a = Array.prototype.slice.call(arguments);
+        if (url) { try { a[0] = new URL(String(url), win.document.baseURI).href; } catch (e) {} }
+        return open.apply(win, a);
       };
     };
     Module.wxwvUnresolve = function (href) {
@@ -195,6 +200,17 @@ addToLibrary({
     // entry: relative addresses (window.open('../1/index.html'), location = ...) resolve against
     // the page, as in a desktop web view. contentWindow.eval from here would resolve them against
     // the program's page. Returns { ok, value }.
+    // A script whose value nobody reads (RunScript without output: HandleStudio(...) answers) goes to the frame by
+    // message and runs as the frame's own task: in WebKit a script started while the program page's code is on the
+    // stack still resolves location.href = '../21/index.html' against the program page, inline <script> or not.
+    Module.wxwvPostRun = function (win, js) {
+      if (!win.__wxwvRunner) {
+        Module.wxwvEval(win, 'addEventListener("message", function (e) { var d = e.data; if (e.source === parent && d && typeof d.__wxwvRun === "string")' +
+          ' try { (0, eval)(d.__wxwvRun); } catch (x) { console.error(x); } })');
+        win.__wxwvRunner = true;
+      }
+      win.postMessage({ __wxwvRun: js }, location.origin);
+    };
     Module.wxwvEval = function (win, js) {
       var doc = win.document;
       win.__wxwvJs = js;
@@ -257,11 +273,15 @@ addToLibrary({
     Module.wxwvReady = Promise.resolve();
     if (navigator.serviceWorker && window.isSecureContext) {
       Module.wxwvReady = navigator.serviceWorker.register('wxwebview-sw.js', { scope: './' }).then(function (reg) {
+        // Ready once the worker is active ('activating' counts): Firefox held a first visit's worker in 'activating'
+        // ~60 s while the page was busy starting, so every web view (the setup wizard) stayed blank that long.
         return new Promise(function (resolve) {
           var w = reg.active || reg.waiting || reg.installing;
           if (reg.active || !w) return resolve();
-          w.addEventListener('statechange', function () { if (w.state === 'activated') resolve(); });
+          w.addEventListener('statechange', function () { if (w.state === 'activating' || w.state === 'activated') resolve(); });
+          navigator.serviceWorker.addEventListener('controllerchange', function () { resolve(); });
         }).then(function () {
+          Module.wxwvWorker = reg.active;
           if (reg.active) reg.active.postMessage({ wxwvLanBridge: Module.wxwvLanBridge() });
         });
       }).catch(function (e) { console.error('web view service worker: ' + e); });
@@ -356,10 +376,14 @@ addToLibrary({
   // (~0.05 ms). Always returns: a script that never ends would hang the page thread itself, as it does today.
   wxpage_wv_run__proxy: 'sync',
   wxpage_wv_run__deps: ['$wxPageWeb'],
-  wxpage_wv_run: function (id, jsPtr) {
+  wxpage_wv_run: function (id, jsPtr, want) {
     try {
       var v = Module.wxwvViews.get(id);
       if (!v) return 0;
+      if (!want) {
+        Module.wxwvPostRun(v.frame.contentWindow, UTF8ToString(jsPtr));
+        return stringToNewUTF8('');
+      }
       var out = Module.wxwvEval(v.frame.contentWindow, UTF8ToString(jsPtr));
       if (!out || !out.ok) return 0;
       var r = out.value;

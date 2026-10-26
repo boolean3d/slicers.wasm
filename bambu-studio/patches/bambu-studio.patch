@@ -238,10 +238,28 @@ index c27a245..b2e2da6 100644
          bool hovered{false};
          bool edited{false};
 diff --git a/src/slic3r/GUI/MainFrame.cpp b/src/slic3r/GUI/MainFrame.cpp
-index a46aa32..3f58b8a 100644
+index a46aa32..0e1e052 100644
 --- a/src/slic3r/GUI/MainFrame.cpp
 +++ b/src/slic3r/GUI/MainFrame.cpp
-@@ -1280,8 +1280,10 @@ void MainFrame::show_option(bool show)
+@@ -79,6 +79,17 @@
+ #include <slic3r/GUI/CreatePresetsDialog.hpp>
+ 
+ 
++#ifdef __EMSCRIPTEN__
++#include <emscripten/em_asm.h>
++#endif
++namespace Slic3r {
++// b3d z49: the person asked for their printer: the page may now reach the home network (agent/b3d-lan.js)
++#ifdef __EMSCRIPTEN__
++static void b3d_lan_person_asks() { MAIN_THREAD_ASYNC_EM_ASM({ if (typeof B3DLan !== 'undefined' && B3DLan.asked) B3DLan.asked(); }); }
++#else
++static void b3d_lan_person_asks() {}
++#endif
++}
+ namespace Slic3r {
+ namespace GUI {
+ 
+@@ -1280,8 +1291,10 @@ void MainFrame::show_option(bool show)
              m_print_btn->Show();
              m_slice_option_btn->Show();
              m_print_option_btn->Show();
@@ -252,7 +270,15 @@ index a46aa32..3f58b8a 100644
              Layout();
          }
      }
-@@ -2012,6 +2014,10 @@ wxBoxSizer* MainFrame::create_side_tools()
+@@ -1416,6 +1429,7 @@ void MainFrame::init_tabpanel()
+         int sel = m_tabpanel->GetSelection();
+         //wxString page_text = m_tabpanel->GetPageText(sel);
+         m_last_selected_tab = m_tabpanel->GetSelection();
++        if (sel == tpMonitor) b3d_lan_person_asks(); // b3d z49
+         if (panel == m_plater) {
+             if (sel == tp3DEditor) {
+                 wxPostEvent(m_plater, SimpleEvent(EVT_GLVIEWTOOLBAR_3D));
+@@ -2012,6 +2026,10 @@ wxBoxSizer* MainFrame::create_side_tools()
      m_slice_option_btn->Enable();
      m_print_option_btn->Enable();
      sizer->Add( 0, 0, 1, wxEXPAND, 0);
@@ -263,7 +289,7 @@ index a46aa32..3f58b8a 100644
      sizer->Add(expand_program_holder, 0, wxALIGN_CENTER, 0);
      sizer->Add(FromDIP(4), 0, 0, 0, 0);
      sizer->Add(split_line_icon, 0, wxALIGN_CENTER, 0);
-@@ -3049,6 +3055,7 @@ void MainFrame::init_menubar_as_editor()
+@@ -3049,6 +3067,7 @@ void MainFrame::init_menubar_as_editor()
          append_submenu(fileMenu, export_menu, wxID_ANY, _L("Export"), "");
  
          // Publish to MakerWorld
@@ -271,7 +297,7 @@ index a46aa32..3f58b8a 100644
          append_menu_item(
              fileMenu, wxID_ANY, _L("Publish to MakerWorld"), _L("Publish to MakerWorld"),
              [this](wxCommandEvent &) {
-@@ -3068,6 +3075,7 @@ void MainFrame::init_menubar_as_editor()
+@@ -3068,6 +3087,7 @@ void MainFrame::init_menubar_as_editor()
              },
              "", nullptr,
              [this](){ return wxGetApp().has_model_mall(); }, this);
@@ -279,6 +305,54 @@ index a46aa32..3f58b8a 100644
  
          append_menu_item(
              fileMenu, wxID_ANY, _L("Batch Preset Management"), wxString::Format(_L("Batch Preset Management")),
+diff --git a/src/slic3r/GUI/OpenGLManager.cpp b/src/slic3r/GUI/OpenGLManager.cpp
+index cefef78..fd1d67c 100644
+--- a/src/slic3r/GUI/OpenGLManager.cpp
++++ b/src/slic3r/GUI/OpenGLManager.cpp
+@@ -9,6 +9,9 @@
+ #include "slic3r/GUI/GLTexture.hpp"
+ 
+ #include <GL/glew.h>
++#ifdef __EMSCRIPTEN__
++#include <emscripten/html5.h>
++#endif
+ 
+ #include <boost/algorithm/string/split.hpp>
+ #include <boost/algorithm/string/classification.hpp>
+@@ -317,6 +320,7 @@ OpenGLManager::EFramebufferType OpenGLManager::s_framebuffers_type = OpenGLManag
+ bool OpenGLManager::s_b_initialized = false;
+ ColorRGBA OpenGLManager::s_cut_plane_color = {1.0f, 0.37f, 0.0f, 1.0f};
+ bool      OpenGLManager::s_cancle_glmultidraw             = false;
++bool      OpenGLManager::s_no_multidraw                   = false;
+ #ifdef __APPLE__
+ // Part of hack to remove crash when closing the application on OSX 10.9.5 when building against newer wxWidgets
+ OpenGLManager::OSInfo OpenGLManager::s_os_info;
+@@ -366,6 +370,10 @@ bool OpenGLManager::init_gl(bool popup_error)
+         }
+ 	//BOOST_LOG_TRIVIAL(info) << "glewInit Success."<< std::endl;
+         m_gl_initialized = true;
++#ifdef __EMSCRIPTEN__
++        s_no_multidraw = !emscripten_webgl_enable_extension(emscripten_webgl_get_current_context(), "WEBGL_multi_draw");
++        if (s_no_multidraw) BOOST_LOG_TRIVIAL(info) << "No WEBGL_multi_draw: G-code paths drawn one by one.";
++#endif
+         if (GLEW_EXT_texture_compression_s3tc)
+             s_compressed_textures_supported = true;
+         else
+diff --git a/src/slic3r/GUI/OpenGLManager.hpp b/src/slic3r/GUI/OpenGLManager.hpp
+index 9b6e885..f2039b5 100644
+--- a/src/slic3r/GUI/OpenGLManager.hpp
++++ b/src/slic3r/GUI/OpenGLManager.hpp
+@@ -295,7 +295,9 @@ public:
+     static bool use_manually_generated_mipmaps() { return m_use_manually_generated_mipmaps; }
+     static void       set_cut_plane_color(ColorRGBA);
+     static const ColorRGBA &get_cut_plane_color();
+-    static bool get_cancle_glmultidraw() { return s_cancle_glmultidraw; }
++    // b3d z47: a browser GL context without WEBGL_multi_draw draws path by path too
++    static bool      s_no_multidraw;
++    static bool get_cancle_glmultidraw() { return s_cancle_glmultidraw || s_no_multidraw; }
+     static void set_cancle_glmultidraw(bool flag) { s_cancle_glmultidraw = flag; }
+     static unsigned int get_draw_primitive_type(EDrawPrimitiveType type);
+ 
 diff --git a/src/slic3r/GUI/Preferences.cpp b/src/slic3r/GUI/Preferences.cpp
 index 614a648..39fc170 100644
 --- a/src/slic3r/GUI/Preferences.cpp
@@ -327,11 +401,59 @@ index f3d73ee..7b7fdd5 100644
              return;
          }
          //assert(selected_filament_preset);
+diff --git a/src/slic3r/GUI/SelectMachine.cpp b/src/slic3r/GUI/SelectMachine.cpp
+index edc22f9..885a727 100644
+--- a/src/slic3r/GUI/SelectMachine.cpp
++++ b/src/slic3r/GUI/SelectMachine.cpp
+@@ -72,6 +72,17 @@
+ #define S_RACK_NOZZLE_SUGEEST_RESLICE      _L("Please re-slice.")
+ #define S_RACK_NOZZLE_SUGEEST_RESLICE_FILA _L("Please re-slice to avoid filament waste.")
+ 
++#ifdef __EMSCRIPTEN__
++#include <emscripten/em_asm.h>
++#endif
++namespace Slic3r {
++// b3d z49: the person asked for their printer: the page may now reach the home network (agent/b3d-lan.js)
++#ifdef __EMSCRIPTEN__
++static void b3d_lan_person_asks() { MAIN_THREAD_ASYNC_EM_ASM({ if (typeof B3DLan !== 'undefined' && B3DLan.asked) B3DLan.asked(); }); }
++#else
++static void b3d_lan_person_asks() {}
++#endif
++}
+ namespace Slic3r { namespace GUI {
+ 
+ wxDEFINE_EVENT(EVT_SWITCH_PRINT_OPTION, wxCommandEvent);
+@@ -1799,6 +1810,7 @@ bool SelectMachineDialog::has_bowden_extuder(MachineObject* obj)
+ 
+ void SelectMachineDialog::prepare(int print_plate_idx)
+ {
++    b3d_lan_person_asks(); // b3d z49
+     m_print_plate_idx = print_plate_idx;
+ }
+ 
 diff --git a/src/slic3r/GUI/SelectMachinePop.cpp b/src/slic3r/GUI/SelectMachinePop.cpp
-index 7d4e568..86928d8 100644
+index 7d4e568..d566fe0 100644
 --- a/src/slic3r/GUI/SelectMachinePop.cpp
 +++ b/src/slic3r/GUI/SelectMachinePop.cpp
-@@ -355,6 +355,9 @@ SelectMachinePopup::SelectMachinePopup(wxWindow *parent)
+@@ -30,6 +30,17 @@
+ 
+ #include "DeviceCore/DevManager.h"
+ 
++#ifdef __EMSCRIPTEN__
++#include <emscripten/em_asm.h>
++#endif
++namespace Slic3r {
++// b3d z49: the person asked for their printer: the page may now reach the home network (agent/b3d-lan.js)
++#ifdef __EMSCRIPTEN__
++static void b3d_lan_person_asks() { MAIN_THREAD_ASYNC_EM_ASM({ if (typeof B3DLan !== 'undefined' && B3DLan.asked) B3DLan.asked(); }); }
++#else
++static void b3d_lan_person_asks() {}
++#endif
++}
+ namespace Slic3r { namespace GUI {
+ 
+ wxDEFINE_EVENT(EVT_UPDATE_WINDOWS_POSITION, wxCommandEvent);
+@@ -355,6 +366,9 @@ SelectMachinePopup::SelectMachinePopup(wxWindow *parent)
      m_sizxer_scrolledWindow->Add(own_title, 0, wxEXPAND | wxLEFT, FromDIP(15));
      m_sizxer_scrolledWindow->Add(m_sizer_my_devices, 0, wxEXPAND, 0);
      m_sizxer_scrolledWindow->Add(m_panel_ping_code, 0, wxEXPAND, 0);
@@ -341,7 +463,15 @@ index 7d4e568..86928d8 100644
      m_sizxer_scrolledWindow->Add(m_panel_direct_connection, 0, wxEXPAND, 0);
      m_sizxer_scrolledWindow->Add(other_title, 0, wxEXPAND | wxLEFT, FromDIP(15));
      m_sizxer_scrolledWindow->Add(m_sizer_other_devices, 0, wxEXPAND, 0);
-@@ -847,7 +850,7 @@ void SelectMachinePopup::OnLeftUp(wxMouseEvent &event)
+@@ -382,6 +396,7 @@ void SelectMachinePopup::Popup(wxWindow *WXUNUSED(focus))
+ {
+     BOOST_LOG_TRIVIAL(trace) << "get_print_info: start";
+     start_ssdp(true);
++    b3d_lan_person_asks(); // b3d z49
+     if (m_refresh_timer) {
+         m_refresh_timer->Stop();
+         m_refresh_timer->Start(MACHINE_LIST_REFRESH_INTERVAL);
+@@ -847,7 +862,7 @@ void SelectMachinePopup::OnLeftUp(wxMouseEvent &event)
  
          //pin code
          auto pc_rect = m_panel_ping_code->ClientToScreen(wxPoint(0, 0));

@@ -5394,10 +5394,20 @@ index 174937fdb5..e4ff84168f 100644
  
  #ifdef __WXUNIVERSAL__
 diff --git a/include/wx/univ/anybutton.h b/include/wx/univ/anybutton.h
-index 58259dd00a..ae71a93cc0 100644
+index 58259dd00a..f3a7ce6b05 100644
 --- a/include/wx/univ/anybutton.h
 +++ b/include/wx/univ/anybutton.h
-@@ -31,6 +31,12 @@ public:
+@@ -17,7 +17,8 @@
+ class WXDLLIMPEXP_CORE wxAnyButton : public wxAnyButtonBase
+ {
+ public:
+-    wxAnyButton() {}
++    // z45: every member set (the bitmap margins went into the best size uninitialised)
++    wxAnyButton() : m_isPressed(false), m_isDefault(false), m_marginBmpX(0), m_marginBmpY(0) {}
+ 
+     virtual ~wxAnyButton() {}
+ 
+@@ -31,6 +32,12 @@ public:
                                 long numArg = -1,
                                 const wxString& strArg = wxEmptyString) wxOVERRIDE;
  
@@ -9454,10 +9464,10 @@ index 0000000000..810378511b
 +#endif // _WX_WASM_TOOLTIP_H_
 diff --git a/include/wx/wasm/toplevel.h b/include/wx/wasm/toplevel.h
 new file mode 100644
-index 0000000000..9f97e6e926
+index 0000000000..cc718e123a
 --- /dev/null
 +++ b/include/wx/wasm/toplevel.h
-@@ -0,0 +1,109 @@
+@@ -0,0 +1,112 @@
 +/////////////////////////////////////////////////////////////////////////////
 +// Name:        wx/wasm/toplevel.h
 +// Purpose:
@@ -9519,6 +9529,9 @@ index 0000000000..9f97e6e926
 +    virtual bool IsFullScreen() const wxOVERRIDE;
 +
 +    virtual bool IsActive() wxOVERRIDE { return m_isActive; }
++
++    // z48: makes tlw the active top-level window (NULL: none), the previous one inactive, posting wxEVT_ACTIVATE to both
++    static void Activate(wxTopLevelWindowWasm *tlw);
 +
 +    virtual void SetTitle(const wxString &title) wxOVERRIDE;
 +    virtual wxString GetTitle() const wxOVERRIDE { return m_title; }
@@ -10029,6 +10042,34 @@ index c8b3047212..b53554427f 100644
  #define wxUSE_THEME_WIN32   0
  #endif
  
+diff --git a/src/aui/framemanager.cpp b/src/aui/framemanager.cpp
+index 7cc11b1125..c760ab74e9 100644
+--- a/src/aui/framemanager.cpp
++++ b/src/aui/framemanager.cpp
+@@ -3926,9 +3926,11 @@ void wxAuiManager::Repaint(wxDC* dc)
+ 
+     // if the frame has a toolbar, the client area
+     // origin will not be (0,0).
++#ifndef __WXWASM__   // z46: the port's wxClientDC of a frame already starts at its client area origin
+     wxPoint pt = m_frame->GetClientAreaOrigin();
+     if (pt.x != 0 || pt.y != 0)
+         dc->SetDeviceOrigin(pt.x, pt.y);
++#endif
+ 
+     // render all the items
+     Render(dc);
+@@ -4086,9 +4088,11 @@ void wxAuiManager::UpdateButtonOnScreen(wxAuiDockUIPart* button_ui_part,
+ 
+     // if the frame has a toolbar, the client area
+     // origin will not be (0,0).
++#ifndef __WXWASM__   // z46: the port's wxClientDC of a frame already starts at its client area origin
+     wxPoint pt = m_frame->GetClientAreaOrigin();
+     if (pt.x != 0 || pt.y != 0)
+         cdc.SetDeviceOrigin(pt.x, pt.y);
++#endif
+ 
+     if (hit_test->pane)
+     {
 diff --git a/src/common/appcmn.cpp b/src/common/appcmn.cpp
 index 6be5402ce2..6d6fd747dd 100644
 --- a/src/common/appcmn.cpp
@@ -15720,7 +15761,7 @@ index 9ada499daa..7b66ab888a 100644
  #include "wx/secretstore.h"
  #include "wx/private/secretstore.h"
 diff --git a/src/unix/utilsunx.cpp b/src/unix/utilsunx.cpp
-index 8a944cd626..1875e36e42 100644
+index 8a944cd626..03d3a4c7b8 100644
 --- a/src/unix/utilsunx.cpp
 +++ b/src/unix/utilsunx.cpp
 @@ -610,6 +610,14 @@ long wxExecute(const char* const* argv, int flags, wxProcess* process,
@@ -15738,16 +15779,24 @@ index 8a944cd626..1875e36e42 100644
  #if wxUSE_THREADS
      // fork() doesn't mix well with POSIX threads: on many systems the program
      // deadlocks or crashes for some reason. Probably our code is buggy and
-@@ -1005,7 +1013,7 @@ static bool wxGetHostNameInternal(wxChar *buf, int sz)
+@@ -1005,7 +1013,15 @@ static bool wxGetHostNameInternal(wxChar *buf, int sz)
      *buf = wxT('\0');
  
      // we're using uname() which is POSIX instead of less standard sysinfo()
 -#if defined(HAVE_UNAME)
-+#if defined(HAVE_UNAME) && !defined(__WXWASM__)
++#if defined(__WXWASM__)
++    // z32: a browser tab has a host name too (Emscripten's gethostname)
++    char cbuf[256];
++    bool ok = gethostname(cbuf, sizeof(cbuf)) == 0;
++    if ( ok )
++    {
++        wxStrlcpy(buf, wxSafeConvertMB2WX(cbuf), sz);
++    }
++#elif defined(HAVE_UNAME)
      struct utsname uts;
      bool ok = uname(&uts) != -1;
      if ( ok )
-@@ -1114,6 +1122,8 @@ bool wxGetUserName(wxChar *buf, int sz)
+@@ -1114,6 +1130,8 @@ bool wxGetUserName(wxChar *buf, int sz)
  #endif // HAVE_PW_GECOS/!HAVE_PW_GECOS
  }
  
@@ -15756,7 +15805,7 @@ index 8a944cd626..1875e36e42 100644
  bool wxIsPlatform64Bit()
  {
  #if SIZEOF_VOID_P == 8
-@@ -1147,6 +1157,8 @@ wxString wxGetNativeCpuArchitectureName()
+@@ -1147,6 +1165,8 @@ wxString wxGetNativeCpuArchitectureName()
          return wxGetCpuArchitectureName();
  }
  
@@ -15765,7 +15814,7 @@ index 8a944cd626..1875e36e42 100644
  #ifdef __LINUX__
  
  static bool
-@@ -1214,7 +1226,7 @@ wxLinuxDistributionInfo wxGetLinuxDistributionInfo()
+@@ -1214,7 +1234,7 @@ wxLinuxDistributionInfo wxGetLinuxDistributionInfo()
  #endif // __LINUX__
  
  // these functions are in src/osx/utils_base.mm for wxOSX.
@@ -15774,7 +15823,7 @@ index 8a944cd626..1875e36e42 100644
  
  wxOperatingSystemId wxGetOsVersion(int *verMaj, int *verMin, int *verMicro)
  {
-@@ -1283,7 +1295,7 @@ bool wxCheckOsVersion(int majorVsn, int minorVsn, int microVsn)
+@@ -1283,7 +1303,7 @@ bool wxCheckOsVersion(int majorVsn, int minorVsn, int microVsn)
          || (majorCur == majorVsn && minorCur == minorVsn && microCur >= microVsn);
  }
  
@@ -20330,10 +20379,10 @@ index 0000000000..fd809ab71e
 +#endif // wxUSE_DATAOBJ
 diff --git a/src/wasm/dc.cpp b/src/wasm/dc.cpp
 new file mode 100644
-index 0000000000..ec0251333d
+index 0000000000..54a188a62f
 --- /dev/null
 +++ b/src/wasm/dc.cpp
-@@ -0,0 +1,628 @@
+@@ -0,0 +1,637 @@
 +/////////////////////////////////////////////////////////////////////////////
 +// Name:        wx/wasm/dc.cpp
 +// Purpose:     wxDC implementation
@@ -20744,6 +20793,15 @@ index 0000000000..ec0251333d
 +        double radius)
 +{
 +    wxCHECK_RET(IsOk(), wxT("invalid dc"));
++
++    // z34: a negative radius is a fraction of the smaller side, 0 a plain rectangle (as wxMSW and wxGTK)
++    if (radius < 0.0)
++        radius = -radius * ((width < height) ? width : height);
++    if (radius == 0.0)
++    {
++        DoDrawRectangle(x, y, width, height);
++        return;
++    }
 +
 +    EM_ASM({
 +        drawRoundedRect($0, $1, $2, $3, $4, $5, $6, $7);
@@ -21816,10 +21874,10 @@ index 0000000000..fe57ed6e90
 +#endif // wxUSE_DRAG_AND_DROP
 diff --git a/src/wasm/evtloop.cpp b/src/wasm/evtloop.cpp
 new file mode 100644
-index 0000000000..0ad836bcf3
+index 0000000000..a6d886314c
 --- /dev/null
 +++ b/src/wasm/evtloop.cpp
-@@ -0,0 +1,140 @@
+@@ -0,0 +1,174 @@
 +/////////////////////////////////////////////////////////////////////////////
 +// Name:        wx/wasm/evtloop.cpp
 +// Purpose:     wxGUIEventLoop implementation
@@ -21839,13 +21897,47 @@ index 0000000000..0ad836bcf3
 +extern "C" int wxpage_screen_width();
 +extern "C" int wxpage_screen_height();
 +
-+EM_ASYNC_JS(void, wxWasmWaitFrame, (), {
++EM_ASYNC_JS(void, wxWasmWaitFrameJs, (), {
 +    await wxWaitFrame();   // wx.js: a frame, or (experiment) input from the page
 +});
 +
-+EM_ASYNC_JS(void, wxWasmYieldToBrowser, (), {
++EM_ASYNC_JS(void, wxWasmYieldToBrowserJs, (), {
 +    await new Promise(resolve => setTimeout(resolve, 0));
 +});
++
++#include <emscripten/threading.h>   // z35
++#include <emscripten/console.h>
++#include "wx/thread.h"
++
++// z35: a loop on another thread cannot await in its own worker (frames, input and page messages arrive in main's)
++static bool wxWasmLoopOffMainThread()
++{
++    if (wxIsMainThread())
++        return false;
++    static bool said = false;
++    if (!said)
++    {
++        said = true;
++        emscripten_console_log("wx: an event loop runs on a thread other than main's (a tool's nested loop); it sleeps between passes");
++    }
++    return true;
++}
++
++static void wxWasmWaitFrame()
++{
++    if (wxWasmLoopOffMainThread())
++        emscripten_thread_sleep(8);
++    else
++        wxWasmWaitFrameJs();
++}
++
++static void wxWasmYieldToBrowser()
++{
++    if (wxWasmLoopOffMainThread())
++        emscripten_thread_sleep(1);
++    else
++        wxWasmYieldToBrowserJs();
++}
 +
 +bool wxWasmInPress();                   // app.cpp (z15)
 +int wxWasmSetDeferUserInput(int defer);
@@ -22808,10 +22900,10 @@ index 0000000000..f30848e914
 +}
 diff --git a/src/wasm/glcanvas.cpp b/src/wasm/glcanvas.cpp
 new file mode 100644
-index 0000000000..b2f52288a6
+index 0000000000..767c0caffa
 --- /dev/null
 +++ b/src/wasm/glcanvas.cpp
-@@ -0,0 +1,349 @@
+@@ -0,0 +1,352 @@
 +/////////////////////////////////////////////////////////////////////////////
 +// Name:        src/wasm/glcanvas.cpp
 +// Purpose:     wxGLCanvas for the WebAssembly port (WebGL2)
@@ -22823,6 +22915,7 @@ index 0000000000..b2f52288a6
 +#if wxUSE_GLCANVAS
 +
 +#include "wx/glcanvas.h"
++#include <cstdio>   // z47
 +#include "wx/toplevel.h"
 +
 +#include <emscripten.h>
@@ -22966,7 +23059,9 @@ index 0000000000..b2f52288a6
 +    m_isOk = m_handle > 0;
 +    if (!m_isOk)
 +    {
-+        wxLogError("WebGL2 context could not be created (%d)", (int)m_handle);
++        // z47: no box from inside the constructor; the program reads IsOK() and says what it means
++        printf("wx: WebGL2 context could not be created (%d)\n", (int)m_handle);
++        fflush(stdout);
 +        return;
 +    }
 +
@@ -24831,10 +24926,10 @@ index 0000000000..fcf814a7b5
 +}
 diff --git a/src/wasm/nonownedwnd.cpp b/src/wasm/nonownedwnd.cpp
 new file mode 100644
-index 0000000000..eba58537a7
+index 0000000000..1d4e728de9
 --- /dev/null
 +++ b/src/wasm/nonownedwnd.cpp
-@@ -0,0 +1,224 @@
+@@ -0,0 +1,235 @@
 +/////////////////////////////////////////////////////////////////////////////
 +// Name:        wx/wasm/nonownedwnd.cpp
 +// Purpose:     wxNonOwnedWindow implementation
@@ -24852,6 +24947,8 @@ index 0000000000..eba58537a7
 +#include "wx/wasm/private/display.h"
 +
 +#include <emscripten.h>
++#include <emscripten/threading.h>   // z33
++#include "wx/thread.h"
 +
 +// page-side calls (spike/hello/wxpage.js): the page owns the DOM, this thread owns the drawing
 +extern "C" {
@@ -24901,7 +24998,13 @@ index 0000000000..eba58537a7
 +        return createWindow(-1, true, $0, UTF8ToString($1));
 +    }, m_isShown, static_cast<const char*>(classList.utf8_str()));
 +    wxpage_create_window(m_cssId, m_isShown, static_cast<const char*>(classList.utf8_str()));
-+    wxWasmWaitCanvas(m_cssId);
++    // z33: on another thread the canvas message lands in main's worker, not here: ask that worker (EM_ASM from
++    // another thread is carried out there) until it has the canvas
++    if ( wxIsMainThread() )
++        wxWasmWaitCanvas(m_cssId);
++    else
++        while ( !EM_ASM_INT({ var w = windowMap.get($0); return (w && w.canvas) ? 1 : 0; }, m_cssId) )
++            emscripten_thread_sleep(1);
 +
 +    int x = pos.x;
 +    int y = pos.y;
@@ -24971,6 +25074,9 @@ index 0000000000..eba58537a7
 +            setWindowVisibility($0, $1);
 +        }, GetCSSId(), show);
 +        wxpage_set_window_visibility(GetCSSId(), show);
++        // z30: a window that appears goes on top, as a window manager maps a new window in front
++        if (show)
++            Raise();
 +        if (show && IsMainFrame())
 +        {
 +            // like a maximized desktop frame: its real size arrives when it is shown
@@ -25850,10 +25956,10 @@ index 0000000000..2cde8d34f5
 +#endif // wxUSE_TOOLTIPS
 diff --git a/src/wasm/toplevel.cpp b/src/wasm/toplevel.cpp
 new file mode 100644
-index 0000000000..4b5a9e1b36
+index 0000000000..e2b93dc82a
 --- /dev/null
 +++ b/src/wasm/toplevel.cpp
-@@ -0,0 +1,349 @@
+@@ -0,0 +1,391 @@
 +/////////////////////////////////////////////////////////////////////////////
 +// Name:        wx/wasm/toplevel.cpp
 +// Purpose:     wxTopLevelWindowWasm implementation
@@ -25915,7 +26021,12 @@ index 0000000000..4b5a9e1b36
 +{
 +    //wxLogDebug(wxT("creating toplevel window"));
 +
-+    if (!wxTopLevelWindowBase::Create(parent, id, pos, size, style, name))
++    // z35: no size given = the desktop default size (wxMSW/wxGTK: size.SetDefaults(GetDefaultSize())), not 20 x 20
++    wxSize sizeReal(size);
++    if (!sizeReal.IsFullySpecified())
++        sizeReal.SetDefaults(GetDefaultSize());
++
++    if (!wxTopLevelWindowBase::Create(parent, id, pos, sizeReal, style, name))
 +    {
 +        wxFAIL_MSG(wxT("wxTopLevelWindowWasm creation failed"));
 +        return false;
@@ -26017,6 +26128,34 @@ index 0000000000..4b5a9e1b36
 +    }
 +}
 +
++// z48: the active top-level window (a weak reference: a destroyed window is simply no longer active)
++static wxWeakRef<wxTopLevelWindowWasm> gs_activeTopLevel;
++
++static void PostActivate(wxTopLevelWindowWasm *tlw, bool active)
++{
++    wxActivateEvent event(wxEVT_ACTIVATE, active, tlw->GetId());
++    event.SetEventObject(tlw);
++    tlw->GetEventHandler()->AddPendingEvent(event);
++}
++
++void wxTopLevelWindowWasm::Activate(wxTopLevelWindowWasm *tlw)
++{
++    wxTopLevelWindowWasm *old = gs_activeTopLevel.get();
++    if ( old == tlw )
++        return;
++    gs_activeTopLevel = tlw;
++    if ( old )
++    {
++        old->SetActive(false);
++        PostActivate(old, false);
++    }
++    if ( tlw )
++    {
++        tlw->SetActive(true);
++        PostActivate(tlw, true);
++    }
++}
++
 +// Where the keyboard was before each shown window took it (given back when that window hides).
 +static std::map<wxTopLevelWindowWasm *, wxWeakRef<wxWindow> > gs_focusBeforeShow;
 +static bool gs_showWithoutActivating = false;
@@ -26030,6 +26169,8 @@ index 0000000000..4b5a9e1b36
 +
 +    if ( show )
 +    {
++        if ( !gs_showWithoutActivating )
++            Activate(this);   // z48
 +        if ( !gs_showWithoutActivating && !focusInside )
 +        {
 +            gs_focusBeforeShow[this] = focus;
@@ -26045,6 +26186,13 @@ index 0000000000..4b5a9e1b36
 +            gs_focusBeforeShow.erase(it);
 +        if ( focusInside && back && back->IsShownOnScreen() )
 +            back->SetFocus();
++        // z48: the window the keyboard went back to is active, else the main frame
++        if ( gs_activeTopLevel.get() == this )
++        {
++            wxWindow *next = back && back->IsShownOnScreen() ? wxGetTopLevelParent(back) : wxTheApp->GetTopWindow();
++            wxTopLevelWindowWasm *tlw = dynamic_cast<wxTopLevelWindowWasm *>(next);
++            Activate(tlw && tlw != this && tlw->IsShown() ? tlw : NULL);
++        }
 +    }
 +    return true;
 +}
@@ -26744,10 +26892,10 @@ index 0000000000..05b5411058
 +#endif // wxUSE_WEBVIEW && __WXWASM__
 diff --git a/src/wasm/window.cpp b/src/wasm/window.cpp
 new file mode 100644
-index 0000000000..f4aa19d333
+index 0000000000..a8d2d479c3
 --- /dev/null
 +++ b/src/wasm/window.cpp
-@@ -0,0 +1,844 @@
+@@ -0,0 +1,854 @@
 +/////////////////////////////////////////////////////////////////////////////
 +// Name:        wx/wasm/window.cpp
 +// Purpose:     wxWasmWindow implementation
@@ -26767,6 +26915,12 @@ index 0000000000..f4aa19d333
 +#include "wx/log.h"
 +#include "wx/menu.h"
 +#include "wx/nonownedwnd.h"
++#include "wx/notebook.h"
++#include "wx/statbox.h"
++#include "wx/toplevel.h"
++#include "wx/notebook.h"
++#include "wx/statbox.h"
++#include "wx/toplevel.h"
 +#include "wx/notebook.h"
 +#include "wx/statbox.h"
 +#include "wx/wasm/private/display.h"
@@ -26993,6 +27147,10 @@ index 0000000000..f4aa19d333
 +    }
 +
 +    gs_focusWindow = this;
++
++    // z48: the top-level window holding the keyboard is the active one (a popup's focus leaves it as it is)
++    if ( wxTopLevelWindowWasm *tlw = dynamic_cast<wxTopLevelWindowWasm *>(wxGetTopLevelParent(static_cast<wxWindow*>(this))) )
++        wxTopLevelWindowWasm::Activate(tlw);
 +
 +    wxChildFocusEvent eventFocus(static_cast<wxWindow*>(this));
 +    HandleWindowEvent(eventFocus);

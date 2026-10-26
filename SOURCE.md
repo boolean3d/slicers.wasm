@@ -64,7 +64,7 @@ CGAL, Eigen 5 for those libraries, cereal, NLopt, libnoise, Qhull, libjpeg-turbo
 The libraries fetched by commit or tag without a hash come from git archives at a fixed commit; a changed archive
 would show as a different tree, not as a silent change of bytes. Hashes for them are still to be added.
 
-The PrusaSlicer build served as 2.9.6-b21 was linked with Expat 2.2.10 from OrcaSlicer's wxWidgets copy (the shared
+The PrusaSlicer builds served as 2.9.6-b21 and -b22 were linked with Expat 2.2.10 from OrcaSlicer's wxWidgets copy (the shared
 library prefix of the build machine); a build from this repository takes the 2.4.8 copy in PrusaSlicer's own
 wxWidgets fork. Both are MIT; the next served PrusaSlicer build is made from this repository.
 

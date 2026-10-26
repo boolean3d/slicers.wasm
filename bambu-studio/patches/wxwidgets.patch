@@ -9779,10 +9779,10 @@ index 0000000..8103785
 +#endif // _WX_WASM_TOOLTIP_H_
 diff --git a/include/wx/wasm/toplevel.h b/include/wx/wasm/toplevel.h
 new file mode 100644
-index 0000000..9f97e6e
+index 0000000..cc718e1
 --- /dev/null
 +++ b/include/wx/wasm/toplevel.h
-@@ -0,0 +1,109 @@
+@@ -0,0 +1,112 @@
 +/////////////////////////////////////////////////////////////////////////////
 +// Name:        wx/wasm/toplevel.h
 +// Purpose:
@@ -9844,6 +9844,9 @@ index 0000000..9f97e6e
 +    virtual bool IsFullScreen() const wxOVERRIDE;
 +
 +    virtual bool IsActive() wxOVERRIDE { return m_isActive; }
++
++    // z48: makes tlw the active top-level window (NULL: none), the previous one inactive, posting wxEVT_ACTIVATE to both
++    static void Activate(wxTopLevelWindowWasm *tlw);
 +
 +    virtual void SetTitle(const wxString &title) wxOVERRIDE;
 +    virtual wxString GetTitle() const wxOVERRIDE { return m_title; }
@@ -10354,6 +10357,34 @@ index 65564d1..fa367b7 100644
  #define wxUSE_THEME_WIN32   0
  #endif
  
+diff --git a/src/aui/framemanager.cpp b/src/aui/framemanager.cpp
+index 246a89e..725f940 100644
+--- a/src/aui/framemanager.cpp
++++ b/src/aui/framemanager.cpp
+@@ -3938,9 +3938,11 @@ void wxAuiManager::Repaint(wxDC* dc)
+ 
+     // if the frame has a toolbar, the client area
+     // origin will not be (0,0).
++#ifndef __WXWASM__   // z46: the port's wxClientDC of a frame already starts at its client area origin
+     wxPoint pt = m_frame->GetClientAreaOrigin();
+     if (pt.x != 0 || pt.y != 0)
+         dc->SetDeviceOrigin(pt.x, pt.y);
++#endif
+ 
+     // render all the items
+     Render(dc);
+@@ -4099,9 +4101,11 @@ void wxAuiManager::UpdateButtonOnScreen(wxAuiDockUIPart* button_ui_part,
+ 
+     // if the frame has a toolbar, the client area
+     // origin will not be (0,0).
++#ifndef __WXWASM__   // z46: the port's wxClientDC of a frame already starts at its client area origin
+     wxPoint pt = m_frame->GetClientAreaOrigin();
+     if (pt.x != 0 || pt.y != 0)
+         cdc.SetDeviceOrigin(pt.x, pt.y);
++#endif
+ 
+     if (hit_test->pane)
+     {
 diff --git a/src/common/appcmn.cpp b/src/common/appcmn.cpp
 index 404429d..d787ea0 100644
 --- a/src/common/appcmn.cpp
@@ -23254,10 +23285,10 @@ index 0000000..f30848e
 +}
 diff --git a/src/wasm/glcanvas.cpp b/src/wasm/glcanvas.cpp
 new file mode 100644
-index 0000000..b2f5228
+index 0000000..767c0ca
 --- /dev/null
 +++ b/src/wasm/glcanvas.cpp
-@@ -0,0 +1,349 @@
+@@ -0,0 +1,352 @@
 +/////////////////////////////////////////////////////////////////////////////
 +// Name:        src/wasm/glcanvas.cpp
 +// Purpose:     wxGLCanvas for the WebAssembly port (WebGL2)
@@ -23269,6 +23300,7 @@ index 0000000..b2f5228
 +#if wxUSE_GLCANVAS
 +
 +#include "wx/glcanvas.h"
++#include <cstdio>   // z47
 +#include "wx/toplevel.h"
 +
 +#include <emscripten.h>
@@ -23412,7 +23444,9 @@ index 0000000..b2f5228
 +    m_isOk = m_handle > 0;
 +    if (!m_isOk)
 +    {
-+        wxLogError("WebGL2 context could not be created (%d)", (int)m_handle);
++        // z47: no box from inside the constructor; the program reads IsOK() and says what it means
++        printf("wx: WebGL2 context could not be created (%d)\n", (int)m_handle);
++        fflush(stdout);
 +        return;
 +    }
 +
@@ -26299,10 +26333,10 @@ index 0000000..2cde8d3
 +#endif // wxUSE_TOOLTIPS
 diff --git a/src/wasm/toplevel.cpp b/src/wasm/toplevel.cpp
 new file mode 100644
-index 0000000..b24ad93
+index 0000000..e2b93dc
 --- /dev/null
 +++ b/src/wasm/toplevel.cpp
-@@ -0,0 +1,354 @@
+@@ -0,0 +1,391 @@
 +/////////////////////////////////////////////////////////////////////////////
 +// Name:        wx/wasm/toplevel.cpp
 +// Purpose:     wxTopLevelWindowWasm implementation
@@ -26471,6 +26505,34 @@ index 0000000..b24ad93
 +    }
 +}
 +
++// z48: the active top-level window (a weak reference: a destroyed window is simply no longer active)
++static wxWeakRef<wxTopLevelWindowWasm> gs_activeTopLevel;
++
++static void PostActivate(wxTopLevelWindowWasm *tlw, bool active)
++{
++    wxActivateEvent event(wxEVT_ACTIVATE, active, tlw->GetId());
++    event.SetEventObject(tlw);
++    tlw->GetEventHandler()->AddPendingEvent(event);
++}
++
++void wxTopLevelWindowWasm::Activate(wxTopLevelWindowWasm *tlw)
++{
++    wxTopLevelWindowWasm *old = gs_activeTopLevel.get();
++    if ( old == tlw )
++        return;
++    gs_activeTopLevel = tlw;
++    if ( old )
++    {
++        old->SetActive(false);
++        PostActivate(old, false);
++    }
++    if ( tlw )
++    {
++        tlw->SetActive(true);
++        PostActivate(tlw, true);
++    }
++}
++
 +// Where the keyboard was before each shown window took it (given back when that window hides).
 +static std::map<wxTopLevelWindowWasm *, wxWeakRef<wxWindow> > gs_focusBeforeShow;
 +static bool gs_showWithoutActivating = false;
@@ -26484,6 +26546,8 @@ index 0000000..b24ad93
 +
 +    if ( show )
 +    {
++        if ( !gs_showWithoutActivating )
++            Activate(this);   // z48
 +        if ( !gs_showWithoutActivating && !focusInside )
 +        {
 +            gs_focusBeforeShow[this] = focus;
@@ -26499,6 +26563,13 @@ index 0000000..b24ad93
 +            gs_focusBeforeShow.erase(it);
 +        if ( focusInside && back && back->IsShownOnScreen() )
 +            back->SetFocus();
++        // z48: the window the keyboard went back to is active, else the main frame
++        if ( gs_activeTopLevel.get() == this )
++        {
++            wxWindow *next = back && back->IsShownOnScreen() ? wxGetTopLevelParent(back) : wxTheApp->GetTopWindow();
++            wxTopLevelWindowWasm *tlw = dynamic_cast<wxTopLevelWindowWasm *>(next);
++            Activate(tlw && tlw != this && tlw->IsShown() ? tlw : NULL);
++        }
 +    }
 +    return true;
 +}
@@ -26876,7 +26947,7 @@ index 0000000..00425d4
 +#endif
 diff --git a/src/wasm/webview_wasm.cpp b/src/wasm/webview_wasm.cpp
 new file mode 100644
-index 0000000..05b5411
+index 0000000..8050afc
 --- /dev/null
 +++ b/src/wasm/webview_wasm.cpp
 @@ -0,0 +1,310 @@
@@ -26937,8 +27008,8 @@ index 0000000..05b5411
 +    void  wxpage_wv_load(int id, const char *url, const char *user, const char *password);
 +    void  wxpage_wv_set_html(int id, const char *html);
 +    void  wxpage_wv_reload(int id);
-+    // The value of the script as text (malloc'd on the page, freed here), or 0 if it threw or there is no page
-+    char *wxpage_wv_run(int id, const char *js);
++    // The value of the script as text (malloc'd on the page, freed here), or 0 if it threw or there is no page; want 0: run as the page's own task, value not kept
++    char *wxpage_wv_run(int id, const char *js, int want);
 +    void  wxpage_wv_handler(int id, const char *name, int add);
 +    void  wxpage_wv_user_script(int id, const char *js);   // js == NULL removes them all
 +    void  wxpage_wv_user_agent(int id, const char *ua);
@@ -27123,7 +27194,7 @@ index 0000000..05b5411
 +
 +bool wxWebViewWasm::RunScript(const wxString& javascript, wxString* output) const
 +{
-+    char *result = wxpage_wv_run(m_elementId, javascript.utf8_str());
++    char *result = wxpage_wv_run(m_elementId, javascript.utf8_str(), output != nullptr);
 +    if (!result)
 +        return false;
 +    if (output)
@@ -27192,10 +27263,10 @@ index 0000000..05b5411
 +#endif // wxUSE_WEBVIEW && __WXWASM__
 diff --git a/src/wasm/window.cpp b/src/wasm/window.cpp
 new file mode 100644
-index 0000000..f4aa19d
+index 0000000..a8d2d47
 --- /dev/null
 +++ b/src/wasm/window.cpp
-@@ -0,0 +1,844 @@
+@@ -0,0 +1,854 @@
 +/////////////////////////////////////////////////////////////////////////////
 +// Name:        wx/wasm/window.cpp
 +// Purpose:     wxWasmWindow implementation
@@ -27215,6 +27286,12 @@ index 0000000..f4aa19d
 +#include "wx/log.h"
 +#include "wx/menu.h"
 +#include "wx/nonownedwnd.h"
++#include "wx/notebook.h"
++#include "wx/statbox.h"
++#include "wx/toplevel.h"
++#include "wx/notebook.h"
++#include "wx/statbox.h"
++#include "wx/toplevel.h"
 +#include "wx/notebook.h"
 +#include "wx/statbox.h"
 +#include "wx/wasm/private/display.h"
@@ -27441,6 +27518,10 @@ index 0000000..f4aa19d
 +    }
 +
 +    gs_focusWindow = this;
++
++    // z48: the top-level window holding the keyboard is the active one (a popup's focus leaves it as it is)
++    if ( wxTopLevelWindowWasm *tlw = dynamic_cast<wxTopLevelWindowWasm *>(wxGetTopLevelParent(static_cast<wxWindow*>(this))) )
++        wxTopLevelWindowWasm::Activate(tlw);
 +
 +    wxChildFocusEvent eventFocus(static_cast<wxWindow*>(this));
 +    HandleWindowEvent(eventFocus);

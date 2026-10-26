@@ -55,8 +55,8 @@ extern "C" {
     void  wxpage_wv_load(int id, const char *url, const char *user, const char *password);
     void  wxpage_wv_set_html(int id, const char *html);
     void  wxpage_wv_reload(int id);
-    // The value of the script as text (malloc'd on the page, freed here), or 0 if it threw or there is no page
-    char *wxpage_wv_run(int id, const char *js);
+    // The value of the script as text (malloc'd on the page, freed here), or 0 if it threw or there is no page; want 0: run as the page's own task, value not kept
+    char *wxpage_wv_run(int id, const char *js, int want);
     void  wxpage_wv_handler(int id, const char *name, int add);
     void  wxpage_wv_user_script(int id, const char *js);   // js == NULL removes them all
     void  wxpage_wv_user_agent(int id, const char *ua);
@@ -241,7 +241,7 @@ void wxWebViewWasm::Reload(wxWebViewReloadFlags WXUNUSED(flags))
 
 bool wxWebViewWasm::RunScript(const wxString& javascript, wxString* output) const
 {
-    char *result = wxpage_wv_run(m_elementId, javascript.utf8_str());
+    char *result = wxpage_wv_run(m_elementId, javascript.utf8_str(), output != nullptr);
     if (!result)
         return false;
     if (output)
