@@ -284,6 +284,10 @@
         if (v.behind) {
           notice('Saved as version ' + v.number + ' of ' + name + '. ' + (v.newer_mine ? 'You saved version ' + v.newer_number + ' from another tab'
             : (v.newer_by || 'Someone') + ' saved version ' + v.newer_number) + ' while you worked; it is kept in the project.', 'refused');
+        } else if (v.caught_up) {
+          // Made from an older version, and those very bytes were saved meanwhile: nothing new to keep, said so.
+          notice(name + ' is the same as version ' + v.newer_number + (v.newer_mine ? ', which you saved from another tab'
+            : ', which ' + (v.newer_by || 'someone') + ' saved') + '. Nothing new to keep.', 'info');
         } else if (waited) notice(name + ' is in your project now (version ' + v.number + ').', 'info');
         if (!e.part || e.linked) return;
         return ask('link', e.partVersion ? { from: v.version, to: e.partVersion } : { from: v.version, part: e.part }).then(function (l) {

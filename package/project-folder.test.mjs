@@ -46,6 +46,13 @@ function makeDoor() {
         let file = b.file;
         if (!file) { file = Object.values(d.files).find((f) => f.project === b.project && f.path === b.path)?.id; if (!file) { file = uuid(); d.files[file] = { id: file, project: b.project, path: b.path }; } }
         const top = d.files[file].newest;
+        // The server's rule (file_version_add): the newest version's bytes again make no new version; made from an
+        // older one, the answer says whose they are.
+        if (top && d.versions[top].sha256 === b.sha256) {
+          const n = d.versions[top], caught = !!b.parent && b.parent !== top;
+          return { ok: true, file, version: top, number: n.number, behind: false, same: true, caught_up: caught,
+            ...(caught ? { newer_number: n.number, newer_by: d.savedBy || null, newer_mine: !d.savedBy } : {}) };
+        }
         const behind = !!top && b.parent !== top;
         const z = d.blobs[b.sha256], v = d.addVersion(file, zlib.gunzipSync(z), b.parent);
         const newer = behind ? d.versions[top] : null;
@@ -257,6 +264,20 @@ test('someone saved in between: both kept, this one newest, and the notice says 
   t.write('/home/web_user/Projects/Lamp/plate.3mf', 'mine'); await t.settle();
   assert.equal(Object.values(door.versions).filter((v) => v.file === f).length, 3, 'v1, theirs, mine');
   assert.ok(t.notices.some((n) => /Saved as version 3 of plate\.3mf\. Ana saved version 2 while you worked/.test(n)), t.notices.join(' | '));
+});
+
+test('the same board another tab saved meanwhile: no new version, the notice says so, the next save follows it', async () => {
+  const door = makeDoor(), p = door.addProject('Lamp');
+  const f = door.addFile(p, 'lamp.kicad_pcb', enc('one'));
+  const t = await tab({ door, search: `?project=${p}` });
+  door.addVersion(f, enc('turned'), door.files[f].newest);   // the other tab's Ctrl+S: version 2
+  t.write('/home/web_user/Projects/Lamp/lamp.kicad_pcb', 'turned'); await t.settle();
+  assert.equal(Object.values(door.versions).filter((v) => v.file === f).length, 2, 'no version 3');
+  assert.ok(t.notices.some((n) => /lamp\.kicad_pcb is the same as version 2, which you saved from another tab\. Nothing new to keep\./.test(n)), t.notices.join(' | '));
+  t.write('/home/web_user/Projects/Lamp/lamp.kicad_pcb', 'turned twice'); await t.settle();
+  const v3 = Object.values(door.versions).find((v) => v.file === f && v.number === 3);
+  assert.equal(v3.parent, Object.values(door.versions).find((v) => v.file === f && v.number === 2).id, 'made from version 2');
+  assert.ok(!t.notices.some((n) => /while you worked/.test(n)), 'not behind: ' + t.notices.join(' | '));
 });
 
 test('a refused save (view only): said in the account\'s words, not tried again', async () => {
