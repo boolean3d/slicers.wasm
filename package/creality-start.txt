@@ -1,0 +1,19 @@
+# Creality Print: the files in the start download (crealityprint.data), read by package.mjs --start. Paths under resources/.
+# Everything else is fetched the first time the program reads it (install-and-lazy-load.js). Same head as orca-start.txt
+# (no traced section yet: start-list.mjs from a walk log adds one).
+# The vendor presets bundle: every vendor file in one, read by the first thread that needs presets.
+!b3d-bundle/*
+profiles/**/*.json
+profiles/**/*.py
+profiles/**/*.svg
+profiles_template/**
+printers/**
+shaders/**
+data/**
+info/**
+dailytip/**
+cert/**
+i18n/**
+# the interface font
+fonts/HarmonyOS_Sans_SC_Bold.ttf
+fonts/HarmonyOS_Sans_SC_Regular.ttf
