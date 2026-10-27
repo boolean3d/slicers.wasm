@@ -16,6 +16,13 @@
         'Open source under the GNU AGPL-3.0. Running in your browser.',
         'This browser copy is not made or endorsed by the OrcaSlicer team.'],
     },
+    creality: {
+      name: 'Creality Print',
+      lines: ['Made by Creality. Based on OrcaSlicer by SoftFever, Bambu Studio by Bambu Lab and PrusaSlicer by Prusa Research.',
+        'Open source under the GNU AGPL-3.0. Running in your browser.',
+        "Creality's closed add-ons are not included.",
+        'Unofficial build, not endorsed by Creality.'],
+    },
     prusa: {
       name: 'PrusaSlicer',
       lines: ['Made by Prusa Research. Based on Slic3r by Alessandro Ranellucci and the RepRap community.',
