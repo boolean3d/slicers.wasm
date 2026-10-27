@@ -319,3 +319,13 @@ test('KiCad: a STEP exported beside the board is linked made from the board vers
   await t2.settle();
   assert.equal(door.links.length, 2);
 });
+
+test('Anycubic Slicer Next saves under its own name: the project page says "Opens in Anycubic Slicer Next", not OrcaSlicer', async () => {
+  const door = makeDoor(), p = door.addProject('Lamp');
+  door.addFile(p, 'plate.3mf', enc('one'));
+  const t = await tab({ door, search: `?project=${p}`, app: '/anycubic/2.3.1/' });
+  const abs = '/home/web_user/Projects/Lamp/plate.3mf';
+  t.write(abs + '.tmp', 'two'); t.FS.rename(abs + '.tmp', abs);
+  await t.settle();
+  assert.equal(saves(door)[0]?.tool, 'anycubic');
+});
