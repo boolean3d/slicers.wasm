@@ -79,7 +79,10 @@ function makeDoor() {
         const [id, p] = Object.entries(d.parts).find(([, q]) => q.versions.includes(l.to));
         const pinned = p.versions.indexOf(l.to) + 1;
         return { id: l.id, role: 'made_from', from_file: b.file, from_version: l.from, to_file: id, to_version: l.to, pinned_number: pinned,
-          newest_number: p.versions.length, to_name: p.name, to_kind: p.kind || 'part', update_available: p.versions.length > pinned };
+          newest_number: p.versions.length, to_name: p.name, to_kind: p.kind || 'part', update_available: p.versions.length > pinned,
+          // Where the part's newest 3MF stands (door.mjs newestFile); an older door (d.oldDoor) does not say.
+          ...(d.oldDoor || p.versions.length <= pinned ? {} : { newest_file: p.refused?.code === 'not_made' ? 'not_made'
+            : (p.baked ?? p.versions.length) >= p.versions.length ? 'ready' : 'making' }) };
       }) };
       default: return { ok: false, error: 'no call ' + op };
     }
@@ -381,8 +384,34 @@ test('a slicer file made from a part saved since: offered, Update puts the part\
   assert.equal(t.P.offer(), null, 'up to date');
 });
 
-test('the part\'s file not made from the newest save yet (or not made): Update puts nothing on the path, says so, offers again', async () => {
+test('the part\'s newer version still being made: the bar says so (no Update), asks again, and offers Update once it is made', async () => {
   const door = makeDoor(), p = door.addProject('My files');
+  const part = uuid(), v1 = uuid(), v2 = uuid();
+  door.parts = { [part]: { name: 'Box', versions: [v1], bytes: enc('box v1') } }; door.followVersions = true;
+  const t = await tab({ door });
+  const abs = '/home/web_user/Uploads/Box.3mf';
+  await t.P.part(abs, { part, version: v1, project: p, projectName: 'My files' }, enc('box v1'));
+  t.FS.open(abs, 'r');
+  t.write(abs, 'plate'); await t.settle();
+  // Saved as version 2 in Boolean3d; its file is still version 1's (the bake comes a few seconds later).
+  door.parts[part].versions.push(v2); door.parts[part].baked = 1;
+  await t.P.check();
+  assert.deepEqual([t.P.offer().name, t.P.offer().number, t.P.offer().step, t.P.offer().update], ['Box', 2, 'making', undefined]);
+  // Made: the next ask (a few seconds later) turns it into the Update.
+  door.parts[part].baked = 2; door.parts[part].bytes = enc('box v2');
+  await new Promise((r) => setTimeout(r, 5300)); await t.settle();
+  assert.equal(t.P.offer().step, 'offer');
+  await t.P.offer().update();
+  assert.equal(dec(t.files.get(abs)), 'box v2');
+  // Could not be made: said, no Update.
+  door.parts[part].versions.push(uuid()); door.parts[part].refused = { code: 'not_made', error: 'x' };
+  t.FS.open(abs, 'r'); t.write(abs, 'plate 2'); await t.settle();
+  await t.P.check();
+  assert.equal(t.P.offer().step, 'not_made');
+});
+
+test('an older door that does not say whether the file is made: Update of a version not made puts nothing on the path, says so, offers again', async () => {
+  const door = makeDoor(), p = door.addProject('My files'); door.oldDoor = true;
   const part = uuid(), v1 = uuid(), v2 = uuid();
   door.parts = { [part]: { name: 'Box', versions: [v1], bytes: enc('box v1') } }; door.followVersions = true;
   const t = await tab({ door });

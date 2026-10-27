@@ -34,7 +34,9 @@
 // A slicer file made from a CAD part (its made_from link) whose part was saved since: the file the program last read
 // is asked about at the start, when the tab comes back to the front and every minute (the door's links call, the
 // file_link_state view's update_available). The workspace bar (workspace-bar.js) shows it: the window event
-// 'b3d-part-update' carries {name, number, step: 'offer' | 'fetching' | 'reload', update()} or null. Update fetches
+// 'b3d-part-update' carries {name, number, step: 'making' | 'not_made' | 'offer' | 'fetching' | 'reload', update()} or
+// null; 'making': the part's 3MF of that version is still being made in Boolean3d (asked again every few seconds),
+// 'not_made': it could not be made; Update is offered only once it is made. Update fetches
 // the part's newest 3MF (the door's part call) onto the file's path; the program's own right-click > Reload from disk
 // reads it from there and swaps the mesh, keeping the plate and every setting. That read makes the file "made from"
 // that part version: its next save links to it (and the save is the person's, as any other).
@@ -379,6 +381,8 @@
   var pending = {};     // path -> {part, version, number, name}: the part's new 3MF is at the path, the Reload not yet read it
   var shown = null;
   var asked = 0;        // counts Updates and Reloads: an answer to a check started before one is dropped
+  var soonCheck = null; // while the part's newer version is being made, the next ask
+  var MAKING_MS = 5000;
   var PARTS = { part: 1, sheetmetal: 1, assembly: 1, upload: 1 };   // what the door's part call serves (door.mjs DISK_KINDS)
   function tell(s) {
     shown = s;
@@ -412,6 +416,13 @@
         && !(plate && plate.part === l.to_file && l.newest_number <= plate.number); })
         .sort(function (x, y) { return y.newest_number - x.newest_number; })[0];
       if (!newer) { tell(null); return; }
+      // The part's 3MF is made a few seconds after its save in Boolean3d (the door's newest_file): until it is, the bar
+      // says so and asks again shortly, and Update appears once there is the version to take.
+      if (newer.newest_file === 'making' || newer.newest_file === 'not_made') {
+        tell({ name: newer.to_name, number: newer.newest_number, step: newer.newest_file === 'making' ? 'making' : 'not_made' });
+        if (newer.newest_file === 'making' && !soonCheck) soonCheck = setTimeout(function () { soonCheck = null; check(); }, MAKING_MS);
+        return;
+      }
       var offer = { name: newer.to_name, number: newer.newest_number, step: 'offer' };
       offer.update = function () { return update(abs, newer, offer); };
       tell(offer);

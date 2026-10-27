@@ -87,10 +87,13 @@
   function showUpdate(o) {
     offer = o;
     if (!o) { upd.style.display = 'none'; return; }
-    updWords.textContent = o.step === 'fetching' ? 'Fetching ' + o.name + ' version ' + o.number + '…'
+    updWords.textContent = o.step === 'making' ? o.name + ' v' + o.number + ' is being made…'
+      : o.step === 'not_made' ? o.name + ' v' + o.number + ' could not be made: open it in Boolean3d and save it again'
+      : o.step === 'fetching' ? 'Fetching ' + o.name + ' version ' + o.number + '…'
       : o.step === 'reload' ? o.name + ' version ' + o.number + ' is ready: right-click the part, Reload from disk'
       : o.name + ' has a newer version (v' + o.number + ')';
     updGo.disabled = o.step !== 'offer';
+    updGo.style.display = o.step === 'making' || o.step === 'not_made' ? 'none' : '';
     upd.title = o.step === 'offer' ? 'Puts version ' + o.number + ' of ' + o.name + ' on the plate, keeping your settings' : '';
     upd.style.display = 'flex';
   }
