@@ -294,7 +294,7 @@
         if (e.file) body.file = e.file; else body.path = e.path;
         return ask('save', body);
       }).then(function (v) {
-        var waited = e.waiting;
+        var waited = e.waiting, tried = !!e.tries;
         e.file = v.file; e.version = v.version; e.sha = s; e.number = v.number; delete e.waiting; delete e.waitAbs; delete e.tries; keep();
         console.log('b3d projects: ' + e.path + ' version ' + v.number + (v.same ? ' (same bytes)' : ''));
         var name = e.path.split('/').pop();
@@ -302,6 +302,9 @@
         if (v.behind) {
           notice('Saved as version ' + v.number + ' of ' + name + '. ' + (v.newer_mine ? 'You saved version ' + v.newer_number + ' from another tab'
             : (v.newer_by || 'Someone') + ' saved version ' + v.newer_number) + ' while you worked; it is kept in the project.', 'refused');
+        } else if (v.caught_up && v.newer_mine && tried) {
+          // An earlier try of this very save reached the account and only its answer was lost: it is that version.
+          if (waited) notice(name + ' is in your project now (version ' + v.number + ').', 'info');
         } else if (v.caught_up) {
           // Made from an older version, and those very bytes were saved meanwhile: nothing new to keep, said so.
           notice(name + ' is the same as version ' + v.newer_number + (v.newer_mine ? ', which you saved from another tab'
@@ -375,6 +378,7 @@
   var current = null;   // the tracked file the program read last (the one open in it)
   var pending = {};     // path -> {part, version, number, name}: the part's new 3MF is at the path, the Reload not yet read it
   var shown = null;
+  var asked = 0;        // counts Updates and Reloads: an answer to a check started before one is dropped
   var PARTS = { part: 1, sheetmetal: 1, assembly: 1, upload: 1 };   // what the door's part call serves (door.mjs DISK_KINDS)
   function tell(s) {
     shown = s;
@@ -386,7 +390,10 @@
     if (p) {
       delete pending[abs];
       var e = reg[abs];
-      e.part = p.part; e.partVersion = p.version; e.linked = null; keep();
+      // On the plate now, before any save: the account still says the file is made from the older version until the
+      // save links it, so this part version is not offered again meanwhile.
+      e.part = p.part; e.partVersion = p.version; e.linked = null; e.onPlate = { part: p.part, number: p.number }; keep();
+      asked++;
       notice(p.name + ' is updated to version ' + p.number + ' on the plate. Save to keep it.', 'info');
       tell(null);
     }
@@ -396,10 +403,13 @@
     var abs = current, e = abs && reg[abs];
     if (!SLICER || !e || pending[abs]) return Promise.resolve();
     if (!e.file || !e.version || !linked()) { tell(null); return Promise.resolve(); }
-    var at = e.version;
+    var at = e.version, was = asked;
     return ask('links', { file: e.file }).then(function (a) {
-      if (current !== abs || e.version !== at || pending[abs]) return;
-      var newer = (a.links || []).filter(function (l) { return l.role === 'made_from' && l.from_version === at && l.update_available && PARTS[l.to_kind]; })
+      // An answer to a question asked before an Update or a Reload is old.
+      if (current !== abs || e.version !== at || pending[abs] || was !== asked) return;
+      var plate = e.onPlate;
+      var newer = (a.links || []).filter(function (l) { return l.role === 'made_from' && l.from_version === at && l.update_available && PARTS[l.to_kind]
+        && !(plate && plate.part === l.to_file && l.newest_number <= plate.number); })
         .sort(function (x, y) { return y.newest_number - x.newest_number; })[0];
       if (!newer) { tell(null); return; }
       var offer = { name: newer.to_name, number: newer.newest_number, step: 'offer' };
@@ -409,6 +419,7 @@
   }
   // Update: the part's newest 3MF onto the file's path (not a save), for the program's Reload from disk to read.
   function update(abs, l, offer) {
+    asked++;
     tell({ name: l.to_name, number: l.newest_number, step: 'fetching' });
     return Module.b3dHome.ask('part', { id: l.to_file }).then(function (r) {
       if ((r.headers.get('content-type') || '').indexOf('json') >= 0) return r.json().then(function (a) { throw new Error(a.error || 'The part could not be fetched.'); });

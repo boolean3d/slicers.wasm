@@ -99,7 +99,12 @@ async function tab({ door, search = '', storage = new Map(), opfs = new Map(), l
   const Module = { FS, preRun: [], arguments: [], deps: 0, addRunDependency() { this.deps++; }, removeRunDependency() { this.deps--; } };
   Module.b3dHome = {
     linked: () => linked,
-    ask: async (op, body) => { const a = door.answer(op, body); return a instanceof Response ? a : new Response(JSON.stringify(a)); },
+    ask: async (op, body) => {
+      const a = door.answer(op, body);
+      // door.lose = 'save': that call reaches the door, its answer never comes back (once).
+      if (door.lose === op) { door.lose = null; throw new TypeError('Failed to fetch'); }
+      return a instanceof Response ? a : new Response(JSON.stringify(a));
+    },
     beside: (u) => u,
   };
   const dir = { async getDirectoryHandle() { return dir; },
@@ -398,4 +403,42 @@ test('KiCad: no part offers (the bar\'s update is the slicers\')', async () => {
   await t.P.check();
   assert.equal(t.P.offer(), null);
   assert.equal(door.calls.filter(([op]) => op === 'links').length, 0);
+});
+
+test('after the Reload, before the save: the part version on the plate is not offered again (a check already asked, or the next one)', async () => {
+  const door = makeDoor(), p = door.addProject('My files');
+  const part = uuid(), v1 = uuid(), v2 = uuid();
+  door.parts = { [part]: { name: 'Box', versions: [v1], bytes: enc('box v1') } }; door.followVersions = true;
+  const t = await tab({ door });
+  const abs = '/home/web_user/Projects/My files/Box.3mf';
+  await t.P.part(abs, { part, version: v1, project: p, projectName: 'My files' }, enc('box v1'));
+  t.write(abs, 'box v1'); t.FS.open(abs, 'r');
+  t.write(abs, 'plate'); await t.settle();
+  door.parts[part].versions.push(v2); door.parts[part].bytes = enc('box v2');
+  await t.P.check();
+  await t.P.offer().update();
+  const asking = t.P.check();   // a minute's tick in flight
+  t.FS.open(abs, 'r');          // Reload from disk
+  await asking;
+  assert.equal(t.P.offer(), null, 'the old answer does not bring the offer back');
+  await t.P.check();
+  assert.equal(t.P.offer(), null, 'nor the next check, though the account still says v1 until the save');
+  t.write(abs, 'plate with box v2'); await t.settle();
+  assert.equal(t.P.offer(), null);
+  door.parts[part].versions.push(uuid());
+  await t.P.check();
+  assert.equal(t.P.offer().number, 3, 'a still newer version is offered');
+});
+
+test('a save whose answer was lost: tried again, it is that version, said plainly (not "saved from another tab")', async () => {
+  const door = makeDoor(), p = door.addProject('Lamp');
+  const f = door.addFile(p, 'plate.3mf', enc('one'));
+  const t = await tab({ door, search: '?project=' + p + '&open=plate.3mf' });
+  const abs = '/home/web_user/Projects/Lamp/plate.3mf';
+  door.lose = 'save';
+  t.write(abs, 'two'); await t.settle();
+  await wait(2600); await t.P.idle(); await wait(50); await t.P.idle();
+  assert.equal(Object.values(door.versions).filter((v) => v.file === f).length, 2, 'one new version');
+  assert.ok(!t.notices.some((n) => /another tab|Nothing new/.test(n)), t.notices.join('\n'));
+  assert.ok(t.notices.some((n) => /is in your project now \(version 2\)/.test(n)), t.notices.join('\n'));
 });
