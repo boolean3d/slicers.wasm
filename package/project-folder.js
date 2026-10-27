@@ -10,6 +10,9 @@
 //     goes up a moment later as a new version, its parent the version it was opened at;
 //   - a file opened from a CAD part (its 3MF) is not in a project yet: its first save makes <part>.3mf in the part's
 //     project, linked "made from" the part's version it was opened at;
+//   - KiCad's export of a board (File > Export > STEP writes <board>.step beside <board>.kicad_pcb): every version of it
+//     is linked "made from" the board's version it was written at, so the project page and the CAD app can say the board
+//     was saved since (madeFromOf);
 //   - the bytes of every version seen here are kept in the browser's private storage (OPFS), by SHA-256: a version is
 //     fetched once, and the working copies of the project folders are put back before the program starts on a reload
 //     (home-folder-sync.js leaves Projects/ to this file). A save that could not go up (offline) goes up on the next start.
@@ -289,6 +292,12 @@
           notice(name + ' is the same as version ' + v.newer_number + (v.newer_mine ? ', which you saved from another tab'
             : ', which ' + (v.newer_by || 'someone') + ' saved') + '. Nothing new to keep.', 'info');
         } else if (waited) notice(name + ' is in your project now (version ' + v.number + ').', 'info');
+        var board = madeFromOf(at);
+        if (board) {
+          return ask('link', { from: v.version, to: board.version, role: 'made_from' }).then(function () {
+            console.log('b3d projects: ' + e.path + ' made from ' + board.path + ' version ' + board.number);
+          });
+        }
         if (!e.part || e.linked) return;
         return ask('link', e.partVersion ? { from: v.version, to: e.partVersion } : { from: v.version, part: e.part }).then(function (l) {
           e.linked = l.link; keep();
@@ -315,6 +324,20 @@
       later(abs, at, Math.min(2000 * Math.pow(2, e.tries - 1), 60000));
     });
   }
+  // KiCad's 3D exports of a board: the board's entry they were written from, at its version now (the board as last saved
+  // or opened), or null. The board of the same name beside it; else the only board in that folder.
+  var EXPORT = /\.(step|stp|stpz|glb|wrl|vrml|brep|xao)$/i;
+  function madeFromOf(at) {
+    var e = reg[at];
+    if (TOOL !== 'kicad' || !e || !EXPORT.test(at)) return null;
+    var dir = at.slice(0, at.lastIndexOf('/') + 1), same = at.replace(EXPORT, '.kicad_pcb');
+    var boards = Object.keys(reg).filter(function (k) {
+      return k.indexOf(dir) === 0 && k.indexOf('/', dir.length) < 0 && /\.kicad_pcb$/i.test(k) && reg[k].version && reg[k].project === e.project;
+    });
+    var k = boards.indexOf(same) >= 0 ? same : (boards.length === 1 ? boards[0] : null);
+    return k ? reg[k] : null;
+  }
+
   // Worth trying again: no network, the server down a moment, bytes that arrived damaged or not at all, being tidied.
   var AGAIN = { network: 1, server_down: 1, busy: 1, bad_upload: 1, not_uploaded: 1, rate_limited: 1 };
   var retry = {};

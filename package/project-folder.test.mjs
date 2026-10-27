@@ -67,7 +67,7 @@ function makeDoor() {
 }
 
 /** One tab: the script run on a stand-in page, its program started (preRun done). */
-async function tab({ door, search = '', storage = new Map(), opfs = new Map(), linked = true }) {
+async function tab({ door, search = '', storage = new Map(), opfs = new Map(), linked = true, app = '/bambu/2.08/' }) {
   const files = new Map();   // path -> Uint8Array
   const notices = [];        // what the page said (no document here: the notice line logs it)
   const FS = {
@@ -99,7 +99,7 @@ async function tab({ door, search = '', storage = new Map(), opfs = new Map(), l
   const ctx = {
     Module, URLSearchParams, Response, Blob, TextEncoder, crypto: globalThis.crypto, CompressionStream, DecompressionStream,
     setTimeout, clearTimeout, setInterval, clearInterval, console: { log() {}, warn(t) { notices.push(String(t)); }, error() {} }, fetch,
-    location: { pathname: '/bambu/2.08/', search },
+    location: { pathname: app, search },
     navigator: { storage: { getDirectory: async () => dir } },
     localStorage: { getItem: (k) => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v) },
   };
@@ -291,4 +291,31 @@ test('a refused save (view only): said in the account\'s words, not tried again'
   assert.equal(door.calls.filter(([op]) => op === 'put').length, 1, 'asked once');
   assert.ok(t.notices.some((n) => /was not saved to Boolean3d: You can view this project but not change it/.test(n)));
   assert.ok(!t.notices.some((n) => /Saved on this computer/.test(n)));
+});
+
+test('KiCad: a STEP exported beside the board is linked made from the board version it was written at, every export', async () => {
+  const door = makeDoor(), p = door.addProject('Desk lamp');
+  const board = door.addFile(p, 'Electronics/lamp.kicad_pcb', enc('pcb v1'));
+  const t = await tab({ door, search: `?project=${p}`, app: '/kicad/pcbnew/' });
+  const dir = '/home/web_user/Projects/Desk lamp/Electronics/';
+  t.write(dir + 'lamp.step', 'ISO-10303-21; one');
+  await t.settle();
+  const s1 = saves(door).find((s) => s.path === 'Electronics/lamp.step');
+  assert.ok(s1, 'the STEP is a project file beside the board');
+  assert.equal(s1.tool, 'kicad');
+  assert.equal(door.links.length, 1);
+  assert.equal(door.links[0].to, door.files[board].newest, 'made from the board as opened');
+  // The board saved again, then exported again: the new STEP version is made from the new board version.
+  t.write(dir + 'lamp.kicad_pcb', 'pcb v2');
+  await t.settle();
+  const v2 = door.files[board].newest;
+  t.write(dir + 'lamp.step', 'ISO-10303-21; two');
+  await t.settle();
+  assert.equal(door.links.length, 2);
+  assert.equal(door.links[1].to, v2);
+  // A slicer's STEP is no KiCad export: no link.
+  const t2 = await tab({ door, search: `?project=${p}` });
+  t2.write(dir + 'other.step', 'ISO-10303-21; three');
+  await t2.settle();
+  assert.equal(door.links.length, 2);
 });
