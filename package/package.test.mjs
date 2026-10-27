@@ -22,7 +22,7 @@ function build() {
   // emscripten writes the package's file list as an object literal: loadPackage({files:[...],remote_package_size:N})
   fs.writeFileSync(path.join(src, 'orcaslicer.js'), 'var Module;' + REGISTER + ';loadPackage({files:' + JSON.stringify(meta.files)
     + ',remote_package_size:' + meta.remote_package_size + '});');
-  fs.writeFileSync(path.join(src, 'orcaslicer.html'), '<html><script>var Module={}</script><script async src=orcaslicer.js></script></html>');
+  fs.writeFileSync(path.join(src, 'orcaslicer.html'), '<html><head><script>var Module={}</script></head><body><script async src=orcaslicer.js></script></body></html>');
   fs.writeFileSync(path.join(src, 'orcaslicer.wasm'), Buffer.alloc(16));
   fs.writeFileSync(path.join(src, 'wxwebview-sw.js'), '// web view worker\n');
   fs.mkdirSync(path.join(src, 'resources', 'web', 'guide', '21'), { recursive: true });
