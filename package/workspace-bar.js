@@ -16,7 +16,7 @@
   var HUB_KEY = 'b3d-hub', MAKE_KEY = 'b3d-make-slicer', HEIGHT = 32;
   var q = new URLSearchParams(location.search);
   var APP = (location.pathname.split('/')[1] || '').replace(/[^\w-]/g, '');
-  var SLICERS = { bambu: 'Bambu Studio', orca: 'OrcaSlicer', prusa: 'PrusaSlicer' };
+  var SLICERS = { bambu: 'Bambu Studio', orca: 'OrcaSlicer', prusa: 'PrusaSlicer', elegoo: 'ElegooSlicer' };
   var HERE = SLICERS[APP] ? 'make' : APP === 'kicad' ? 'electronics' : null;
   function get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* this tab only */ } }
