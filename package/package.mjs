@@ -28,6 +28,10 @@ import { Worker, isMainThread, parentPort, workerData } from 'node:worker_thread
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+// Our scripts on every program page, in the order the page loads them (before the program's own script): each is a file of
+// this folder, kept in the program's data file as a start file and loaded by index.html.
+export const PAGE_SCRIPTS = ['credit.js', 'home-folder-sync.js', 'project-folder.js', 'boolean3d-folder.js', 'open-part-from-link.js',
+  'workspace-bar.js', 'print-anywhere.js'];
 
 // Every response from the slicer host. Threads need SharedArrayBuffer, which needs cross-origin isolation.
 const HEADERS = {
@@ -95,12 +99,7 @@ async function main() {
   const pageFile = path.join(stage, 'index.html');
   fs.writeFileSync(pageFile, '');
   add('index.html', pageFile, NEVER);
-  add('credit.js', path.join(HERE, 'credit.js'));
-  add('home-folder-sync.js', path.join(HERE, 'home-folder-sync.js'));
-  add('boolean3d-folder.js', path.join(HERE, 'boolean3d-folder.js'));
-  add('project-folder.js', path.join(HERE, 'project-folder.js'));
-  add('open-part-from-link.js', path.join(HERE, 'open-part-from-link.js'));
-  add('workspace-bar.js', path.join(HERE, 'workspace-bar.js'));
+  for (const name of PAGE_SCRIPTS) add(name, path.join(HERE, name));
   add(PROGRAM + '.wasm', path.join(src, PROGRAM + '.wasm'));
   // The web view's service worker must revalidate (a browser keeps an installed worker otherwise). It is served from
   // the app folder, not the version folder: the port registers it beside the page with scope "./", which in a version
@@ -117,7 +116,7 @@ async function main() {
   if (a.start) {
     // Lazy loading: the program's data file keeps the start files only; every other file is its own object, fetched when read.
     const split = splitData(src, PROGRAM, path.resolve(a.start), a.app, a.version,
-      ['credit.js', 'home-folder-sync.js', 'project-folder.js', 'boolean3d-folder.js', 'open-part-from-link.js', 'workspace-bar.js', 'files.js', 'install-and-lazy-load.js'], stageFile, stage);
+      [...PAGE_SCRIPTS, 'files.js', 'install-and-lazy-load.js'], stageFile, stage);
     add(PROGRAM + '.js', stageFile(PROGRAM + '.js', upOne(fs.readFileSync(split.js, 'utf8'))));
     add(PROGRAM + '.data', split.data);
     add('files.js', split.listFile);
@@ -222,8 +221,8 @@ async function main() {
     const inst = files.filter(f => (!f.top || f.rel.startsWith('resources/')) && !['index.html', 'files.js'].includes(f.rel));
     page.installRaw = inst.reduce((s, f) => s + f.raw, 0); page.installSent = inst.reduce((s, f) => s + (f.stored ?? f.raw), 0);
   }
-  const inject = '<script>window.SLICER_PAGE=' + JSON.stringify(page) + '</script><script src=credit.js></script>'
-    + '<script src=home-folder-sync.js></script><script src=project-folder.js></script><script src=boolean3d-folder.js></script><script src=open-part-from-link.js></script><script src=workspace-bar.js></script>' + inject2;
+  const inject = '<script>window.SLICER_PAGE=' + JSON.stringify(page) + '</script>'
+    + PAGE_SCRIPTS.map(name => '<script src=' + name + '></script>').join('') + inject2;
   // With an install (install-and-lazy-load.js) the page does not load the program's script itself: install-and-lazy-load.js does, once the program is in the browser.
   const pageHtml = fileList ? html.replace(tag + '</script>', inject) : html.replace(tag, inject + tag);
   if (pageHtml.split('</head>').length !== 2) throw new Error(PROGRAM + '.html: no single "</head>"');
@@ -253,7 +252,7 @@ async function main() {
   fs.rmSync(stage, { recursive: true, force: true });
 
   const sum = (pick) => files.filter(pick).reduce((s, f) => s + f.stored, 0);
-  const first = sum(f => ['index.html', 'credit.js', 'home-folder-sync.js', 'project-folder.js', 'boolean3d-folder.js', 'open-part-from-link.js', 'workspace-bar.js', 'files.js', 'install-and-lazy-load.js', PROGRAM + '.js', PROGRAM + '.wasm', PROGRAM + '.data',
+  const first = sum(f => ['index.html', ...PAGE_SCRIPTS, 'files.js', 'install-and-lazy-load.js', PROGRAM + '.js', PROGRAM + '.wasm', PROGRAM + '.data',
     'wxwebview-sw.js'].includes(f.rel));
   console.log(`${a.app} ${a.version}: ${files.length} files, ${(sum(() => true) / 1e6).toFixed(1)} MB stored, `
     + `first visit ${(first / 1e6).toFixed(1)} MB (raw ${(files.filter(f => !f.rel.startsWith('resources/')).reduce((s, f) => s + f.raw, 0) / 1e6).toFixed(1)} MB)`);
