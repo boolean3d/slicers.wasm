@@ -33,7 +33,7 @@
   if (typeof Module === 'undefined') return;   // loaded by the tests, not by a program page
   var HOME = '/home/web_user', ROOT = HOME + '/Projects', DOWNLOADS = HOME + '/Downloads';
   var APP = (location.pathname.split('/')[1] || 'tool').replace(/[^\w-]/g, '');
-  var TOOL = { bambu: 'bambu', orca: 'orca', prusa: 'prusa', kicad: 'kicad', elegoo: 'orca' }[APP] || null;   // ElegooSlicer: an Orca 3MF
+  var TOOL = { bambu: 'bambu', orca: 'orca', prusa: 'prusa', kicad: 'kicad', elegoo: 'elegoo' }[APP] || null;   // ElegooSlicer saves under its own name (Boolean3d public.tools 'elegoo')
   var REG = 'b3d-projects-' + APP;
   // Not versions: the programs' own lock, backup, autosave, cache and temporary files (KiCad: *.lck, *-backups/,
   // _autosave-*, fp-info-cache, ~ files, *.kicad_prl = this computer's window settings, .history/ = its local history,
