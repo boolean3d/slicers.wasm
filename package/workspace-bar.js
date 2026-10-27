@@ -25,6 +25,9 @@
   if (hubParam && /^https?:\/\/[^/]+\/?$/.test(hubParam)) set(HUB_KEY, hubParam.replace(/\/*$/, '/'));
   var HUB = get(HUB_KEY) || 'https://boolean3d.com/';
   if (SLICERS[APP]) set(MAKE_KEY, APP);
+  // ?desktop=1: opened from Boolean3d's desktop (its switch desktopHome): the bar shows a Home button back to it (Home's address is still #/desktop).
+  var DESKTOP_KEY = 'b3d-desktop';
+  if (q.get('desktop') === '1') set(DESKTOP_KEY, '1');
   var project = q.get('project') || null;
   var projectName = null, files = null;
 
@@ -65,6 +68,13 @@
     links[t[0]] = a; nav.appendChild(a);
   });
   var end = document.createElement('div'); end.className = 'end';
+  if (get(DESKTOP_KEY) === '1') {
+    var desk = document.createElement('a'); desk.className = 'desktop'; desk.textContent = 'Home';
+    desk.setAttribute('data-testid', 'b3d-bar-desktop'); desk.target = 'b3d-desktop'; desk.rel = 'opener';
+    desk.href = HUB + '#/desktop';
+    end.style.cssText = 'display:flex;justify-content:flex-end';
+    end.appendChild(desk);
+  }
   bar.appendChild(where); bar.appendChild(nav); bar.appendChild(end);
 
   function hubPage() { return HUB + (project ? '#/files/' + encodeURIComponent(project) : '#/files'); }
