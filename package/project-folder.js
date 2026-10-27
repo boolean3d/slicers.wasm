@@ -423,15 +423,19 @@
     tell({ name: l.to_name, number: l.newest_number, step: 'fetching' });
     return Module.b3dHome.ask('part', { id: l.to_file }).then(function (r) {
       if ((r.headers.get('content-type') || '').indexOf('json') >= 0) return r.json().then(function (a) { throw new Error(a.error || 'The part could not be fetched.'); });
-      if (!r.ok) throw new Error('The part could not be fetched (' + r.status + ').');
-      var made = r.headers.get('x-b3d-version');
+      if (!r.ok) throw new Error(l.to_name + ' version ' + l.newest_number + ' was not fetched (' + r.status + ').');
+      var made = r.headers.get('x-b3d-version'), number = +r.headers.get('x-b3d-number') || 0;
+      // The part's file is made a few seconds after its save in Boolean3d: until then the door has the version
+      // before (or none known). Those bytes are not the version offered, so they do not go on the path.
+      if (!made || number < l.newest_number) throw new Error(l.to_name + ' version ' + l.newest_number + ' is not ready here yet: its file is made a few seconds after the save in Boolean3d. Try Update again in a moment. If this stays, open the part in Boolean3d and save it again.');
       return r.arrayBuffer().then(function (b) {
         put(abs, new Uint8Array(b));
-        pending[abs] = { part: l.to_file, version: made || null, number: l.newest_number, name: l.to_name };
+        pending[abs] = { part: l.to_file, version: made, number: number, name: l.to_name };
         tell({ name: l.to_name, number: l.newest_number, step: 'reload' });
       });
-    }, function (e) { throw new Error('The part could not be reached (' + (e && e.message || e) + ').'); }).catch(function (err) {
-      notice(l.to_name + ' version ' + l.newest_number + ' was not fetched: ' + err.message, 'refused');
+    }, function (e) { throw new Error(l.to_name + ' version ' + l.newest_number + ' was not fetched: the part could not be reached (' + (e && e.message || e) + ').'); }).catch(function (err) {
+      // The door's own words (being made, could not be made, not yours): they name the part and what to do.
+      notice(err.message, 'refused');
       tell(offer);
     });
   }
