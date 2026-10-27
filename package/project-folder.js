@@ -175,14 +175,14 @@
       return files.reduce(function (p, f) {
         return p.then(function () {
           var abs = dir + '/' + f.path, e = reg[abs];
-          if (e && e.file === f.id && e.version === f.version && read(abs)) return;
+          if (e && e.file === f.id && e.version === f.version && read(abs)) { e.number = f.number; return; }
           if (e && e.file === f.id && e.here && e.here !== e.sha) {
             console.log('b3d projects: ' + f.path + ' changed here and in the project; this browser\'s goes up as the newer version');
             return;
           }
           return versionBytes(f.version, f.sha256).then(function (data) {
             put(abs, data);
-            reg[abs] = { project: a.project.id, projectName: a.project.name, file: f.id, path: f.path, version: f.version, sha: f.sha256, here: f.sha256 };
+            reg[abs] = { project: a.project.id, projectName: a.project.name, file: f.id, path: f.path, version: f.version, number: f.number, sha: f.sha256, here: f.sha256 };
             console.log('b3d projects: ' + f.path + ' version ' + f.number + ', ' + data.length + ' bytes');
           });
         }).catch(function (err) { console.error('b3d projects: ' + f.path + ': ' + err.message); });
