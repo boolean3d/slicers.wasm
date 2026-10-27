@@ -55,11 +55,35 @@ function makeDoor() {
         }
         const behind = !!top && b.parent !== top;
         const z = d.blobs[b.sha256], v = d.addVersion(file, zlib.gunzipSync(z), b.parent);
+        // A new version starts with its parent's made_from links (migration links_follow_versions; d.followVersions).
+        if (d.followVersions) d.links.filter((l) => l.from === b.parent).forEach((l) => d.links.push({ ...l, id: uuid(), from: v.id }));
         const newer = behind ? d.versions[top] : null;
         return { ok: true, file, version: v.id, number: v.number, behind, same: false,
           ...(newer ? { newer_number: newer.number, newer_by: d.savedBy || null, newer_mine: !d.savedBy } : {}) };
       }
-      case 'link': { const id = uuid(); d.links.push({ id, from: b.from, to: b.to, part: b.part }); return { ok: true, link: id, to: b.to, pinned: 4 }; }
+      case 'link': { const id = uuid();
+        // One link per source part (file_link_add): the inherited one to an older version of the part goes.
+        const src = (t) => d.parts && Object.keys(d.parts).find((k) => d.parts[k].versions.includes(t));
+        if (b.to && src(b.to)) d.links = d.links.filter((l) => !(l.from === b.from && src(l.to) === src(b.to)));
+        d.links.push({ id, from: b.from, to: b.to, part: b.part }); return { ok: true, link: id, to: b.to, pinned: 4 }; }
+      // A CAD part (d.parts[id] = {name, kind, versions: [version id, ...] oldest first, bytes, baked}): its stored 3MF,
+      // of version `baked` (its number; default the newest: the bake runs after the save), or the door's refusal
+      // (`refused`: {code, error}); and the file_link_state rows of a file's versions.
+      case 'part': {
+        const p = d.parts[b.id];
+        if (p.refused) return new Response(JSON.stringify({ ok: false, ...p.refused }), { status: 409, headers: { 'content-type': 'application/json' } });
+        const n = p.baked ?? p.versions.length;
+        return new Response(p.bytes, { headers: { 'content-type': 'model/3mf', 'x-b3d-version': p.versions[n - 1], 'x-b3d-number': String(n) } });
+      }
+      case 'links': return { ok: true, links: d.links.filter((l) => d.versions[l.from]?.file === b.file).map((l) => {
+        const [id, p] = Object.entries(d.parts).find(([, q]) => q.versions.includes(l.to));
+        const pinned = p.versions.indexOf(l.to) + 1;
+        return { id: l.id, role: 'made_from', from_file: b.file, from_version: l.from, to_file: id, to_version: l.to, pinned_number: pinned,
+          newest_number: p.versions.length, to_name: p.name, to_kind: p.kind || 'part', update_available: p.versions.length > pinned,
+          // Where the part's newest 3MF stands (door.mjs newestFile); an older door (d.oldDoor) does not say.
+          ...(d.oldDoor || p.versions.length <= pinned ? {} : { newest_file: p.refused?.code === 'not_made' ? 'not_made'
+            : (p.baked ?? p.versions.length) >= p.versions.length ? 'ready' : 'making' }) };
+      }) };
       default: return { ok: false, error: 'no call ' + op };
     }
   };
@@ -81,7 +105,12 @@ async function tab({ door, search = '', storage = new Map(), opfs = new Map(), l
   const Module = { FS, preRun: [], arguments: [], deps: 0, addRunDependency() { this.deps++; }, removeRunDependency() { this.deps--; } };
   Module.b3dHome = {
     linked: () => linked,
-    ask: async (op, body) => new Response(JSON.stringify(door.answer(op, body))),
+    ask: async (op, body) => {
+      const a = door.answer(op, body);
+      // door.lose = 'save': that call reaches the door, its answer never comes back (once).
+      if (door.lose === op) { door.lose = null; throw new TypeError('Failed to fetch'); }
+      return a instanceof Response ? a : new Response(JSON.stringify(a));
+    },
     beside: (u) => u,
   };
   const dir = { async getDirectoryHandle() { return dir; },
@@ -318,4 +347,158 @@ test('KiCad: a STEP exported beside the board is linked made from the board vers
   t2.write(dir + 'other.step', 'ISO-10303-21; three');
   await t2.settle();
   assert.equal(door.links.length, 2);
+});
+
+test('a slicer file made from a part saved since: offered, Update puts the part\'s new 3MF on the path, the Reload makes it made from that version', async () => {
+  const door = makeDoor(), p = door.addProject('My files');
+  const part = uuid(), v1 = uuid(), v2 = uuid();
+  door.parts = { [part]: { name: 'Box', versions: [v1], bytes: enc('box v1') } }; door.followVersions = true;
+  const t = await tab({ door });
+  const abs = '/home/web_user/Uploads/Box.3mf';
+  await t.P.part(abs, { part, version: v1, project: p, projectName: 'My files' }, enc('box v1'));
+  t.write(abs, 'box v1');
+  t.FS.open(abs, 'r');   // the program opens it
+  t.write(abs, 'plate, layer 0.12'); await t.settle();
+  assert.equal(saves(door).length, 1);
+  await t.P.check();
+  assert.equal(t.P.offer(), null, 'the part not saved since: nothing offered');
+
+  door.parts[part].versions.push(v2); door.parts[part].bytes = enc('box v2');
+  await t.P.check();
+  assert.deepEqual([t.P.offer().name, t.P.offer().number, t.P.offer().step], ['Box', 2, 'offer']);
+  // The program writing first (its own save) leaves the offer as it is.
+  await t.P.offer().update();
+  assert.equal(dec(t.files.get(abs)), 'box v2', 'the part\'s new 3MF at the file\'s path');
+  assert.equal(t.P.offer().step, 'reload');
+  await t.settle();
+  assert.equal(saves(door).length, 1, 'fetching the part is not a save');
+
+  t.FS.open(abs, 'r');   // right-click > Reload from disk
+  assert.equal(t.P.offer(), null);
+  assert.ok(t.notices.some((n) => /Box is updated to version 2/.test(n)), t.notices.join('\n'));
+  t.write(abs, 'plate with box v2, layer 0.12'); await t.settle();
+  assert.equal(saves(door).length, 2);
+  const newest = Object.values(door.versions).at(-1).id;
+  assert.deepEqual(door.links.filter((l) => l.from === newest).map((l) => l.to), [v2], 'the new version made from the part\'s version 2 (the inherited link to 1 gone)');
+  await t.P.check();
+  assert.equal(t.P.offer(), null, 'up to date');
+});
+
+test('the part\'s newer version still being made: the bar says so (no Update), asks again, and offers Update once it is made', async () => {
+  const door = makeDoor(), p = door.addProject('My files');
+  const part = uuid(), v1 = uuid(), v2 = uuid();
+  door.parts = { [part]: { name: 'Box', versions: [v1], bytes: enc('box v1') } }; door.followVersions = true;
+  const t = await tab({ door });
+  const abs = '/home/web_user/Uploads/Box.3mf';
+  await t.P.part(abs, { part, version: v1, project: p, projectName: 'My files' }, enc('box v1'));
+  t.FS.open(abs, 'r');
+  t.write(abs, 'plate'); await t.settle();
+  // Saved as version 2 in Boolean3d; its file is still version 1's (the bake comes a few seconds later).
+  door.parts[part].versions.push(v2); door.parts[part].baked = 1;
+  await t.P.check();
+  assert.deepEqual([t.P.offer().name, t.P.offer().number, t.P.offer().step, t.P.offer().update], ['Box', 2, 'making', undefined]);
+  // Made: the next ask (a few seconds later) turns it into the Update.
+  door.parts[part].baked = 2; door.parts[part].bytes = enc('box v2');
+  await new Promise((r) => setTimeout(r, 5300)); await t.settle();
+  assert.equal(t.P.offer().step, 'offer');
+  await t.P.offer().update();
+  assert.equal(dec(t.files.get(abs)), 'box v2');
+  // Could not be made: said, no Update.
+  door.parts[part].versions.push(uuid()); door.parts[part].refused = { code: 'not_made', error: 'x' };
+  t.FS.open(abs, 'r'); t.write(abs, 'plate 2'); await t.settle();
+  await t.P.check();
+  assert.equal(t.P.offer().step, 'not_made');
+});
+
+test('an older door that does not say whether the file is made: Update of a version not made puts nothing on the path, says so, offers again', async () => {
+  const door = makeDoor(), p = door.addProject('My files'); door.oldDoor = true;
+  const part = uuid(), v1 = uuid(), v2 = uuid();
+  door.parts = { [part]: { name: 'Box', versions: [v1], bytes: enc('box v1') } }; door.followVersions = true;
+  const t = await tab({ door });
+  const abs = '/home/web_user/Uploads/Box.3mf';
+  await t.P.part(abs, { part, version: v1, project: p, projectName: 'My files' }, enc('box v1'));
+  t.FS.open(abs, 'r');
+  t.write(abs, 'plate'); await t.settle();
+  // Saved as version 2 in Boolean3d; its file is still version 1's (the bake comes a few seconds later).
+  door.parts[part].versions.push(v2); door.parts[part].baked = 1;
+  await t.P.check();
+  await t.P.offer().update();
+  assert.equal(dec(t.files.get(abs)), 'plate', 'version 1\'s shape is not put on the path as version 2');
+  assert.equal(t.P.offer().step, 'offer', 'offered again');
+  assert.ok(t.notices.some((n) => /Box version 2 is not ready here yet/.test(n)), t.notices.join('\n'));
+  // The bake failed: the door's own words.
+  door.parts[part].refused = { code: 'not_made', error: 'Box\'s file could not be made from its last save. Open it in Boolean3d and save it again.' };
+  await t.P.offer().update();
+  assert.equal(dec(t.files.get(abs)), 'plate');
+  assert.ok(t.notices.some((n) => /Box's file could not be made from its last save/.test(n)), t.notices.join('\n'));
+  // Made: Update puts it on the path.
+  delete door.parts[part].refused; door.parts[part].baked = 2; door.parts[part].bytes = enc('box v2');
+  await t.P.offer().update();
+  assert.equal(dec(t.files.get(abs)), 'box v2');
+  assert.equal(t.P.offer().step, 'reload');
+});
+
+test('a part\'s new 3MF fetched, then the program saves before reloading: offered again, nothing linked', async () => {
+  const door = makeDoor(), p = door.addProject('My files');
+  const part = uuid(), v1 = uuid(), v2 = uuid();
+  door.parts = { [part]: { name: 'Box', versions: [v1], bytes: enc('box v1') } }; door.followVersions = true;
+  const t = await tab({ door, app: '/orca/' });
+  const abs = '/home/web_user/Uploads/Box.3mf';
+  await t.P.part(abs, { part, version: v1, project: p, projectName: 'My files' }, enc('box v1'));
+  t.FS.open(abs, 'r');
+  t.write(abs, 'plate'); await t.settle();
+  door.parts[part].versions.push(v2); door.parts[part].bytes = enc('box v2');
+  await t.P.check();
+  await t.P.offer().update();
+  t.write(abs, 'plate, old box, saved'); await t.settle();
+  const newest = Object.values(door.versions).at(-1).id;
+  assert.deepEqual(door.links.filter((l) => l.from === newest).map((l) => l.to), [v1], 'still made from version 1');
+  assert.equal(t.P.offer().step, 'offer');
+});
+
+test('KiCad: no part offers (the bar\'s update is the slicers\')', async () => {
+  const door = makeDoor(), p = door.addProject('Board');
+  const t = await tab({ door, app: '/kicad/' });
+  assert.equal(typeof t.P.check, 'function');
+  await t.P.check();
+  assert.equal(t.P.offer(), null);
+  assert.equal(door.calls.filter(([op]) => op === 'links').length, 0);
+});
+
+test('after the Reload, before the save: the part version on the plate is not offered again (a check already asked, or the next one)', async () => {
+  const door = makeDoor(), p = door.addProject('My files');
+  const part = uuid(), v1 = uuid(), v2 = uuid();
+  door.parts = { [part]: { name: 'Box', versions: [v1], bytes: enc('box v1') } }; door.followVersions = true;
+  const t = await tab({ door });
+  const abs = '/home/web_user/Projects/My files/Box.3mf';
+  await t.P.part(abs, { part, version: v1, project: p, projectName: 'My files' }, enc('box v1'));
+  t.write(abs, 'box v1'); t.FS.open(abs, 'r');
+  t.write(abs, 'plate'); await t.settle();
+  door.parts[part].versions.push(v2); door.parts[part].bytes = enc('box v2');
+  await t.P.check();
+  await t.P.offer().update();
+  const asking = t.P.check();   // a minute's tick in flight
+  t.FS.open(abs, 'r');          // Reload from disk
+  await asking;
+  assert.equal(t.P.offer(), null, 'the old answer does not bring the offer back');
+  await t.P.check();
+  assert.equal(t.P.offer(), null, 'nor the next check, though the account still says v1 until the save');
+  t.write(abs, 'plate with box v2'); await t.settle();
+  assert.equal(t.P.offer(), null);
+  door.parts[part].versions.push(uuid());
+  await t.P.check();
+  assert.equal(t.P.offer().number, 3, 'a still newer version is offered');
+});
+
+test('a save whose answer was lost: tried again, it is that version, said plainly (not "saved from another tab")', async () => {
+  const door = makeDoor(), p = door.addProject('Lamp');
+  const f = door.addFile(p, 'plate.3mf', enc('one'));
+  const t = await tab({ door, search: '?project=' + p + '&open=plate.3mf' });
+  const abs = '/home/web_user/Projects/Lamp/plate.3mf';
+  door.lose = 'save';
+  t.write(abs, 'two'); await t.settle();
+  await wait(2600); await t.P.idle(); await wait(50); await t.P.idle();
+  assert.equal(Object.values(door.versions).filter((v) => v.file === f).length, 2, 'one new version');
+  assert.ok(!t.notices.some((n) => /another tab|Nothing new/.test(n)), t.notices.join('\n'));
+  assert.ok(t.notices.some((n) => /is in your project now \(version 2\)/.test(n)), t.notices.join('\n'));
 });

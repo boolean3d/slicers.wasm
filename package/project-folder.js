@@ -28,7 +28,18 @@
 // stays in this browser.
 //
 // Module.b3dProjects: list(), open(project) -> {dir, project, files}, file(project, file) -> {bytes, name, entry},
-//   track(path, entry), untrack(path), part(path, {part, version, project, projectName}, bytes), save(path), entries(), idle().
+//   track(path, entry), untrack(path), part(path, {part, version, project, projectName}, bytes), save(path), entries(), idle(),
+//   check() (asks now whether the open file's part has a newer version), offer() (what the bar shows, below).
+//
+// A slicer file made from a CAD part (its made_from link) whose part was saved since: the file the program last read
+// is asked about at the start, when the tab comes back to the front and every minute (the door's links call, the
+// file_link_state view's update_available). The workspace bar (workspace-bar.js) shows it: the window event
+// 'b3d-part-update' carries {name, number, step: 'making' | 'not_made' | 'offer' | 'fetching' | 'reload', update()} or
+// null; 'making': the part's 3MF of that version is still being made in Boolean3d (asked again every few seconds),
+// 'not_made': it could not be made; Update is offered only once it is made. Update fetches
+// the part's newest 3MF (the door's part call) onto the file's path; the program's own right-click > Reload from disk
+// reads it from there and swaps the mesh, keeping the plate and every setting. That read makes the file "made from"
+// that part version: its next save links to it (and the save is the person's, as any other).
 (function () {
   if (typeof Module === 'undefined') return;   // loaded by the tests, not by a program page
   var HOME = '/home/web_user', ROOT = HOME + '/Projects', DOWNLOADS = HOME + '/Downloads';
@@ -162,7 +173,8 @@
     writing++;
     try { FS.writeFile(abs, data); } finally { writing--; }
   }
-  function read(abs) { try { return Module.FS.readFile(abs); } catch (e) { return null; } }
+  var reading = 0;   // nor are our own reads the program's
+  function read(abs) { reading++; try { return Module.FS.readFile(abs); } catch (e) { return null; } finally { reading--; } }
 
   /** The person's projects (folders). */
   function list() { return ask('projects', {}).then(function (a) { return a.projects; }); }
@@ -247,8 +259,13 @@
     if (writing || typeof abs !== 'string' || SKIP.test(abs)) return;
     var at = entryOf(abs);
     if (!at) return;
+    // The program wrote the file before reading the part's new version in: that version is not in it, and is offered again.
+    if (pending[at]) { delete pending[at]; tell(null); }
     clearTimeout(timers[abs]);
-    timers[abs] = setTimeout(function () { delete timers[abs]; line = line.then(function () { return save(abs, at); }); }, QUIET);
+    timers[abs] = setTimeout(function () {
+      delete timers[abs];
+      line = line.then(function () { return save(abs, at); }).then(function () { if (at === current) return check(); });
+    }, QUIET);
   }
 
   /** The bytes at abs go up as a new version of the file `at` names (abs itself unless a Save As copy). */
@@ -279,7 +296,7 @@
         if (e.file) body.file = e.file; else body.path = e.path;
         return ask('save', body);
       }).then(function (v) {
-        var waited = e.waiting;
+        var waited = e.waiting, tried = !!e.tries;
         e.file = v.file; e.version = v.version; e.sha = s; e.number = v.number; delete e.waiting; delete e.waitAbs; delete e.tries; keep();
         console.log('b3d projects: ' + e.path + ' version ' + v.number + (v.same ? ' (same bytes)' : ''));
         var name = e.path.split('/').pop();
@@ -287,6 +304,9 @@
         if (v.behind) {
           notice('Saved as version ' + v.number + ' of ' + name + '. ' + (v.newer_mine ? 'You saved version ' + v.newer_number + ' from another tab'
             : (v.newer_by || 'Someone') + ' saved version ' + v.newer_number) + ' while you worked; it is kept in the project.', 'refused');
+        } else if (v.caught_up && v.newer_mine && tried) {
+          // An earlier try of this very save reached the account and only its answer was lost: it is that version.
+          if (waited) notice(name + ' is in your project now (version ' + v.number + ').', 'info');
         } else if (v.caught_up) {
           // Made from an older version, and those very bytes were saved meanwhile: nothing new to keep, said so.
           notice(name + ' is the same as version ' + v.newer_number + (v.newer_mine ? ', which you saved from another tab'
@@ -355,6 +375,82 @@
   }
   if (typeof addEventListener === 'function') addEventListener('online', function () { setTimeout(pendingNow, 500); });
 
+  // ── A part's newer version ───────────────────────────────────────
+  var SLICER = TOOL === 'bambu' || TOOL === 'orca' || TOOL === 'prusa';
+  var current = null;   // the tracked file the program read last (the one open in it)
+  var pending = {};     // path -> {part, version, number, name}: the part's new 3MF is at the path, the Reload not yet read it
+  var shown = null;
+  var asked = 0;        // counts Updates and Reloads: an answer to a check started before one is dropped
+  var soonCheck = null; // while the part's newer version is being made, the next ask
+  var MAKING_MS = 5000;
+  var PARTS = { part: 1, sheetmetal: 1, assembly: 1, upload: 1 };   // what the door's part call serves (door.mjs DISK_KINDS)
+  function tell(s) {
+    shown = s;
+    if (typeof dispatchEvent === 'function' && typeof CustomEvent === 'function') dispatchEvent(new CustomEvent('b3d-part-update', { detail: s }));
+  }
+  // The program opened a tracked file to read it.
+  function seen(abs) {
+    var p = pending[abs];
+    if (p) {
+      delete pending[abs];
+      var e = reg[abs];
+      // On the plate now, before any save: the account still says the file is made from the older version until the
+      // save links it, so this part version is not offered again meanwhile.
+      e.part = p.part; e.partVersion = p.version; e.linked = null; e.onPlate = { part: p.part, number: p.number }; keep();
+      asked++;
+      notice(p.name + ' is updated to version ' + p.number + ' on the plate. Save to keep it.', 'info');
+      tell(null);
+    }
+    if (current !== abs) { current = abs; check(); }
+  }
+  function check() {
+    var abs = current, e = abs && reg[abs];
+    if (!SLICER || !e || pending[abs]) return Promise.resolve();
+    if (!e.file || !e.version || !linked()) { tell(null); return Promise.resolve(); }
+    var at = e.version, was = asked;
+    return ask('links', { file: e.file }).then(function (a) {
+      // An answer to a question asked before an Update or a Reload is old.
+      if (current !== abs || e.version !== at || pending[abs] || was !== asked) return;
+      var plate = e.onPlate;
+      var newer = (a.links || []).filter(function (l) { return l.role === 'made_from' && l.from_version === at && l.update_available && PARTS[l.to_kind]
+        && !(plate && plate.part === l.to_file && l.newest_number <= plate.number); })
+        .sort(function (x, y) { return y.newest_number - x.newest_number; })[0];
+      if (!newer) { tell(null); return; }
+      // The part's 3MF is made a few seconds after its save in Boolean3d (the door's newest_file): until it is, the bar
+      // says so and asks again shortly, and Update appears once there is the version to take.
+      if (newer.newest_file === 'making' || newer.newest_file === 'not_made') {
+        tell({ name: newer.to_name, number: newer.newest_number, step: newer.newest_file === 'making' ? 'making' : 'not_made' });
+        if (newer.newest_file === 'making' && !soonCheck) soonCheck = setTimeout(function () { soonCheck = null; check(); }, MAKING_MS);
+        return;
+      }
+      var offer = { name: newer.to_name, number: newer.newest_number, step: 'offer' };
+      offer.update = function () { return update(abs, newer, offer); };
+      tell(offer);
+    }).catch(function (err) { console.warn('b3d projects: could not ask about ' + e.path + '\'s part: ' + err.message); });
+  }
+  // Update: the part's newest 3MF onto the file's path (not a save), for the program's Reload from disk to read.
+  function update(abs, l, offer) {
+    asked++;
+    tell({ name: l.to_name, number: l.newest_number, step: 'fetching' });
+    return Module.b3dHome.ask('part', { id: l.to_file }).then(function (r) {
+      if ((r.headers.get('content-type') || '').indexOf('json') >= 0) return r.json().then(function (a) { throw new Error(a.error || 'The part could not be fetched.'); });
+      if (!r.ok) throw new Error(l.to_name + ' version ' + l.newest_number + ' was not fetched (' + r.status + ').');
+      var made = r.headers.get('x-b3d-version'), number = +r.headers.get('x-b3d-number') || 0;
+      // The part's file is made a few seconds after its save in Boolean3d: until then the door has the version
+      // before (or none known). Those bytes are not the version offered, so they do not go on the path.
+      if (!made || number < l.newest_number) throw new Error(l.to_name + ' version ' + l.newest_number + ' is not ready here yet: its file is made a few seconds after the save in Boolean3d. Try Update again in a moment. If this stays, open the part in Boolean3d and save it again.');
+      return r.arrayBuffer().then(function (b) {
+        put(abs, new Uint8Array(b));
+        pending[abs] = { part: l.to_file, version: made, number: number, name: l.to_name };
+        tell({ name: l.to_name, number: l.newest_number, step: 'reload' });
+      });
+    }, function (e) { throw new Error(l.to_name + ' version ' + l.newest_number + ' was not fetched: the part could not be reached (' + (e && e.message || e) + ').'); }).catch(function (err) {
+      // The door's own words (being made, could not be made, not yours): they name the part and what to do.
+      notice(err.message, 'refused');
+      tell(offer);
+    });
+  }
+
   function watch() {
     var FS = Module.FS;
     function wrap(name, which) {
@@ -363,6 +459,17 @@
     }
     wrap('close', function (a) { return (a[0].flags & 3) !== 0 ? a[0].path : null; });
     wrap('rename', function (a) { return a[1]; });
+    if (!SLICER) return;
+    var o = FS.open;
+    FS.open = function (path, flags) {
+      var s = o.apply(this, arguments);
+      var ro = typeof flags === 'string' ? /^r[^+]*$/.test(flags) : ((flags | 0) & 3) === 0;
+      if (ro && !writing && !reading && s && typeof s.path === 'string' && reg[s.path]) seen(s.path);
+      return s;
+    };
+    if (typeof addEventListener === 'function') addEventListener('focus', function () { check(); });
+    var tick = setInterval(function () { check(); }, 60000);
+    if (tick && tick.unref) tick.unref();
   }
 
   // ── Start ────────────────────────────────────────────────────────
@@ -449,5 +556,6 @@
     },
     file: file, track: track, part: part, untrack: function (abs) { if (reg[abs]) { delete reg[abs]; keep(); } }, save: function (abs) { line = line.then(function () { return save(abs); }); return line; },
     entries: function () { return reg; }, idle: function () { return line; }, root: ROOT,
+    check: check, offer: function () { return shown; },
   };
 })();
