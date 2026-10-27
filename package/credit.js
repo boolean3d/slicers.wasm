@@ -22,6 +22,12 @@
         'Open source under the GNU AGPL-3.0. Running in your browser.',
         'This browser copy is not made or endorsed by Prusa Research.'],
     },
+    anycubic: {
+      name: 'Anycubic Slicer Next',
+      lines: ['Made by Anycubic. Based on OrcaSlicer by SoftFever and the OrcaSlicer contributors.',
+        'Open source under the GNU AGPL-3.0. Running in your browser.',
+        'Unofficial build, not endorsed by Anycubic.'],
+    },
   };
   var cfg = window.SLICER_PAGE || {};
   var t = TEXT[cfg.app];

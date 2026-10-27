@@ -23,7 +23,7 @@
   var L = window.SLICER_FILES;
   if (!L) return;
   var P = window.SLICER_PAGE || {};
-  var NAME = { bambu: 'Bambu Studio', orca: 'OrcaSlicer', prusa: 'PrusaSlicer' }[P.app] || 'the slicer';
+  var NAME = { bambu: 'Bambu Studio', orca: 'OrcaSlicer', prusa: 'PrusaSlicer', anycubic: 'Anycubic Slicer Next' }[P.app] || 'the slicer';
   var stats = window.SLICER_LAZY = { files: 0, bytes: 0, ms: 0, failed: [], blobReads: 0 };
   if (navigator.storage && navigator.storage.persist) {
     navigator.storage.persisted().then(function (p) { return p || navigator.storage.persist(); }).catch(function () {});
