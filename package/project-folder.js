@@ -28,7 +28,16 @@
 // stays in this browser.
 //
 // Module.b3dProjects: list(), open(project) -> {dir, project, files}, file(project, file) -> {bytes, name, entry},
-//   track(path, entry), untrack(path), part(path, {part, version, project, projectName}, bytes), save(path), entries(), idle().
+//   track(path, entry), untrack(path), part(path, {part, version, project, projectName}, bytes), save(path), entries(), idle(),
+//   check() (asks now whether the open file's part has a newer version), offer() (what the bar shows, below).
+//
+// A slicer file made from a CAD part (its made_from link) whose part was saved since: the file the program last read
+// is asked about at the start, when the tab comes back to the front and every minute (the door's links call, the
+// file_link_state view's update_available). The workspace bar (workspace-bar.js) shows it: the window event
+// 'b3d-part-update' carries {name, number, step: 'offer' | 'fetching' | 'reload', update()} or null. Update fetches
+// the part's newest 3MF (the door's part call) onto the file's path; the program's own right-click > Reload from disk
+// reads it from there and swaps the mesh, keeping the plate and every setting. That read makes the file "made from"
+// that part version: its next save links to it (and the save is the person's, as any other).
 (function () {
   if (typeof Module === 'undefined') return;   // loaded by the tests, not by a program page
   var HOME = '/home/web_user', ROOT = HOME + '/Projects', DOWNLOADS = HOME + '/Downloads';
@@ -162,7 +171,8 @@
     writing++;
     try { FS.writeFile(abs, data); } finally { writing--; }
   }
-  function read(abs) { try { return Module.FS.readFile(abs); } catch (e) { return null; } }
+  var reading = 0;   // nor are our own reads the program's
+  function read(abs) { reading++; try { return Module.FS.readFile(abs); } catch (e) { return null; } finally { reading--; } }
 
   /** The person's projects (folders). */
   function list() { return ask('projects', {}).then(function (a) { return a.projects; }); }
@@ -247,8 +257,13 @@
     if (writing || typeof abs !== 'string' || SKIP.test(abs)) return;
     var at = entryOf(abs);
     if (!at) return;
+    // The program wrote the file before reading the part's new version in: that version is not in it, and is offered again.
+    if (pending[at]) { delete pending[at]; tell(null); }
     clearTimeout(timers[abs]);
-    timers[abs] = setTimeout(function () { delete timers[abs]; line = line.then(function () { return save(abs, at); }); }, QUIET);
+    timers[abs] = setTimeout(function () {
+      delete timers[abs];
+      line = line.then(function () { return save(abs, at); }).then(function () { if (at === current) return check(); });
+    }, QUIET);
   }
 
   /** The bytes at abs go up as a new version of the file `at` names (abs itself unless a Save As copy). */
@@ -355,6 +370,61 @@
   }
   if (typeof addEventListener === 'function') addEventListener('online', function () { setTimeout(pendingNow, 500); });
 
+  // ── A part's newer version ───────────────────────────────────────
+  var SLICER = TOOL === 'bambu' || TOOL === 'orca' || TOOL === 'prusa';
+  var current = null;   // the tracked file the program read last (the one open in it)
+  var pending = {};     // path -> {part, version, number, name}: the part's new 3MF is at the path, the Reload not yet read it
+  var shown = null;
+  var PARTS = { part: 1, sheetmetal: 1, assembly: 1, upload: 1 };   // what the door's part call serves (door.mjs DISK_KINDS)
+  function tell(s) {
+    shown = s;
+    if (typeof dispatchEvent === 'function' && typeof CustomEvent === 'function') dispatchEvent(new CustomEvent('b3d-part-update', { detail: s }));
+  }
+  // The program opened a tracked file to read it.
+  function seen(abs) {
+    var p = pending[abs];
+    if (p) {
+      delete pending[abs];
+      var e = reg[abs];
+      e.part = p.part; e.partVersion = p.version; e.linked = null; keep();
+      notice(p.name + ' is updated to version ' + p.number + ' on the plate. Save to keep it.', 'info');
+      tell(null);
+    }
+    if (current !== abs) { current = abs; check(); }
+  }
+  function check() {
+    var abs = current, e = abs && reg[abs];
+    if (!SLICER || !e || pending[abs]) return Promise.resolve();
+    if (!e.file || !e.version || !linked()) { tell(null); return Promise.resolve(); }
+    var at = e.version;
+    return ask('links', { file: e.file }).then(function (a) {
+      if (current !== abs || e.version !== at || pending[abs]) return;
+      var newer = (a.links || []).filter(function (l) { return l.role === 'made_from' && l.from_version === at && l.update_available && PARTS[l.to_kind]; })
+        .sort(function (x, y) { return y.newest_number - x.newest_number; })[0];
+      if (!newer) { tell(null); return; }
+      var offer = { name: newer.to_name, number: newer.newest_number, step: 'offer' };
+      offer.update = function () { return update(abs, newer, offer); };
+      tell(offer);
+    }).catch(function (err) { console.warn('b3d projects: could not ask about ' + e.path + '\'s part: ' + err.message); });
+  }
+  // Update: the part's newest 3MF onto the file's path (not a save), for the program's Reload from disk to read.
+  function update(abs, l, offer) {
+    tell({ name: l.to_name, number: l.newest_number, step: 'fetching' });
+    return Module.b3dHome.ask('part', { id: l.to_file }).then(function (r) {
+      if ((r.headers.get('content-type') || '').indexOf('json') >= 0) return r.json().then(function (a) { throw new Error(a.error || 'The part could not be fetched.'); });
+      if (!r.ok) throw new Error('The part could not be fetched (' + r.status + ').');
+      var made = r.headers.get('x-b3d-version');
+      return r.arrayBuffer().then(function (b) {
+        put(abs, new Uint8Array(b));
+        pending[abs] = { part: l.to_file, version: made || null, number: l.newest_number, name: l.to_name };
+        tell({ name: l.to_name, number: l.newest_number, step: 'reload' });
+      });
+    }, function (e) { throw new Error('The part could not be reached (' + (e && e.message || e) + ').'); }).catch(function (err) {
+      notice(l.to_name + ' version ' + l.newest_number + ' was not fetched: ' + err.message, 'refused');
+      tell(offer);
+    });
+  }
+
   function watch() {
     var FS = Module.FS;
     function wrap(name, which) {
@@ -363,6 +433,17 @@
     }
     wrap('close', function (a) { return (a[0].flags & 3) !== 0 ? a[0].path : null; });
     wrap('rename', function (a) { return a[1]; });
+    if (!SLICER) return;
+    var o = FS.open;
+    FS.open = function (path, flags) {
+      var s = o.apply(this, arguments);
+      var ro = typeof flags === 'string' ? /^r[^+]*$/.test(flags) : ((flags | 0) & 3) === 0;
+      if (ro && !writing && !reading && s && typeof s.path === 'string' && reg[s.path]) seen(s.path);
+      return s;
+    };
+    if (typeof addEventListener === 'function') addEventListener('focus', function () { check(); });
+    var tick = setInterval(function () { check(); }, 60000);
+    if (tick && tick.unref) tick.unref();
   }
 
   // ── Start ────────────────────────────────────────────────────────
@@ -449,5 +530,6 @@
     },
     file: file, track: track, part: part, untrack: function (abs) { if (reg[abs]) { delete reg[abs]; keep(); } }, save: function (abs) { line = line.then(function () { return save(abs); }); return line; },
     entries: function () { return reg; }, idle: function () { return line; }, root: ROOT,
+    check: check, offer: function () { return shown; },
   };
 })();

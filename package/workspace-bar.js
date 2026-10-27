@@ -10,6 +10,10 @@
 //
 // The address may carry ?hub=<Boolean3d's address> (the app adds it to every link it makes); it is kept, so a program
 // opened later from a bookmark still knows where the project page is. ?project=<id> names the project.
+//
+// In a slicer, when the open file is made from a CAD part saved since (project-folder.js, its 'b3d-part-update'
+// event), the bar says so: "<part> has a newer version (vN) · Update"; after Update, how to take it in (the program's
+// own Reload from disk, which keeps the plate and every setting).
 (function () {
   if (typeof document === 'undefined' || window.B3D_BAR) return;
   window.B3D_BAR = true;
@@ -45,7 +49,11 @@
     + '#b3d-bar nav a:hover{color:#e8e8e8;background:#2f3236}'
     + '#b3d-bar nav a[aria-current]{color:#e8e8e8;border-bottom-color:#9aa0a6}'
     + '#b3d-bar .end{flex:1 1 0}'
-    + '#b3d-bar a:focus-visible{outline:2px solid #9aa0a6;outline-offset:-2px}';
+    + '#b3d-bar a:focus-visible,#b3d-bar button:focus-visible{outline:2px solid #9aa0a6;outline-offset:-2px}'
+    + '#b3d-bar .update{display:none;align-items:center;gap:8px;color:#e8e8e8;overflow:hidden;text-overflow:ellipsis}'
+    + '#b3d-bar .update button{font:inherit;color:#26282b;background:#e8e8e8;border:0;border-radius:3px;padding:3px 10px;cursor:pointer}'
+    + '#b3d-bar .update button:hover{background:#ffffff}'
+    + '#b3d-bar .update button[disabled]{display:none}';
   var style = document.createElement('style');
   style.textContent = css;
   document.head.appendChild(style);
@@ -68,11 +76,30 @@
     links[t[0]] = a; nav.appendChild(a);
   });
   var end = document.createElement('div'); end.className = 'end';
+  end.style.cssText = 'display:flex;justify-content:flex-end;align-items:center;gap:16px;min-width:0';
+  // The open file's part saved since (project-folder.js): what it is, and the Update button.
+  var upd = document.createElement('div'); upd.className = 'update'; upd.setAttribute('data-testid', 'b3d-bar-update'); upd.setAttribute('role', 'status');
+  var updWords = document.createElement('span'); updWords.style.cssText = 'overflow:hidden;text-overflow:ellipsis';
+  var updGo = document.createElement('button'); updGo.type = 'button'; updGo.textContent = 'Update';
+  upd.appendChild(updWords); upd.appendChild(updGo); end.appendChild(upd);
+  var offer = null;
+  updGo.addEventListener('click', function () { if (offer && offer.update) offer.update(); });
+  function showUpdate(o) {
+    offer = o;
+    if (!o) { upd.style.display = 'none'; return; }
+    updWords.textContent = o.step === 'fetching' ? 'Fetching ' + o.name + ' version ' + o.number + '…'
+      : o.step === 'reload' ? o.name + ' version ' + o.number + ' is ready: right-click the part, Reload from disk'
+      : o.name + ' has a newer version (v' + o.number + ')';
+    updGo.disabled = o.step !== 'offer';
+    upd.title = o.step === 'offer' ? 'Puts version ' + o.number + ' of ' + o.name + ' on the plate, keeping your settings' : '';
+    upd.style.display = 'flex';
+  }
+  window.addEventListener('b3d-part-update', function (e) { showUpdate(e.detail); });
+  if (window.Module && Module.b3dProjects && Module.b3dProjects.offer) showUpdate(Module.b3dProjects.offer());
   if (get(DESKTOP_KEY) === '1') {
     var desk = document.createElement('a'); desk.className = 'desktop'; desk.textContent = 'Home';
     desk.setAttribute('data-testid', 'b3d-bar-desktop'); desk.target = 'b3d-desktop'; desk.rel = 'opener';
     desk.href = HUB + '#/desktop';
-    end.style.cssText = 'display:flex;justify-content:flex-end';
     end.appendChild(desk);
   }
   bar.appendChild(where); bar.appendChild(nav); bar.appendChild(end);
