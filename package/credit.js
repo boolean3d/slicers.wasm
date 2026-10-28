@@ -37,6 +37,7 @@
     + '#credit .bar{height:4px;background:#3a3d41;border-radius:2px;margin:24px 0 8px;overflow:hidden}'
     + '#credit .fill{height:100%;width:0;background:#9aa0a6;transition:width .2s}'
     + '#credit .state{font-size:13px;color:#9aa0a6;min-height:20px}'
+    + '#credit .part{font-size:13px;color:#e8e8e8;min-height:20px}'
     + '#credit .links{margin-top:20px;font-size:13px}'
     + '#credit a{color:#c4c4c4;margin-right:18px}'
     + '#progress-container{display:none}';
@@ -55,7 +56,9 @@
   var bar = document.createElement('div'); bar.className = 'bar';
   var fill = document.createElement('div'); fill.className = 'fill'; bar.appendChild(fill);
   var state = document.createElement('div'); state.className = 'state'; state.textContent = 'Downloading…';
-  box.appendChild(bar); box.appendChild(state);
+  // The part being opened (project-folder.js, ?part=): fetched while the program downloads and starts, said here.
+  var partLine = document.createElement('div'); partLine.className = 'part';
+  box.appendChild(bar); box.appendChild(state); box.appendChild(partLine);
   var links = document.createElement('div'); links.className = 'links';
   [['Source code of this browser copy', cfg.source], ['Licence', 'LICENSE.txt']].forEach(function (l) {
     if (!l[1]) return;
@@ -74,7 +77,7 @@
   window.SLICER_CREDIT = { show: function (share, text) {
     if (share !== null && share !== undefined) fill.style.width = (100 * Math.min(1, share)) + '%';
     state.textContent = text;
-  } };
+  }, part: function (text) { partLine.textContent = text || ''; } };
   var setStatus = Module.setStatus;
   Module.setStatus = function (s) {
     var m = /\((\d+(?:\.\d+)?)\/(\d+)\)/.exec(s || '');

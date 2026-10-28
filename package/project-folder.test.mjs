@@ -136,7 +136,7 @@ async function tab({ door, search = '', storage = new Map(), opfs = new Map(), l
   // The program copies Module.arguments as its script loads, before preRun: later changes count only in that array.
   Module.startedWith = Module.arguments || [];
   for (const f of Module.preRun) f();
-  for (let i = 0; i < 200 && Module.deps; i++) await wait(10);
+  for (let i = 0; i < 500 && Module.deps; i++) await wait(10);
   assert.equal(Module.deps, 0, 'the program starts');
   Module.calledRun = true;
   const write = (p, text) => FS.writeFile(p, enc(text));
@@ -207,6 +207,33 @@ test('a CAD part\'s 3MF: its first save makes <part>.3mf in the part\'s project,
   t.write(abs, 'saved again'); await t.settle();
   assert.equal(door.links.length, 1, 'linked once');
   assert.equal(saves(door)[1].file, saves(door).length && Object.values(door.files)[0].id);
+});
+
+test('?project=&part=: the part\'s 3MF is asked for before the program starts, is its argument, and is saved into the project at once, made from that part version', async () => {
+  const door = makeDoor(), p = door.addProject('My files');
+  const part = uuid(), v1 = uuid();
+  door.parts = { [part]: { name: 'Box', versions: [v1], bytes: enc('box v1') } };
+  const t = await tab({ door, search: `?project=${p}&part=${part}&name=Box` });
+  assert.ok(door.calls.findIndex(([op]) => op === 'part') < door.calls.findIndex(([op]) => op === 'project'), 'the part is asked for first, while the program downloads');
+  const abs = '/home/web_user/Projects/My files/Box.3mf';
+  assert.equal(dec(t.files.get(abs)), 'box v1');
+  assert.deepEqual([...t.Module.startedWith], [abs], 'the program starts with the part open');
+  await t.settle();
+  assert.deepEqual(saves(door).map((s) => [s.project, s.path, s.parent]), [[p, 'Box.3mf', null]], 'kept in the project at once');
+  assert.deepEqual(door.links.map((l) => l.to), [v1], 'made from the part version it was opened at');
+});
+
+test('?project=&part=: a name another file has takes the next free one; a part still being made is waited for', async () => {
+  const door = makeDoor(), p = door.addProject('My files');
+  door.addFile(p, 'Box.3mf', enc('another box'));
+  const part = uuid(), v1 = uuid();
+  door.parts = { [part]: { name: 'Box', versions: [v1], bytes: enc('box v1'), refused: { code: 'not_ready', error: 'being made' } } };
+  setTimeout(() => { delete door.parts[part].refused; }, 500);
+  const t = await tab({ door, search: `?project=${p}&part=${part}&name=Box.3mf` });
+  assert.ok(door.calls.filter(([op]) => op === 'part').length >= 2, 'asked again');
+  assert.equal(dec(t.files.get('/home/web_user/Projects/My files/Box.3mf')), 'another box', 'the other file untouched');
+  assert.equal(dec(t.files.get('/home/web_user/Projects/My files/Box 2.3mf')), 'box v1');
+  assert.deepEqual([...t.Module.startedWith], ['/home/web_user/Projects/My files/Box 2.3mf']);
 });
 
 test('opened from the Open box (Uploads/), Save As into the browser\'s downloads under its name: a version of that file', async () => {

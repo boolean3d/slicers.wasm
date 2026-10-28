@@ -479,8 +479,14 @@
   var wantLink = q.get('link'), shareAt = q.get('share');
   // The program copies Module.arguments when its script loads, before preRun: the array it will start with is set
   // here, and filled once the project is in the file system (or left empty when the file is not there).
+  // &part=<id>[&name=<its name>] (Open in slicer on a CAD part not opened here before): the part's 3MF, asked of the door
+  // NOW, while the program downloads and starts, not after; it goes into the project as <name>.3mf, saved there at once
+  // (made from the part's version), and is the program's argument. The start screen (credit.js) says how far it got.
+  var wantPart = !wantOpen && wantProject && /^[0-9a-f-]{36}$/i.test(q.get('part') || '') ? q.get('part') : null;
+  var partName = String(q.get('name') || 'Part').replace(/\.3mf$/i, '');
+  var partBytes = wantPart && linked() ? partFile(wantPart, partName) : null;
   var startArgs = null;
-  if ((wantProject || (wantLink && shareAt)) && wantOpen) { Module.arguments = Module.arguments || []; startArgs = Module.arguments; }
+  if ((wantProject || (wantLink && shareAt)) && (wantOpen || partBytes)) { Module.arguments = Module.arguments || []; startArgs = Module.arguments; }
   Module.preRun = Module.preRun || [];
   Module.preRun.push(function () {
     Module.addRunDependency('b3d-projects');
@@ -495,8 +501,20 @@
     }, Promise.resolve()).then(function () {
       if (wantLink && shareAt) return openLink(wantLink, shareAt, wantOpen);
       if (!wantProject || !linked()) return;
-      return open(wantProject).then(function (o) {
+      return Promise.all([open(wantProject), partBytes]).then(function (both) {
+        var o = both[0], got = both[1];
         opened[o.dir.slice(ROOT.length + 1)] = { project: o.project.id, projectName: o.project.name };
+        if (got) {
+          var abs = o.dir + '/' + freeName(o, folderName(partName) + '.3mf');
+          put(abs, got.bytes);
+          return part(abs, { part: wantPart, version: got.version, project: o.project.id, projectName: o.project.name }, got.bytes).then(function (e) {
+            // Not yet the account's: it goes up as the project's file once the program runs (as Open in slicer kept it).
+            e.sha = null; keep();
+            pending.push(abs);
+            startArgs.length = 0; startArgs.push(abs);
+            console.log('b3d projects: opening ' + abs + ' (the part, version ' + (got.number || '?') + ')');
+          });
+        }
         if (wantOpen) {
           var abs = o.dir + '/' + wantOpen.replace(/^\/+/, '');
           if (read(abs)) { startArgs.length = 0; startArgs.push(abs); console.log('b3d projects: opening ' + abs); }
@@ -514,6 +532,45 @@
       }, 200);
     });
   });
+
+  /** A CAD part's 3MF from the door: {bytes, version, number}, or null (said why, on the start screen and over the program).
+   *  Saved moments ago, its file is still being made in Boolean3d: asked again every 2 s, for up to 2 minutes. */
+  function partFile(id, name) {
+    var say = function (t) { var c = typeof window !== 'undefined' && window.SLICER_CREDIT; if (c && c.part) c.part(t); };
+    var t0 = Date.now();
+    say('Getting ' + name + ' from Boolean3d…');
+    function once() {
+      return Module.b3dHome.ask('part', { id: id }).then(function (r) {
+        if ((r.headers.get('content-type') || '').indexOf('json') >= 0) return r.json().then(function (a) { throw failure(a.code || 'refused', a.error || 'The part could not be opened.'); });
+        if (!r.ok) throw failure('server_down', 'The part could not be opened (' + r.status + ').');
+        var version = r.headers.get('x-b3d-version'), number = +r.headers.get('x-b3d-number') || 0;
+        return r.arrayBuffer().then(function (b) { return { bytes: new Uint8Array(b), version: version, number: number }; });
+      }).catch(function (e) {
+        if (e.code === 'not_ready' && Date.now() - t0 < 120000) {
+          say(name + '\u2019s file is being made in Boolean3d…');
+          return new Promise(function (go) { setTimeout(go, 2000); }).then(once);
+        }
+        throw e;
+      });
+    }
+    return once().then(function (got) {
+      say(name + ' is ready (' + Math.max(1, Math.round(got.bytes.length / 1024)) + ' KB).');
+      console.log('b3d projects: part ' + name + ' version ' + got.number + ', ' + got.bytes.length + ' bytes, in ' + (Date.now() - t0) + ' ms');
+      return got;
+    }, function (e) {
+      say(name + ' could not be opened: ' + e.message);
+      notice(name + ' could not be opened: ' + e.message, 'refused');
+      return null;
+    });
+  }
+  /** A file name in the project that is no other file's: 'Box.3mf', else 'Box 2.3mf', 'Box 3.3mf'… */
+  function freeName(o, want) {
+    var taken = {};
+    (o.files || []).forEach(function (f) { if (f.path) taken[f.path.toLowerCase()] = 1; });
+    var base = want.replace(/\.3mf$/i, ''), name = want;
+    for (var n = 2; taken[name.toLowerCase()] || read(o.dir + '/' + name); n++) name = base + ' ' + n + '.3mf';
+    return name;
+  }
 
   // ── A link ───────────────────────────────────────────────────────
   // What the link shows, under Links/<project name>/ (not Projects/: nothing there goes up). With open=, that file only
