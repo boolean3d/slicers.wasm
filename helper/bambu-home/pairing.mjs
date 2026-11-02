@@ -75,7 +75,7 @@ export const idOf = (publicKey) => createHash("sha256").update(Buffer.from(publi
 /**
  * The helper's pairing state over `state` ({identity, paired, origins}, the helper file's fields; made where missing,
  * each change given to `save(patch)`). Returns {helperId, publicKey, sign, code, showCode, origins, allowsOrigin, pair,
- * verify, forget, paired}.
+ * verify, forget, forgetOne, paired}.
  */
 export function pairing(state = {}, { save = () => {}, say = () => {}, secret = null } = {}) {
   if (!state.identity?.publicKey || !state.identity?.privateKey) { state.identity = makeIdentity(); save({ identity: state.identity }); }
@@ -121,6 +121,15 @@ export function pairing(state = {}, { save = () => {}, say = () => {}, secret = 
     return paired.find((p) => p.hash.length === h.length && timingSafeEqual(Buffer.from(p.hash), Buffer.from(h))) ?? null;
   }
   function forget() { paired.length = 0; keep(); code = makeCode(); tries = 0; }
+  /** One paired browser no longer paired (the app's list, Remove): its lines are cut at their next message. */
+  function forgetOne(id) {
+    const i = paired.findIndex((p) => p.hash.slice(0, 12) === String(id ?? ""));
+    if (i < 0) return false;
+    const [gone] = paired.splice(i, 1);
+    keep();
+    say(`a browser${gone.origin ? ` at ${gone.origin}` : ""} is no longer paired, as asked`);
+    return true;
+  }
   /** What a paired browser may do on every printer: watch and print from the start (a record from before this field too); control once allowed. */
   const mayOf = (who) => (Array.isArray(who?.may) ? who.may.filter((w) => OWNER_MAY.includes(w)) : [...PAIRED_MAY]);
   /** The person said yes to `what` (control) for the browser this token names: kept, so it is asked once. */
@@ -143,7 +152,8 @@ export function pairing(state = {}, { save = () => {}, say = () => {}, secret = 
     get showCode() { return showCode(code); },
     origins: [...OUR_ORIGINS, ...extra],
     allowsOrigin: (origin) => originAllowed(origin, extra),
-    pair, verify, forget, allow, mayOf,
-    get paired() { return paired.map((p) => ({ origin: p.origin, name: p.name, madeAt: p.madeAt })); },
+    pair, verify, forget, forgetOne, allow, mayOf,
+    /** The paired browsers; `id` names one for forgetOne (a piece of its token's hash, never the token). */
+    get paired() { return paired.map((p) => ({ id: p.hash.slice(0, 12), origin: p.origin, name: p.name, madeAt: p.madeAt })); },
   };
 }

@@ -10,7 +10,7 @@ import { execFileSync } from "node:child_process";
 
 const NAME = "boolean3d-helper";
 const quote = (s) => `"${String(s).replace(/"/g, '\\"')}"`;
-const run = (cmd, args) => execFileSync(cmd, args, { stdio: ["ignore", "pipe", "pipe"] }).toString();
+const run = (cmd, args) => execFileSync(cmd, args, { stdio: ["ignore", "pipe", "pipe"], windowsHide: true }).toString();
 const has = (cmd) => { try { run(process.platform === "win32" ? "where" : "which", [cmd]); return true; } catch { return false; } };
 
 /**
@@ -100,7 +100,7 @@ WantedBy=default.target
   try { old = run("crontab", ["-l"]); } catch { old = ""; }
   const kept = old.split("\n").filter((l) => l.trim() && !l.includes(NAME) && !words.some((w) => w.length > 8 && l.includes(w)));
   const next = (on ? [...kept, line] : kept).join("\n") + "\n";
-  execFileSync("crontab", ["-"], { input: next, stdio: ["pipe", "pipe", "pipe"] });
+  execFileSync("crontab", ["-"], { input: next, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
   return on ? `The helper starts with this computer (crontab @reboot; log ${path.join(home, `${NAME}.log`)}). Start it now: run.`
     : "The helper no longer starts with this computer.";
 }
