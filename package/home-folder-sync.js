@@ -104,7 +104,7 @@ var b3dConfMerge = (function () {
     try { b = agreedText == null ? undefined : JSON.parse(agreedText); } catch (e) { b = undefined; }
     return JSON.stringify(obj(isObj(b) ? b : undefined, m, t, mineNewer, ''), null, 4) + '\n';
   }
-  return { merge: merge, test: /^\.(BambuStudio|OrcaSlicer|Snapmaker_Orca|config\/(BambuStudio|OrcaSlicer))\/[^/]+\.conf$|^\.config\/PrusaSlicer\/PrusaSlicer\.ini$/ };
+  return { merge: merge, test: /^\.(BambuStudio|OrcaSlicer|Snapmaker_Orca|ElegooSlicer|config\/(BambuStudio|OrcaSlicer))\/[^/]+\.conf$|^\.config\/PrusaSlicer\/PrusaSlicer\.ini$/ };
 })();
 
 // A file sealed for the account: "B3DSEAL1", a 12-byte IV, then AES-256-GCM of the file with its SHA-256 (hex) as the
@@ -164,15 +164,15 @@ var b3dKeyring = (function () {
   // profiles; ota, plugins; hms: the printer error texts, copied from the program's resources when missing), caches, and
   // printer files exported to the computer (G-code), KiCad's demo boards (copied in at every start), and the project folders
   // (Projects/: project-folder.js keeps them, as versions).
-  var SKIP = /^Projects(\/|$)|^Documents\/kicad-demos(\/|$)|^\.(BambuStudio|OrcaSlicer|Snapmaker_Orca|config\/(BambuStudio|OrcaSlicer|PrusaSlicer))\/(log|system|printers|ota|plugins|cache|tmp|cameratools|hms)(\/|$)|\.ini\.\d+$|^\.cache(\/|$)|\.(gcode|bgcode|gcode\.3mf)$|\.lock$|(^|\/)\.\w*machine_id$/i;
+  var SKIP = /^Projects(\/|$)|^Documents\/kicad-demos(\/|$)|^\.(BambuStudio|OrcaSlicer|Snapmaker_Orca|ElegooSlicer|config\/(BambuStudio|OrcaSlicer|PrusaSlicer))\/(log|system|printers|ota|plugins|cache|tmp|cameratools|hms)(\/|$)|\.ini\.\d+$|^\.cache(\/|$)|\.(gcode|bgcode|gcode\.3mf)$|\.lock$|(^|\/)\.\w*machine_id$/i;
   var COPIES = '.b3d-copies';
   var KEYRING = '.local/share/keyrings/b3d-secrets.json', SECRET = 'b3d-secret:';
-  var PRODUCT = { bambu: 'BambuStudio', orca: 'OrcaSlicer', prusa: 'PrusaSlicer', snapmaker: 'Snapmaker_Orca' }[APP] || APP;
+  var PRODUCT = { bambu: 'BambuStudio', orca: 'OrcaSlicer', prusa: 'PrusaSlicer', snapmaker: 'Snapmaker_Orca', elegoo: 'ElegooSlicer' }[APP] || APP;
   // Files up to this size are brought down before the slicer starts; bigger ones (projects) right after. The settings
   // folder always comes before: the slicer reads all of it at start (PrusaSlicer's installed printer bundle,
   // vendor/PrusaResearch.ini, is 2.1 MB).
   var SMALL = 2e6, START_WAIT = 15000;
-  var SETTINGS = /^\.(BambuStudio|OrcaSlicer|Snapmaker_Orca|config\/(BambuStudio|OrcaSlicer|PrusaSlicer))\//;
+  var SETTINGS = /^\.(BambuStudio|OrcaSlicer|Snapmaker_Orca|ElegooSlicer|config\/(BambuStudio|OrcaSlicer|PrusaSlicer))\//;
   var kept = {};   // path -> {sig: 'mtime:size', sha} as in the browser's store
   var base = {};   // path -> sha both sides last agreed on
   var db, link = null;

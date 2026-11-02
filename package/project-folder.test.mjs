@@ -529,3 +529,13 @@ test('a save whose answer was lost: tried again, it is that version, said plainl
   assert.ok(!t.notices.some((n) => /another tab|Nothing new/.test(n)), t.notices.join('\n'));
   assert.ok(t.notices.some((n) => /is in your project now \(version 2\)/.test(n)), t.notices.join('\n'));
 });
+
+test('ElegooSlicer saves under its own name: the project page says "Opens in ElegooSlicer", not OrcaSlicer', async () => {
+  const door = makeDoor(), p = door.addProject('Lamp');
+  door.addFile(p, 'plate.3mf', enc('one'));
+  const t = await tab({ door, search: `?project=${p}`, app: '/elegoo/1.5.3.5/' });
+  const abs = '/home/web_user/Projects/Lamp/plate.3mf';
+  t.write(abs + '.tmp', 'two'); t.FS.rename(abs + '.tmp', abs);
+  await t.settle();
+  assert.equal(saves(door)[0]?.tool, 'elegoo');
+});

@@ -28,6 +28,12 @@
         'Open source under the GNU AGPL-3.0. Running in your browser.',
         'This browser copy is not made or endorsed by Prusa Research.'],
     },
+    elegoo: {
+      name: 'ElegooSlicer',
+      lines: ['Made by Elegoo. Based on OrcaSlicer by SoftFever and the OrcaSlicer contributors.',
+        'Open source under the GNU AGPL-3.0. Running in your browser.',
+        'Unofficial build, not endorsed by Elegoo.'],
+    },
   };
   var cfg = window.SLICER_PAGE || {};
   var t = TEXT[cfg.app];

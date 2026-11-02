@@ -1,7 +1,7 @@
 // trace-file-reads.js: put before the program's script on a walk page; logs, per file under /<app>/resources, first open, first read and how far it was read (every 10 s, changes only). start-list.mjs turns the READ lines into a start list.
 (Module.preRun = Module.preRun || []).push(() => {
   const FS = Module.FS, t0 = performance.now(), T = () => ((performance.now() - t0) / 1000).toFixed(1);
-  const re = /^\/(bambu|orca|prusa|snapmaker)\/resources\//, seen = new Map(), dirty = new Set();
+  const re = /^\/(bambu|orca|prusa|snapmaker|elegoo)\/resources\//, seen = new Map(), dirty = new Set();
   const note = (stream, end) => {
     const p = stream && stream.path; if (!p || !re.test(p)) return;
     let s = seen.get(p);

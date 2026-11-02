@@ -63,8 +63,8 @@ async function main() {
   const src = path.resolve(a.src), out = path.resolve(a.out);
   const dir = path.join(out, a.app, a.version);
   // The program's files are named after the slicer; the page that loads them is index.html at every address.
-  const PROGRAM = { bambu: 'bambustudio', orca: 'orcaslicer', prusa: 'prusaslicer', snapmaker: 'snapmakerorca' }[a.app];
-  if (!PROGRAM) throw new Error('--app must be bambu, orca, prusa or snapmaker');
+  const PROGRAM = { bambu: 'bambustudio', orca: 'orcaslicer', prusa: 'prusaslicer', snapmaker: 'snapmakerorca', elegoo: 'elegooslicer' }[a.app];
+  if (!PROGRAM) throw new Error('--app must be bambu, orca, prusa, snapmaker or elegoo');
   fs.rmSync(dir, { recursive: true, force: true });
   fs.mkdirSync(dir, { recursive: true });
 
