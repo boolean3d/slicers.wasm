@@ -34,6 +34,19 @@
         'Open source under the GNU AGPL-3.0. Running in your browser.',
         'Unofficial build, not endorsed by Elegoo.'],
     },
+    anycubic: {
+      name: 'Anycubic Slicer Next',
+      lines: ['Made by Anycubic. Based on OrcaSlicer by SoftFever and the OrcaSlicer contributors.',
+        'Open source under the GNU AGPL-3.0. Running in your browser.',
+        'Unofficial build, not endorsed by Anycubic.'],
+    },
+    creality: {
+      name: 'Creality Print',
+      lines: ['Made by Creality. Based on OrcaSlicer by SoftFever, Bambu Studio by Bambu Lab and PrusaSlicer by Prusa Research.',
+        'Open source under the GNU AGPL-3.0. Running in your browser.',
+        "Creality's closed add-ons are not included.",
+        'Unofficial build, not endorsed by Creality.'],
+    },
   };
   var cfg = window.SLICER_PAGE || {};
   var t = TEXT[cfg.app];

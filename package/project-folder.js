@@ -44,7 +44,7 @@
   if (typeof Module === 'undefined') return;   // loaded by the tests, not by a program page
   var HOME = '/home/web_user', ROOT = HOME + '/Projects', DOWNLOADS = HOME + '/Downloads';
   var APP = (location.pathname.split('/')[1] || 'tool').replace(/[^\w-]/g, '');
-  var TOOL = { bambu: 'bambu', orca: 'orca', prusa: 'prusa', kicad: 'kicad', snapmaker: 'orca', elegoo: 'elegoo' }[APP] || null;   // Snapmaker Orca: an Orca 3MF; ElegooSlicer saves under its own name (Boolean3d public.tools 'elegoo')
+  var TOOL = { bambu: 'bambu', orca: 'orca', prusa: 'prusa', kicad: 'kicad', snapmaker: 'orca', elegoo: 'elegoo', anycubic: 'anycubic' }[APP] || null;   // Snapmaker Orca: an Orca 3MF; ElegooSlicer and Anycubic Slicer Next save under their own names (Boolean3d public.tools 'elegoo', 'anycubic')
   var REG = 'b3d-projects-' + APP;
   // Not versions: the programs' own lock, backup, autosave, cache and temporary files (KiCad: *.lck, *-backups/,
   // _autosave-*, fp-info-cache, ~ files, *.kicad_prl = this computer's window settings, .history/ = its local history,
