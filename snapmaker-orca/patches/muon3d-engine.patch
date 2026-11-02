@@ -1,0 +1,65 @@
+diff --git a/engine/cmake/Dependencies.cmake b/engine/cmake/Dependencies.cmake
+index 66f4a8f..dafe392 100644
+--- a/engine/cmake/Dependencies.cmake
++++ b/engine/cmake/Dependencies.cmake
+@@ -16,6 +16,9 @@ endfunction()
+ # Orca's orcaslicer_silence_third_party_warnings(): bundled libraries compile with -w.
+ function(engine_silence_warnings)
+     foreach (target IN LISTS ARGN)
++        if (NOT TARGET ${target})
++            continue ()
++        endif ()
+         get_target_property(type ${target} TYPE)
+         if (NOT type STREQUAL "INTERFACE_LIBRARY")
+             target_compile_options(${target} PRIVATE -w)
+@@ -116,7 +119,9 @@ set(SLIC3R_STATIC ON)
+ set(ENGINE_DEPS_SRC_HEADER_ONLY agg ankerl earcut fast_float nanosvg nlohmann libigl)
+ set(ENGINE_DEPS_SRC_LIBRARIES admesh clipper clipper2 expat glu-libtess libnest2d mcut miniz qhull qoi semver)
+ foreach (dir IN LISTS ENGINE_DEPS_SRC_HEADER_ONLY ENGINE_DEPS_SRC_LIBRARIES)
+-    add_subdirectory("${ORCA_SRC}/deps_src/${dir}" "${CMAKE_BINARY_DIR}/deps_src/${dir}")
++    if (EXISTS "${ORCA_SRC}/deps_src/${dir}/CMakeLists.txt")   # Snapmaker Orca's tree has no earcut / clipper2 here
++        add_subdirectory("${ORCA_SRC}/deps_src/${dir}" "${CMAKE_BINARY_DIR}/deps_src/${dir}")
++    endif ()
+ endforeach ()
+ engine_silence_warnings(admesh clipper Clipper2 expat glu-libtess libnest2d mcut miniz_static qoi semver)
+ engine_without_tbbmalloc(clipper)
+diff --git a/engine/cmake/Engine.cmake b/engine/cmake/Engine.cmake
+index 8182907..1f9aad4 100644
+--- a/engine/cmake/Engine.cmake
++++ b/engine/cmake/Engine.cmake
+@@ -9,6 +9,11 @@
+ #  flush/*.txt                       GenericFlushPredictor: flush volumes for 2+ filaments
+ #  filament_mixing/*.json            ColorDecomposeRecipe (mixed filaments)
+ #  profiles/BBL/cli_config.json      the CLI's machine-limit clamp for Bambu Lab A1 / A1 mini / A2L
++# GUI spike: only libslic3r is wanted, not the engine module.
++if (ENGINE_LIBSLIC3R_ONLY)
++    return()
++endif ()
++
+ set(ENGINE_RESOURCE_PATTERNS
+     info/nozzle_info.json
+     info/nozzle_incompatibles.json
+diff --git a/engine/cmake/Libslic3r.cmake b/engine/cmake/Libslic3r.cmake
+index 2d27a6c..7d5dc77 100644
+--- a/engine/cmake/Libslic3r.cmake
++++ b/engine/cmake/Libslic3r.cmake
+@@ -16,7 +16,9 @@ include("${ORCA_SRC}/version.inc")
+ if (NOT DEFINED ORCA_CHECK_GCODE_PLACEHOLDERS)
+     set(ORCA_CHECK_GCODE_PLACEHOLDERS "0")
+ endif ()
+-configure_file("${LIBSLIC3R_DIR}/libslic3r_version.h.in" "${LIBSLIC3R_GEN_DIR}/libslic3r_version.h" @ONLY)
++if (EXISTS "${LIBSLIC3R_DIR}/libslic3r_version.h.in")
++    configure_file("${LIBSLIC3R_DIR}/libslic3r_version.h.in" "${LIBSLIC3R_GEN_DIR}/libslic3r_version.h" @ONLY)
++endif ()
+ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${ORCA_SRC}/version.inc")
+ 
+ orca_generate_drainhole_source("${LIBSLIC3R_GEN_DIR}/stubs/SLA/Hollowing.cpp")
+@@ -135,7 +137,7 @@ target_link_libraries(libslic3r
+         boost_libs
+         cereal::cereal
+         clipper
+-        Clipper2
++        $<TARGET_NAME_IF_EXISTS:Clipper2>
+         glu-libtess
+         JPEG::JPEG
+         libslic3r_cgal

@@ -1,0 +1,2513 @@
+diff --git a/resources/profiles/Anycubic/filament/Anycubic PLA @Anycubic Kobra 2 Max 0.4 nozzle.json b/resources/profiles/Anycubic/filament/Anycubic PLA @Anycubic Kobra 2 Max 0.4 nozzle.json
+index 095c9d6f3..de114b3cb 100644
+--- a/resources/profiles/Anycubic/filament/Anycubic PLA @Anycubic Kobra 2 Max 0.4 nozzle.json	
++++ b/resources/profiles/Anycubic/filament/Anycubic PLA @Anycubic Kobra 2 Max 0.4 nozzle.json	
+@@ -1,7 +1,7 @@
+ {
+     "type": "filament",
+     "name": "Anycubic PLA @Anycubic Kobra 2 Max 0.4 nozzle",
+-    "inherits": "Anycubic Generic PLA",
++    "inherits": "Anycubic PLA @acbase",
+     "from": "system",
+     "setting_id": "GFSA04",
+     "filament_id": "GFL92",
+diff --git a/resources/profiles/Anycubic/machine/Anycubic Kobra 3 0.2 nozzle.json b/resources/profiles/Anycubic/machine/Anycubic Kobra 3 0.2 nozzle.json
+index 195f49890..602f50427 100644
+--- a/resources/profiles/Anycubic/machine/Anycubic Kobra 3 0.2 nozzle.json	
++++ b/resources/profiles/Anycubic/machine/Anycubic Kobra 3 0.2 nozzle.json	
+@@ -1,241 +1,232 @@
+-{
+-    "type": "machine",
+-    "name": "Anycubic Kobra 3 0.2 nozzle",
+-    "inherits": "fdm_machine_common",
+-    "from": "system",
+-    "setting_id": "GM001",
+-    "instantiation": "true",
+-    "printer_technology": "FFF",
+-    "version": "1.3.2508.11",
+-    "printer_settings_id": "Anycubic Kobra 3 0.2 nozzle",
+-    "printer_model": "Anycubic Kobra 3",
+-    "printer_variant": "0.2",
+-    "name": "Anycubic Kobra 3 0.2 nozzle",
+-    "nozzle_diameter": [
+-        "0.2"
+-    ],
+-    "default_print_profile": "0.10mm Standard @Anycubic Kobra 3 0.2 nozzle",
+-    "default_filament_profile": [
+-        "Anycubic PLA @Anycubic Kobra 3 0.2 nozzle"
+-    ],
+-    "disable_m73": "1",
+-    "gcode_flavor": "klipper",
+-    "printable_area": [
+-        "0x0",
+-        "255x0",
+-        "255x255",
+-        "0x255"
+-    ],
+-    "printable_height": "260",
+-    "thumbnails": [
+-        "230x110"
+-    ],
+-    "thumbnails_format": "PNG",
+-    "thumbnails_internal": [
+-        "512x512/PNG/top"
+-    ],
+-    "thumbnails_internal_switch": "1",
+-    "adaptive_bed_mesh_margin": "0",
+-    "auxiliary_fan": "0",
+-    "bbl_use_printhost": "0",
+-    "bed_custom_model": "",
+-    "bed_custom_texture": "",
+-    "bed_exclude_area": [
+-        "0x0",
+-        "255x0",
+-        "255x255",
+-        "0x255",
+-        "0x0",
+-        "2x2",
+-        "2x253",
+-        "253x253",
+-        "253x2",
+-        "2x2"
+-    ],
+-    "bed_mesh_max": "0,0",
+-    "bed_mesh_min": "0,0",
+-    "bed_mesh_probe_distance": "0,0",
+-    "before_layer_change_gcode": "; BEFORE_LAYER_CHANGE [layer_num] @ [layer_z]mm",
+-    "best_object_pos": "0.5,0.5",
+-    "change_extrusion_role_gcode": "",
+-    "change_filament_gcode": "; FLUSH_START\n;;; M400 P0\nT[next_extruder] ; change extruder\n; 1\n;;; G1 E-2 F2400\n;;; G1 Z{max(toolchange_z+0.6, 5.0)} F600\n;;; G1 X271.5 F12000\n;;; G1 E-5 F600\n;;; G1 X278 F600\n;;; M400 P3530\n;;; G1 E-1 F600\n;;; G1 Z{max(toolchange_z+2.6, 7.0)}  F600\n;;; G1 X278 F18000\n;;; G1 X271.5 F1200\n;;; G1 E2 F300\n;;; M400 P31050\n;;; M400 P17510\n; 2\n;;; G1 X278 F18000\n;;; G1 X271.5 F1200\n;;; G1 E2 F300\n;;; M400 P0\n;;; G1 X250 F1200\n;;; M400 P0\n;;; G1 X278 F18000\n;;; G1 X271.5 F1200\n;;; G1 E2 F300\n;;; M400 P0\n; 3.1\n;;; M106 S255\n;;; G1 X36 Y260 Z-0.8 F9600\n;;; G1 X50 Y260 Z1 F9600\n;;; G1 X86 Y260 Z1 F9600\n;;; G1 X90 Y260 Z-0.8 F9600\n;;; G1 X90 Y259 Z-0.8 F9600\n;;; G1 X86 Y259 Z1 F9600\n;;; G1 X50 Y259 Z1 F9600\n;;; G1 X36 Y259 Z-0.8 F9600\n; 3.2\n;;; G1 X36 Y260 Z-0.8 F9600\n;;; G1 X50 Y260 Z1 F9600\n;;; G1 X86 Y260 Z1 F9600\n;;; G1 X90 Y260 Z-0.8 F9600\n;;; G1 X90 Y259 Z-0.8 F9600\n;;; G1 X86 Y259 Z1 F9600\n;;; G1 X50 Y259 Z1 F9600\n;;; G1 X36 Y259 Z-0.8 F9600\n; 3.3\n;;; G1 X36 Y260 Z-0.8 F9600\n;;; G1 X50 Y260 Z1 F9600\n;;; G1 X86 Y260 Z1 F9600\n;;; G1 X90 Y260 Z-0.8 F9600\n;;; G1 X90 Y259 Z-0.8 F9600\n;;; G1 X86 Y259 Z1 F9600\n;;; G1 X50 Y259 Z1 F9600\n;;; G1 X36 Y259 Z-0.8 F9600\n;;; G1 Z{toolchange_z}\n;;; M400 P0\n; FLUSH_END",
+-    "cooling_tube_length": "0",
+-    "cooling_tube_retraction": "0",
+-    "deretraction_speed": [
+-        "40"
+-    ],
+-    "emit_machine_limits_to_gcode": "1",
+-    "enable_filament_ramming": "0",
+-    "enable_long_retraction_when_cut": "0",
+-    "extra_loading_move": "0",
+-    "extruder_clearance_height_to_lid": "200",
+-    "extruder_clearance_height_to_rod": "30",
+-    "extruder_clearance_radius": "65",
+-    "extruder_colour": [
+-        "#FF4D4F"
+-    ],
+-    "extruder_offset": [
+-        "0x0"
+-    ],
+-    "fan_kickstart": "0",
+-    "fan_speedup_overhangs": "1",
+-    "fan_speedup_time": "0",
+-    "head_wrap_detect_zone": [],
+-    "high_current_on_filament_swap": "0",
+-    "host_type": "octoprint",
+-    "layer_change_gcode": "; AFTER_LAYER_CHANGE [layer_num] @ [layer_z]mm",
+-    "long_retractions_when_cut": [
+-        "0"
+-    ],
+-    "machine_end_gcode": "G92 E0\nG1 E-2 F3600\n{if max_layer_z < max_print_height-1}G1 Z{max_layer_z+2} F900 ; Move print head further up{endif}\nG1 X250 Y220 F12000 ; present print\nM140 S0 ; turn off heatbed\nM104 S0 ; turn off temperature\nM107;turn off fan\nM84; disable motors\n; disable stepper motors\n\n",
+-    "machine_load_filament_time": "42",
+-    "machine_max_acceleration_e": [
+-        "20000",
+-        "20000"
+-    ],
+-    "machine_max_acceleration_extruding": [
+-        "20000",
+-        "20000"
+-    ],
+-    "machine_max_acceleration_retracting": [
+-        "20000",
+-        "20000"
+-    ],
+-    "machine_max_acceleration_travel": [
+-        "20000",
+-        "20000"
+-    ],
+-    "machine_max_acceleration_x": [
+-        "20000",
+-        "20000"
+-    ],
+-    "machine_max_acceleration_y": [
+-        "20000",
+-        "20000"
+-    ],
+-    "machine_max_acceleration_z": [
+-        "3000",
+-        "3000"
+-    ],
+-    "machine_max_jerk_e": [
+-        "20",
+-        "20"
+-    ],
+-    "machine_max_jerk_x": [
+-        "20",
+-        "20"
+-    ],
+-    "machine_max_jerk_y": [
+-        "20",
+-        "20"
+-    ],
+-    "machine_max_jerk_z": [
+-        "20",
+-        "20"
+-    ],
+-    "machine_max_speed_e": [
+-        "600",
+-        "600"
+-    ],
+-    "machine_max_speed_x": [
+-        "600",
+-        "600"
+-    ],
+-    "machine_max_speed_y": [
+-        "600",
+-        "600"
+-    ],
+-    "machine_max_speed_z": [
+-        "20",
+-        "20"
+-    ],
+-    "machine_min_extruding_rate": [
+-        "0",
+-        "0"
+-    ],
+-    "machine_min_travel_rate": [
+-        "0",
+-        "0"
+-    ],
+-    "machine_pause_gcode": "M600",
+-    "machine_start_gcode": "G9111 bedTemp=[first_layer_bed_temperature] extruderTemp=[first_layer_temperature[initial_tool]]\nM117\nM900 K0.051\n; print_bed_min = {print_bed_min[0]},{print_bed_min[1]}\n; print_bed_max = {print_bed_max[0]},{print_bed_max[1]}\n; print_bed_size = {print_bed_size[0]},{print_bed_size[1]}\n; first_layer_print_min = {first_layer_print_min[0]},{first_layer_print_min[1]}\n; first_layer_print_max = {first_layer_print_max[0]},{first_layer_print_max[1]}\n; first_layer_print_size = {first_layer_print_size[0]},{first_layer_print_size[1]}",
+-    "machine_unload_filament_time": "0",
+-    "manual_filament_change": "0",
+-    "max_layer_height": [
+-        "0.14"
+-    ],
+-    "min_layer_height": [
+-        "0.08"
+-    ],
+-    "nozzle_height": "4",
+-    "nozzle_hrc": "0",
+-    "nozzle_type": "brass",
+-    "nozzle_volume": "58.7795",
+-    "parking_pos_retraction": "0",
+-    "preferred_orientation": "0",
+-    "printer_notes": "",
+-    "printer_structure": "i3",
+-    "printing_by_object_gcode": "",
+-    "purge_in_prime_tower": "0",
+-    "retract_before_wipe": [
+-        "0%"
+-    ],
+-    "retract_length_toolchange": [
+-        "0"
+-    ],
+-    "retract_lift_above": [
+-        "0.3"
+-    ],
+-    "retract_lift_below": [
+-        "258"
+-    ],
+-    "retract_lift_enforce": [
+-        "All Surfaces"
+-    ],
+-    "retract_restart_extra": [
+-        "0"
+-    ],
+-    "retract_restart_extra_toolchange": [
+-        "0"
+-    ],
+-    "retract_when_changing_layer": [
+-        "1"
+-    ],
+-    "retraction_distances_when_cut": [
+-        "18"
+-    ],
+-    "retraction_length": [
+-        "0.8"
+-    ],
+-    "retraction_minimum_travel": [
+-        "0"
+-    ],
+-    "retraction_speed": [
+-        "40"
+-    ],
+-    "scan_first_layer": "0",
+-    "silent_mode": "0",
+-    "single_extruder_multi_material": "1",
+-    "support_air_filtration": "1",
+-    "support_chamber_temp_control": "1",
+-    "support_multi_bed_types": "1",
+-    "template_custom_gcode": "",
+-    "time_cost": "0",
+-    "time_lapse_gcode": "",
+-    "upward_compatible_machine": [],
+-    "use_firmware_retraction": "0",
+-    "use_relative_e_distances": "1",
+-    "wipe": [
+-        "1"
+-    ],
+-    "wipe_distance": [
+-        "1"
+-    ],
+-    "z_hop": [
+-        "0.4"
+-    ],
+-    "z_hop_types": [
+-        "Auto Lift"
+-    ],
+-    "z_offset": "0"
++{
++    "type": "machine",
++    "name": "Anycubic Kobra 3 0.2 nozzle",
++    "inherits": "fdm_machine_common",
++    "from": "system",
++    "setting_id": "GM001",
++    "instantiation": "true",
++    "printer_technology": "FFF",
++    "version": "1.3.2508.11",
++    "printer_settings_id": "Anycubic Kobra 3 0.2 nozzle",
++    "printer_model": "Anycubic Kobra 3",
++    "printer_variant": "0.2",
++    "name": "Anycubic Kobra 3 0.2 nozzle",
++    "nozzle_diameter": [
++        "0.2"
++    ],
++    "default_print_profile": "0.10mm Standard @Anycubic Kobra 3 0.2 nozzle",
++    "default_filament_profile": [
++        "Anycubic PLA @Anycubic Kobra 3 0.2 nozzle"
++    ],
++    "disable_m73": "1",
++    "gcode_flavor": "klipper",
++    "printable_area": [
++        "0x0",
++        "255x0",
++        "255x255",
++        "0x255"
++    ],
++    "printable_height": "260",
++    "thumbnails": [
++        "230x110"
++    ],
++    "thumbnails_format": "PNG",
++    "thumbnails_internal": [
++        "512x512/PNG/top"
++    ],
++    "thumbnails_internal_switch": "1",
++    "adaptive_bed_mesh_margin": "0",
++    "auxiliary_fan": "0",
++    "bbl_use_printhost": "0",
++    "bed_custom_model": "",
++    "bed_custom_texture": "",
++    "bed_exclude_area": [
++        "0x0"
++    ],
++    "bed_mesh_max": "0,0",
++    "bed_mesh_min": "0,0",
++    "bed_mesh_probe_distance": "0,0",
++    "before_layer_change_gcode": "; BEFORE_LAYER_CHANGE [layer_num] @ [layer_z]mm",
++    "best_object_pos": "0.5,0.5",
++    "change_extrusion_role_gcode": "",
++    "change_filament_gcode": "; FLUSH_START\n;;; M400 P0\nT[next_extruder] ; change extruder\n; 1\n;;; G1 E-2 F2400\n;;; G1 Z{max(toolchange_z+0.6, 5.0)} F600\n;;; G1 X271.5 F12000\n;;; G1 E-5 F600\n;;; G1 X278 F600\n;;; M400 P3530\n;;; G1 E-1 F600\n;;; G1 Z{max(toolchange_z+2.6, 7.0)}  F600\n;;; G1 X278 F18000\n;;; G1 X271.5 F1200\n;;; G1 E2 F300\n;;; M400 P31050\n;;; M400 P17510\n; 2\n;;; G1 X278 F18000\n;;; G1 X271.5 F1200\n;;; G1 E2 F300\n;;; M400 P0\n;;; G1 X250 F1200\n;;; M400 P0\n;;; G1 X278 F18000\n;;; G1 X271.5 F1200\n;;; G1 E2 F300\n;;; M400 P0\n; 3.1\n;;; M106 S255\n;;; G1 X36 Y260 Z-0.8 F9600\n;;; G1 X50 Y260 Z1 F9600\n;;; G1 X86 Y260 Z1 F9600\n;;; G1 X90 Y260 Z-0.8 F9600\n;;; G1 X90 Y259 Z-0.8 F9600\n;;; G1 X86 Y259 Z1 F9600\n;;; G1 X50 Y259 Z1 F9600\n;;; G1 X36 Y259 Z-0.8 F9600\n; 3.2\n;;; G1 X36 Y260 Z-0.8 F9600\n;;; G1 X50 Y260 Z1 F9600\n;;; G1 X86 Y260 Z1 F9600\n;;; G1 X90 Y260 Z-0.8 F9600\n;;; G1 X90 Y259 Z-0.8 F9600\n;;; G1 X86 Y259 Z1 F9600\n;;; G1 X50 Y259 Z1 F9600\n;;; G1 X36 Y259 Z-0.8 F9600\n; 3.3\n;;; G1 X36 Y260 Z-0.8 F9600\n;;; G1 X50 Y260 Z1 F9600\n;;; G1 X86 Y260 Z1 F9600\n;;; G1 X90 Y260 Z-0.8 F9600\n;;; G1 X90 Y259 Z-0.8 F9600\n;;; G1 X86 Y259 Z1 F9600\n;;; G1 X50 Y259 Z1 F9600\n;;; G1 X36 Y259 Z-0.8 F9600\n;;; G1 Z{toolchange_z}\n;;; M400 P0\n; FLUSH_END",
++    "cooling_tube_length": "0",
++    "cooling_tube_retraction": "0",
++    "deretraction_speed": [
++        "40"
++    ],
++    "emit_machine_limits_to_gcode": "1",
++    "enable_filament_ramming": "0",
++    "enable_long_retraction_when_cut": "0",
++    "extra_loading_move": "0",
++    "extruder_clearance_height_to_lid": "200",
++    "extruder_clearance_height_to_rod": "30",
++    "extruder_clearance_radius": "65",
++    "extruder_colour": [
++        "#FF4D4F"
++    ],
++    "extruder_offset": [
++        "0x0"
++    ],
++    "fan_kickstart": "0",
++    "fan_speedup_overhangs": "1",
++    "fan_speedup_time": "0",
++    "head_wrap_detect_zone": [],
++    "high_current_on_filament_swap": "0",
++    "host_type": "octoprint",
++    "layer_change_gcode": "; AFTER_LAYER_CHANGE [layer_num] @ [layer_z]mm",
++    "long_retractions_when_cut": [
++        "0"
++    ],
++    "machine_end_gcode": "G92 E0\nG1 E-2 F3600\n{if max_layer_z < max_print_height-1}G1 Z{max_layer_z+2} F900 ; Move print head further up{endif}\nG1 X250 Y220 F12000 ; present print\nM140 S0 ; turn off heatbed\nM104 S0 ; turn off temperature\nM107;turn off fan\nM84; disable motors\n; disable stepper motors\n\n",
++    "machine_load_filament_time": "42",
++    "machine_max_acceleration_e": [
++        "20000",
++        "20000"
++    ],
++    "machine_max_acceleration_extruding": [
++        "20000",
++        "20000"
++    ],
++    "machine_max_acceleration_retracting": [
++        "20000",
++        "20000"
++    ],
++    "machine_max_acceleration_travel": [
++        "20000",
++        "20000"
++    ],
++    "machine_max_acceleration_x": [
++        "20000",
++        "20000"
++    ],
++    "machine_max_acceleration_y": [
++        "20000",
++        "20000"
++    ],
++    "machine_max_acceleration_z": [
++        "3000",
++        "3000"
++    ],
++    "machine_max_jerk_e": [
++        "20",
++        "20"
++    ],
++    "machine_max_jerk_x": [
++        "20",
++        "20"
++    ],
++    "machine_max_jerk_y": [
++        "20",
++        "20"
++    ],
++    "machine_max_jerk_z": [
++        "20",
++        "20"
++    ],
++    "machine_max_speed_e": [
++        "600",
++        "600"
++    ],
++    "machine_max_speed_x": [
++        "600",
++        "600"
++    ],
++    "machine_max_speed_y": [
++        "600",
++        "600"
++    ],
++    "machine_max_speed_z": [
++        "20",
++        "20"
++    ],
++    "machine_min_extruding_rate": [
++        "0",
++        "0"
++    ],
++    "machine_min_travel_rate": [
++        "0",
++        "0"
++    ],
++    "machine_pause_gcode": "M600",
++    "machine_start_gcode": "G9111 bedTemp=[first_layer_bed_temperature] extruderTemp=[first_layer_temperature[initial_tool]]\nM117\nM900 K0.051\n; print_bed_min = {print_bed_min[0]},{print_bed_min[1]}\n; print_bed_max = {print_bed_max[0]},{print_bed_max[1]}\n; print_bed_size = {print_bed_size[0]},{print_bed_size[1]}\n; first_layer_print_min = {first_layer_print_min[0]},{first_layer_print_min[1]}\n; first_layer_print_max = {first_layer_print_max[0]},{first_layer_print_max[1]}\n; first_layer_print_size = {first_layer_print_size[0]},{first_layer_print_size[1]}",
++    "machine_unload_filament_time": "0",
++    "manual_filament_change": "0",
++    "max_layer_height": [
++        "0.14"
++    ],
++    "min_layer_height": [
++        "0.08"
++    ],
++    "nozzle_height": "4",
++    "nozzle_hrc": "0",
++    "nozzle_type": "brass",
++    "nozzle_volume": "58.7795",
++    "parking_pos_retraction": "0",
++    "preferred_orientation": "0",
++    "printer_notes": "",
++    "printer_structure": "i3",
++    "printing_by_object_gcode": "",
++    "purge_in_prime_tower": "0",
++    "retract_before_wipe": [
++        "0%"
++    ],
++    "retract_length_toolchange": [
++        "0"
++    ],
++    "retract_lift_above": [
++        "0.3"
++    ],
++    "retract_lift_below": [
++        "258"
++    ],
++    "retract_lift_enforce": [
++        "All Surfaces"
++    ],
++    "retract_restart_extra": [
++        "0"
++    ],
++    "retract_restart_extra_toolchange": [
++        "0"
++    ],
++    "retract_when_changing_layer": [
++        "1"
++    ],
++    "retraction_distances_when_cut": [
++        "18"
++    ],
++    "retraction_length": [
++        "0.8"
++    ],
++    "retraction_minimum_travel": [
++        "0"
++    ],
++    "retraction_speed": [
++        "40"
++    ],
++    "scan_first_layer": "0",
++    "silent_mode": "0",
++    "single_extruder_multi_material": "1",
++    "support_air_filtration": "1",
++    "support_chamber_temp_control": "1",
++    "support_multi_bed_types": "1",
++    "template_custom_gcode": "",
++    "time_cost": "0",
++    "time_lapse_gcode": "",
++    "upward_compatible_machine": [],
++    "use_firmware_retraction": "0",
++    "use_relative_e_distances": "1",
++    "wipe": [
++        "1"
++    ],
++    "wipe_distance": [
++        "1"
++    ],
++    "z_hop": [
++        "0.4"
++    ],
++    "z_hop_types": [
++        "Auto Lift"
++    ],
++    "z_offset": "0"
+ }
+\ No newline at end of file
+diff --git a/resources/profiles/Anycubic/machine/Anycubic Kobra 3 0.4 nozzle.json b/resources/profiles/Anycubic/machine/Anycubic Kobra 3 0.4 nozzle.json
+index 164eb1c4e..204d130de 100644
+--- a/resources/profiles/Anycubic/machine/Anycubic Kobra 3 0.4 nozzle.json	
++++ b/resources/profiles/Anycubic/machine/Anycubic Kobra 3 0.4 nozzle.json	
+@@ -1,244 +1,235 @@
+-{
+-    "type": "machine",
+-    "name": "Anycubic Kobra 3 0.4 nozzle",
+-    "inherits": "fdm_machine_common",
+-    "from": "system",
+-    "setting_id": "GM001",
+-    "instantiation": "true",
+-    "printer_technology": "FFF",
+-    "version": "1.3.2508.11",
+-    "printer_settings_id": "Anycubic Kobra 3 0.4 nozzle",
+-    "printer_model": "Anycubic Kobra 3",
+-    "printer_variant": "0.4",
+-    "name": "Anycubic Kobra 3 0.4 nozzle",
+-    "nozzle_diameter": [
+-        "0.4"
+-    ],
+-    "default_print_profile": "0.20mm Standard @Anycubic Kobra 3 0.4 nozzle",
+-    "default_filament_profile": [
+-        "Anycubic PLA @Anycubic Kobra 3 0.4 nozzle"
+-    ],
+-    "disable_m73": "1",
+-    "gcode_flavor": "klipper",
+-    "printable_area": [
+-        "0x0",
+-        "255x0",
+-        "255x255",
+-        "0x255"
+-    ],
+-    "printable_height": "260",
+-    "thumbnails": "230x110/PNG",
+-    "thumbnails_format": "PNG",
+-    "thumbnails_internal": "512x512/PNG/top",
+-    "thumbnails_internal_switch": "1",
+-    "adaptive_bed_mesh_margin": "0",
+-    "auxiliary_fan": "0",
+-    "bbl_use_printhost": "0",
+-    "bed_custom_model": "",
+-    "bed_custom_texture": "",
+-    "bed_exclude_area": [
+-        "0x0",
+-        "255x0",
+-        "255x255",
+-        "0x255",
+-        "0x0",
+-        "2x2",
+-        "2x253",
+-        "253x253",
+-        "253x2",
+-        "2x2"
+-    ],
+-    "bed_mesh_max": "0,0",
+-    "bed_mesh_min": "0,0",
+-    "bed_mesh_probe_distance": "0,0",
+-    "before_layer_change_gcode": "; BEFORE_LAYER_CHANGE [layer_num] @ [layer_z]mm",
+-    "best_object_pos": "0.5,0.5",
+-    "change_extrusion_role_gcode": "",
+-    "change_filament_gcode": "; FLUSH_START\n;;; M400 P0\nT[next_extruder] ; change extruder\n; 1\n;;; G1 E-2 F2400\n;;; G1 Z{max(toolchange_z+0.6, 5.0)} F600\n;;; G1 X271.5 F12000\n;;; G1 E-5 F600\n;;; G1 X278 F600\n;;; M400 P3530\n;;; G1 E-1 F600\n;;; G1 Z{max(toolchange_z+2.6, 7.0)}  F600\n;;; G1 X278 F18000\n;;; G1 X271.5 F1200\n;;; G1 E2 F300\n;;; M400 P31050\n;;; M400 P17510\n; 2\n;;; G1 X278 F18000\n;;; G1 X271.5 F1200\n;;; G1 E2 F300\n;;; M400 P0\n;;; G1 X250 F1200\n;;; M400 P0\n;;; G1 X278 F18000\n;;; G1 X271.5 F1200\n;;; G1 E2 F300\n;;; M400 P0\n; 3.1\n;;; M106 S255\n;;; G1 X36 Y260 Z-0.8 F9600\n;;; G1 X50 Y260 Z1 F9600\n;;; G1 X86 Y260 Z1 F9600\n;;; G1 X90 Y260 Z-0.8 F9600\n;;; G1 X90 Y259 Z-0.8 F9600\n;;; G1 X86 Y259 Z1 F9600\n;;; G1 X50 Y259 Z1 F9600\n;;; G1 X36 Y259 Z-0.8 F9600\n; 3.2\n;;; G1 X36 Y260 Z-0.8 F9600\n;;; G1 X50 Y260 Z1 F9600\n;;; G1 X86 Y260 Z1 F9600\n;;; G1 X90 Y260 Z-0.8 F9600\n;;; G1 X90 Y259 Z-0.8 F9600\n;;; G1 X86 Y259 Z1 F9600\n;;; G1 X50 Y259 Z1 F9600\n;;; G1 X36 Y259 Z-0.8 F9600\n; 3.3\n;;; G1 X36 Y260 Z-0.8 F9600\n;;; G1 X50 Y260 Z1 F9600\n;;; G1 X86 Y260 Z1 F9600\n;;; G1 X90 Y260 Z-0.8 F9600\n;;; G1 X90 Y259 Z-0.8 F9600\n;;; G1 X86 Y259 Z1 F9600\n;;; G1 X50 Y259 Z1 F9600\n;;; G1 X36 Y259 Z-0.8 F9600\n;;; G1 Z{toolchange_z}\n;;; M400 P0\n; FLUSH_END",
+-    "cooling_tube_length": "0",
+-    "cooling_tube_retraction": "0",
+-    "deretraction_speed": [
+-        "60"
+-    ],
+-    "emit_machine_limits_to_gcode": "1",
+-    "enable_filament_ramming": "0",
+-    "enable_long_retraction_when_cut": "0",
+-    "extra_loading_move": "0",
+-    "extruder_clearance_height_to_lid": "250",
+-    "extruder_clearance_height_to_rod": "30",
+-    "extruder_clearance_radius": "65",
+-    "extruder_colour": [
+-        "#FF4D4F"
+-    ],
+-    "extruder_offset": [
+-        "0x0"
+-    ],
+-    "fan_kickstart": "0",
+-    "fan_speedup_overhangs": "1",
+-    "fan_speedup_time": "0",
+-    "head_wrap_detect_zone": [],
+-    "high_current_on_filament_swap": "0",
+-    "host_type": "octoprint",
+-    "layer_change_gcode": "; AFTER_LAYER_CHANGE [layer_num] @ [layer_z]mm",
+-    "long_retractions_when_cut": [
+-        "0"
+-    ],
+-    "machine_end_gcode": "M400\nG92 E0 ; zero the extruder\nG1 E-2 F3600\n{if max_layer_z < max_print_height-1}G1 Z{max_layer_z+2} F900 ; Move print head further up{endif}\nG1 X250 Y220 F12000 ; present print\nM140 S0 ; turn off heatbed\nM104 S0 ; turn off temperature\nM107;turn off fan\nM84; disable motors\n; disable stepper motors",
+-    "machine_load_filament_time": "42",
+-    "machine_max_acceleration_e": [
+-        "20000",
+-        "20000"
+-    ],
+-    "machine_max_acceleration_extruding": [
+-        "20000",
+-        "20000"
+-    ],
+-    "machine_max_acceleration_retracting": [
+-        "20000",
+-        "20000"
+-    ],
+-    "machine_max_acceleration_travel": [
+-        "20000",
+-        "20000"
+-    ],
+-    "machine_max_acceleration_x": [
+-        "20000",
+-        "20000"
+-    ],
+-    "machine_max_acceleration_y": [
+-        "20000",
+-        "20000"
+-    ],
+-    "machine_max_acceleration_z": [
+-        "3000",
+-        "3000"
+-    ],
+-    "machine_max_jerk_e": [
+-        "20",
+-        "20"
+-    ],
+-    "machine_max_jerk_x": [
+-        "20",
+-        "20"
+-    ],
+-    "machine_max_jerk_y": [
+-        "20",
+-        "20"
+-    ],
+-    "machine_max_jerk_z": [
+-        "20",
+-        "20"
+-    ],
+-    "machine_max_speed_e": [
+-        "600",
+-        "600"
+-    ],
+-    "machine_max_speed_x": [
+-        "600",
+-        "600"
+-    ],
+-    "machine_max_speed_y": [
+-        "600",
+-        "600"
+-    ],
+-    "machine_max_speed_z": [
+-        "20",
+-        "20"
+-    ],
+-    "machine_min_extruding_rate": [
+-        "0",
+-        "0"
+-    ],
+-    "machine_min_travel_rate": [
+-        "0",
+-        "0"
+-    ],
+-    "machine_pause_gcode": "M600",
+-    "machine_start_gcode": "G9111 bedTemp=[first_layer_bed_temperature] extruderTemp=[first_layer_temperature[initial_tool]]\nM117\nM900 K0.051\n; print_bed_min = {print_bed_min[0]},{print_bed_min[1]}\n; print_bed_max = {print_bed_max[0]},{print_bed_max[1]}\n; print_bed_size = {print_bed_size[0]},{print_bed_size[1]}\n; first_layer_print_min = {first_layer_print_min[0]},{first_layer_print_min[1]}\n; first_layer_print_max = {first_layer_print_max[0]},{first_layer_print_max[1]}\n; first_layer_print_size = {first_layer_print_size[0]},{first_layer_print_size[1]}",
+-    "machine_tool_change_time": "0",
+-    "machine_unload_filament_time": "0",
+-    "manual_filament_change": "0",
+-    "max_layer_height": [
+-        "0.28"
+-    ],
+-    "min_layer_height": [
+-        "0.08"
+-    ],
+-    "nozzle_height": "4",
+-    "nozzle_hrc": "0",
+-    "nozzle_type": "brass",
+-    "nozzle_volume": "58.7795",
+-    "parking_pos_retraction": "0",
+-    "pellet_modded_printer": "0",
+-    "preferred_orientation": "0",
+-    "printer_notes": "",
+-    "printer_structure": "i3",
+-    "printhost_authorization_type": "key",
+-    "printhost_ssl_ignore_revoke": "0",
+-    "printing_by_object_gcode": "",
+-    "purge_in_prime_tower": "0",
+-    "retract_before_wipe": [
+-        "0%"
+-    ],
+-    "retract_length_toolchange": [
+-        "0"
+-    ],
+-    "retract_lift_above": [
+-        "0"
+-    ],
+-    "retract_lift_below": [
+-        "259"
+-    ],
+-    "retract_lift_enforce": [
+-        "All Surfaces"
+-    ],
+-    "retract_restart_extra": [
+-        "0"
+-    ],
+-    "retract_restart_extra_toolchange": [
+-        "0"
+-    ],
+-    "retract_when_changing_layer": [
+-        "1"
+-    ],
+-    "retraction_distances_when_cut": [
+-        "18"
+-    ],
+-    "retraction_length": [
+-        "1"
+-    ],
+-    "retraction_minimum_travel": [
+-        "1"
+-    ],
+-    "retraction_speed": [
+-        "60"
+-    ],
+-    "scan_first_layer": "0",
+-    "silent_mode": "0",
+-    "single_extruder_multi_material": "1",
+-    "support_air_filtration": "0",
+-    "support_chamber_temp_control": "0",
+-    "support_multi_bed_types": "1",
+-    "template_custom_gcode": "",
+-    "time_cost": "0",
+-    "time_lapse_gcode": "",
+-    "travel_slope": [
+-        "3"
+-    ],
+-    "upward_compatible_machine": [],
+-    "use_firmware_retraction": "0",
+-    "use_relative_e_distances": "1",
+-    "wipe": [
+-        "1"
+-    ],
+-    "wipe_distance": [
+-        "2"
+-    ],
+-    "z_hop": [
+-        "0.4"
+-    ],
+-    "z_hop_types": [
+-        "Slope Lift"
+-    ],
+-    "z_offset": "0"
++{
++    "type": "machine",
++    "name": "Anycubic Kobra 3 0.4 nozzle",
++    "inherits": "fdm_machine_common",
++    "from": "system",
++    "setting_id": "GM001",
++    "instantiation": "true",
++    "printer_technology": "FFF",
++    "version": "1.3.2508.11",
++    "printer_settings_id": "Anycubic Kobra 3 0.4 nozzle",
++    "printer_model": "Anycubic Kobra 3",
++    "printer_variant": "0.4",
++    "name": "Anycubic Kobra 3 0.4 nozzle",
++    "nozzle_diameter": [
++        "0.4"
++    ],
++    "default_print_profile": "0.20mm Standard @Anycubic Kobra 3 0.4 nozzle",
++    "default_filament_profile": [
++        "Anycubic PLA @Anycubic Kobra 3 0.4 nozzle"
++    ],
++    "disable_m73": "1",
++    "gcode_flavor": "klipper",
++    "printable_area": [
++        "0x0",
++        "255x0",
++        "255x255",
++        "0x255"
++    ],
++    "printable_height": "260",
++    "thumbnails": "230x110/PNG",
++    "thumbnails_format": "PNG",
++    "thumbnails_internal": "512x512/PNG/top",
++    "thumbnails_internal_switch": "1",
++    "adaptive_bed_mesh_margin": "0",
++    "auxiliary_fan": "0",
++    "bbl_use_printhost": "0",
++    "bed_custom_model": "",
++    "bed_custom_texture": "",
++    "bed_exclude_area": [
++        "0x0"
++    ],
++    "bed_mesh_max": "0,0",
++    "bed_mesh_min": "0,0",
++    "bed_mesh_probe_distance": "0,0",
++    "before_layer_change_gcode": "; BEFORE_LAYER_CHANGE [layer_num] @ [layer_z]mm",
++    "best_object_pos": "0.5,0.5",
++    "change_extrusion_role_gcode": "",
++    "change_filament_gcode": "; FLUSH_START\n;;; M400 P0\nT[next_extruder] ; change extruder\n; 1\n;;; G1 E-2 F2400\n;;; G1 Z{max(toolchange_z+0.6, 5.0)} F600\n;;; G1 X271.5 F12000\n;;; G1 E-5 F600\n;;; G1 X278 F600\n;;; M400 P3530\n;;; G1 E-1 F600\n;;; G1 Z{max(toolchange_z+2.6, 7.0)}  F600\n;;; G1 X278 F18000\n;;; G1 X271.5 F1200\n;;; G1 E2 F300\n;;; M400 P31050\n;;; M400 P17510\n; 2\n;;; G1 X278 F18000\n;;; G1 X271.5 F1200\n;;; G1 E2 F300\n;;; M400 P0\n;;; G1 X250 F1200\n;;; M400 P0\n;;; G1 X278 F18000\n;;; G1 X271.5 F1200\n;;; G1 E2 F300\n;;; M400 P0\n; 3.1\n;;; M106 S255\n;;; G1 X36 Y260 Z-0.8 F9600\n;;; G1 X50 Y260 Z1 F9600\n;;; G1 X86 Y260 Z1 F9600\n;;; G1 X90 Y260 Z-0.8 F9600\n;;; G1 X90 Y259 Z-0.8 F9600\n;;; G1 X86 Y259 Z1 F9600\n;;; G1 X50 Y259 Z1 F9600\n;;; G1 X36 Y259 Z-0.8 F9600\n; 3.2\n;;; G1 X36 Y260 Z-0.8 F9600\n;;; G1 X50 Y260 Z1 F9600\n;;; G1 X86 Y260 Z1 F9600\n;;; G1 X90 Y260 Z-0.8 F9600\n;;; G1 X90 Y259 Z-0.8 F9600\n;;; G1 X86 Y259 Z1 F9600\n;;; G1 X50 Y259 Z1 F9600\n;;; G1 X36 Y259 Z-0.8 F9600\n; 3.3\n;;; G1 X36 Y260 Z-0.8 F9600\n;;; G1 X50 Y260 Z1 F9600\n;;; G1 X86 Y260 Z1 F9600\n;;; G1 X90 Y260 Z-0.8 F9600\n;;; G1 X90 Y259 Z-0.8 F9600\n;;; G1 X86 Y259 Z1 F9600\n;;; G1 X50 Y259 Z1 F9600\n;;; G1 X36 Y259 Z-0.8 F9600\n;;; G1 Z{toolchange_z}\n;;; M400 P0\n; FLUSH_END",
++    "cooling_tube_length": "0",
++    "cooling_tube_retraction": "0",
++    "deretraction_speed": [
++        "60"
++    ],
++    "emit_machine_limits_to_gcode": "1",
++    "enable_filament_ramming": "0",
++    "enable_long_retraction_when_cut": "0",
++    "extra_loading_move": "0",
++    "extruder_clearance_height_to_lid": "250",
++    "extruder_clearance_height_to_rod": "30",
++    "extruder_clearance_radius": "65",
++    "extruder_colour": [
++        "#FF4D4F"
++    ],
++    "extruder_offset": [
++        "0x0"
++    ],
++    "fan_kickstart": "0",
++    "fan_speedup_overhangs": "1",
++    "fan_speedup_time": "0",
++    "head_wrap_detect_zone": [],
++    "high_current_on_filament_swap": "0",
++    "host_type": "octoprint",
++    "layer_change_gcode": "; AFTER_LAYER_CHANGE [layer_num] @ [layer_z]mm",
++    "long_retractions_when_cut": [
++        "0"
++    ],
++    "machine_end_gcode": "M400\nG92 E0 ; zero the extruder\nG1 E-2 F3600\n{if max_layer_z < max_print_height-1}G1 Z{max_layer_z+2} F900 ; Move print head further up{endif}\nG1 X250 Y220 F12000 ; present print\nM140 S0 ; turn off heatbed\nM104 S0 ; turn off temperature\nM107;turn off fan\nM84; disable motors\n; disable stepper motors",
++    "machine_load_filament_time": "42",
++    "machine_max_acceleration_e": [
++        "20000",
++        "20000"
++    ],
++    "machine_max_acceleration_extruding": [
++        "20000",
++        "20000"
++    ],
++    "machine_max_acceleration_retracting": [
++        "20000",
++        "20000"
++    ],
++    "machine_max_acceleration_travel": [
++        "20000",
++        "20000"
++    ],
++    "machine_max_acceleration_x": [
++        "20000",
++        "20000"
++    ],
++    "machine_max_acceleration_y": [
++        "20000",
++        "20000"
++    ],
++    "machine_max_acceleration_z": [
++        "3000",
++        "3000"
++    ],
++    "machine_max_jerk_e": [
++        "20",
++        "20"
++    ],
++    "machine_max_jerk_x": [
++        "20",
++        "20"
++    ],
++    "machine_max_jerk_y": [
++        "20",
++        "20"
++    ],
++    "machine_max_jerk_z": [
++        "20",
++        "20"
++    ],
++    "machine_max_speed_e": [
++        "600",
++        "600"
++    ],
++    "machine_max_speed_x": [
++        "600",
++        "600"
++    ],
++    "machine_max_speed_y": [
++        "600",
++        "600"
++    ],
++    "machine_max_speed_z": [
++        "20",
++        "20"
++    ],
++    "machine_min_extruding_rate": [
++        "0",
++        "0"
++    ],
++    "machine_min_travel_rate": [
++        "0",
++        "0"
++    ],
++    "machine_pause_gcode": "M600",
++    "machine_start_gcode": "G9111 bedTemp=[first_layer_bed_temperature] extruderTemp=[first_layer_temperature[initial_tool]]\nM117\nM900 K0.051\n; print_bed_min = {print_bed_min[0]},{print_bed_min[1]}\n; print_bed_max = {print_bed_max[0]},{print_bed_max[1]}\n; print_bed_size = {print_bed_size[0]},{print_bed_size[1]}\n; first_layer_print_min = {first_layer_print_min[0]},{first_layer_print_min[1]}\n; first_layer_print_max = {first_layer_print_max[0]},{first_layer_print_max[1]}\n; first_layer_print_size = {first_layer_print_size[0]},{first_layer_print_size[1]}",
++    "machine_tool_change_time": "0",
++    "machine_unload_filament_time": "0",
++    "manual_filament_change": "0",
++    "max_layer_height": [
++        "0.28"
++    ],
++    "min_layer_height": [
++        "0.08"
++    ],
++    "nozzle_height": "4",
++    "nozzle_hrc": "0",
++    "nozzle_type": "brass",
++    "nozzle_volume": "58.7795",
++    "parking_pos_retraction": "0",
++    "pellet_modded_printer": "0",
++    "preferred_orientation": "0",
++    "printer_notes": "",
++    "printer_structure": "i3",
++    "printhost_authorization_type": "key",
++    "printhost_ssl_ignore_revoke": "0",
++    "printing_by_object_gcode": "",
++    "purge_in_prime_tower": "0",
++    "retract_before_wipe": [
++        "0%"
++    ],
++    "retract_length_toolchange": [
++        "0"
++    ],
++    "retract_lift_above": [
++        "0"
++    ],
++    "retract_lift_below": [
++        "259"
++    ],
++    "retract_lift_enforce": [
++        "All Surfaces"
++    ],
++    "retract_restart_extra": [
++        "0"
++    ],
++    "retract_restart_extra_toolchange": [
++        "0"
++    ],
++    "retract_when_changing_layer": [
++        "1"
++    ],
++    "retraction_distances_when_cut": [
++        "18"
++    ],
++    "retraction_length": [
++        "1"
++    ],
++    "retraction_minimum_travel": [
++        "1"
++    ],
++    "retraction_speed": [
++        "60"
++    ],
++    "scan_first_layer": "0",
++    "silent_mode": "0",
++    "single_extruder_multi_material": "1",
++    "support_air_filtration": "0",
++    "support_chamber_temp_control": "0",
++    "support_multi_bed_types": "1",
++    "template_custom_gcode": "",
++    "time_cost": "0",
++    "time_lapse_gcode": "",
++    "travel_slope": [
++        "3"
++    ],
++    "upward_compatible_machine": [],
++    "use_firmware_retraction": "0",
++    "use_relative_e_distances": "1",
++    "wipe": [
++        "1"
++    ],
++    "wipe_distance": [
++        "2"
++    ],
++    "z_hop": [
++        "0.4"
++    ],
++    "z_hop_types": [
++        "Slope Lift"
++    ],
++    "z_offset": "0"
+ }
+\ No newline at end of file
+diff --git a/resources/profiles/Anycubic/machine/Anycubic Kobra 3 0.6 nozzle.json b/resources/profiles/Anycubic/machine/Anycubic Kobra 3 0.6 nozzle.json
+index de9d24147..6f5d73c02 100644
+--- a/resources/profiles/Anycubic/machine/Anycubic Kobra 3 0.6 nozzle.json	
++++ b/resources/profiles/Anycubic/machine/Anycubic Kobra 3 0.6 nozzle.json	
+@@ -1,244 +1,235 @@
+-{
+-    "type": "machine",
+-    "name": "Anycubic Kobra 3 0.6 nozzle",
+-    "inherits": "fdm_machine_common",
+-    "from": "system",
+-    "setting_id": "GM001",
+-    "instantiation": "true",
+-    "printer_technology": "FFF",
+-    "version": "1.3.2508.11",
+-    "printer_settings_id": "Anycubic Kobra 3 0.6 nozzle",
+-    "printer_model": "Anycubic Kobra 3",
+-    "printer_variant": "0.6",
+-    "name": "Anycubic Kobra 3 0.6 nozzle",
+-    "nozzle_diameter": [
+-        "0.6"
+-    ],
+-    "default_print_profile": "0.30mm Standard @Anycubic Kobra 3 0.6 nozzle",
+-    "default_filament_profile": [
+-        "Anycubic PLA @Anycubic Kobra 3 0.6 nozzle"
+-    ],
+-    "default_filament_profile": [
+-        "Anycubic PLA @Anycubic Kobra 3 0.6 nozzle"
+-    ],
+-    "disable_m73": "1",
+-    "gcode_flavor": "klipper",
+-    "printable_area": [
+-        "0x0",
+-        "255x0",
+-        "255x255",
+-        "0x255"
+-    ],
+-    "printable_height": "260",
+-    "thumbnails": [
+-        "230x110"
+-    ],
+-    "thumbnails_format": "PNG",
+-    "thumbnails_internal": [
+-        "512x512/PNG/top"
+-    ],
+-    "thumbnails_internal_switch": "1",
+-    "adaptive_bed_mesh_margin": "0",
+-    "auxiliary_fan": "0",
+-    "bbl_use_printhost": "0",
+-    "bed_custom_model": "",
+-    "bed_custom_texture": "",
+-    "bed_exclude_area": [
+-        "0x0",
+-        "255x0",
+-        "255x255",
+-        "0x255",
+-        "0x0",
+-        "2x2",
+-        "2x253",
+-        "253x253",
+-        "253x2",
+-        "2x2"
+-    ],
+-    "bed_mesh_max": "0,0",
+-    "bed_mesh_min": "0,0",
+-    "bed_mesh_probe_distance": "0,0",
+-    "before_layer_change_gcode": "; BEFORE_LAYER_CHANGE [layer_num] @ [layer_z]mm",
+-    "best_object_pos": "0.5,0.5",
+-    "change_extrusion_role_gcode": "",
+-    "change_filament_gcode": "; FLUSH_START\n;;; M400 P0\nT[next_extruder] ; change extruder\n; 1\n;;; G1 E-2 F2400\n;;; G1 Z{max(toolchange_z+0.6, 5.0)} F600\n;;; G1 X271.5 F12000\n;;; G1 E-5 F600\n;;; G1 X278 F600\n;;; M400 P3530\n;;; G1 E-1 F600\n;;; G1 Z{max(toolchange_z+2.6, 7.0)}  F600\n;;; G1 X278 F18000\n;;; G1 X271.5 F1200\n;;; G1 E2 F300\n;;; M400 P31050\n;;; M400 P17510\n; 2\n;;; G1 X278 F18000\n;;; G1 X271.5 F1200\n;;; G1 E2 F300\n;;; M400 P0\n;;; G1 X250 F1200\n;;; M400 P0\n;;; G1 X278 F18000\n;;; G1 X271.5 F1200\n;;; G1 E2 F300\n;;; M400 P0\n; 3.1\n;;; M106 S255\n;;; G1 X36 Y260 Z-0.8 F9600\n;;; G1 X50 Y260 Z1 F9600\n;;; G1 X86 Y260 Z1 F9600\n;;; G1 X90 Y260 Z-0.8 F9600\n;;; G1 X90 Y259 Z-0.8 F9600\n;;; G1 X86 Y259 Z1 F9600\n;;; G1 X50 Y259 Z1 F9600\n;;; G1 X36 Y259 Z-0.8 F9600\n; 3.2\n;;; G1 X36 Y260 Z-0.8 F9600\n;;; G1 X50 Y260 Z1 F9600\n;;; G1 X86 Y260 Z1 F9600\n;;; G1 X90 Y260 Z-0.8 F9600\n;;; G1 X90 Y259 Z-0.8 F9600\n;;; G1 X86 Y259 Z1 F9600\n;;; G1 X50 Y259 Z1 F9600\n;;; G1 X36 Y259 Z-0.8 F9600\n; 3.3\n;;; G1 X36 Y260 Z-0.8 F9600\n;;; G1 X50 Y260 Z1 F9600\n;;; G1 X86 Y260 Z1 F9600\n;;; G1 X90 Y260 Z-0.8 F9600\n;;; G1 X90 Y259 Z-0.8 F9600\n;;; G1 X86 Y259 Z1 F9600\n;;; G1 X50 Y259 Z1 F9600\n;;; G1 X36 Y259 Z-0.8 F9600\n;;; G1 Z{toolchange_z}\n;;; M400 P0\n; FLUSH_END",
+-    "cooling_tube_length": "0",
+-    "cooling_tube_retraction": "0",
+-    "deretraction_speed": [
+-        "30"
+-    ],
+-    "emit_machine_limits_to_gcode": "1",
+-    "enable_filament_ramming": "0",
+-    "enable_long_retraction_when_cut": "0",
+-    "extra_loading_move": "0",
+-    "extruder_clearance_height_to_lid": "200",
+-    "extruder_clearance_height_to_rod": "30",
+-    "extruder_clearance_radius": "65",
+-    "extruder_colour": [
+-        "#FF4D4F"
+-    ],
+-    "extruder_offset": [
+-        "0x0"
+-    ],
+-    "fan_kickstart": "0",
+-    "fan_speedup_overhangs": "1",
+-    "fan_speedup_time": "0",
+-    "head_wrap_detect_zone": [],
+-    "high_current_on_filament_swap": "0",
+-    "host_type": "octoprint",
+-    "layer_change_gcode": "; AFTER_LAYER_CHANGE [layer_num] @ [layer_z]mm",
+-    "long_retractions_when_cut": [
+-        "0"
+-    ],
+-    "machine_end_gcode": "M400 ; wait for buffer to clear\nG92 E0 ; zero the extruder\nG1 E-1 F3600 ; retract\n{if max_layer_z < max_print_height-1}G1 Z{max_layer_z+2} F600 ; Move print head further up{endif}\nG1 X250 Y220 F12000 ; present print\nM140 S0 ; turn off heatbed\nM104 S0 ; turn off temperature\nM107;turn off fan\nM84; disable motors\n; disable stepper motors\n\n",
+-    "machine_load_filament_time": "42",
+-    "machine_max_acceleration_e": [
+-        "20000",
+-        "20000"
+-    ],
+-    "machine_max_acceleration_extruding": [
+-        "20000",
+-        "20000"
+-    ],
+-    "machine_max_acceleration_retracting": [
+-        "20000",
+-        "20000"
+-    ],
+-    "machine_max_acceleration_travel": [
+-        "20000",
+-        "20000"
+-    ],
+-    "machine_max_acceleration_x": [
+-        "20000",
+-        "20000"
+-    ],
+-    "machine_max_acceleration_y": [
+-        "20000",
+-        "20000"
+-    ],
+-    "machine_max_acceleration_z": [
+-        "3000",
+-        "3000"
+-    ],
+-    "machine_max_jerk_e": [
+-        "20",
+-        "20"
+-    ],
+-    "machine_max_jerk_x": [
+-        "20",
+-        "20"
+-    ],
+-    "machine_max_jerk_y": [
+-        "20",
+-        "20"
+-    ],
+-    "machine_max_jerk_z": [
+-        "20",
+-        "20"
+-    ],
+-    "machine_max_speed_e": [
+-        "600",
+-        "600"
+-    ],
+-    "machine_max_speed_x": [
+-        "600",
+-        "600"
+-    ],
+-    "machine_max_speed_y": [
+-        "600",
+-        "600"
+-    ],
+-    "machine_max_speed_z": [
+-        "20",
+-        "20"
+-    ],
+-    "machine_min_extruding_rate": [
+-        "0",
+-        "0"
+-    ],
+-    "machine_min_travel_rate": [
+-        "0",
+-        "0"
+-    ],
+-    "machine_pause_gcode": "M600",
+-    "machine_start_gcode": "G9111 bedTemp=[first_layer_bed_temperature] extruderTemp=[first_layer_temperature[initial_tool]]\nM117\nM900 K0.05\n; print_bed_min = {print_bed_min[0]},{print_bed_min[1]}\n; print_bed_max = {print_bed_max[0]},{print_bed_max[1]}\n; print_bed_size = {print_bed_size[0]},{print_bed_size[1]}\n; first_layer_print_min = {first_layer_print_min[0]},{first_layer_print_min[1]}\n; first_layer_print_max = {first_layer_print_max[0]},{first_layer_print_max[1]}\n; first_layer_print_size = {first_layer_print_size[0]},{first_layer_print_size[1]}",
+-    "machine_unload_filament_time": "0",
+-    "manual_filament_change": "0",
+-    "max_layer_height": [
+-        "0.42"
+-    ],
+-    "min_layer_height": [
+-        "0.12"
+-    ],
+-    "nozzle_height": "4",
+-    "nozzle_hrc": "0",
+-    "nozzle_type": "brass",
+-    "nozzle_volume": "58.7795",
+-    "parking_pos_retraction": "0",
+-    "preferred_orientation": "0",
+-    "printer_notes": "",
+-    "printer_structure": "i3",
+-    "printing_by_object_gcode": "",
+-    "purge_in_prime_tower": "0",
+-    "retract_before_wipe": [
+-        "0%"
+-    ],
+-    "retract_length_toolchange": [
+-        "0"
+-    ],
+-    "retract_lift_above": [
+-        "0"
+-    ],
+-    "retract_lift_below": [
+-        "259"
+-    ],
+-    "retract_lift_enforce": [
+-        "All Surfaces"
+-    ],
+-    "retract_restart_extra": [
+-        "0"
+-    ],
+-    "retract_restart_extra_toolchange": [
+-        "0"
+-    ],
+-    "retract_when_changing_layer": [
+-        "1"
+-    ],
+-    "retraction_distances_when_cut": [
+-        "18"
+-    ],
+-    "retraction_length": [
+-        "0.8"
+-    ],
+-    "retraction_minimum_travel": [
+-        "1"
+-    ],
+-    "retraction_speed": [
+-        "30"
+-    ],
+-    "scan_first_layer": "0",
+-    "silent_mode": "0",
+-    "single_extruder_multi_material": "1",
+-    "support_air_filtration": "1",
+-    "support_chamber_temp_control": "1",
+-    "support_multi_bed_types": "1",
+-    "template_custom_gcode": "",
+-    "time_cost": "0",
+-    "time_lapse_gcode": "",
+-    "upward_compatible_machine": [],
+-    "use_firmware_retraction": "0",
+-    "use_relative_e_distances": "1",
+-    "wipe": [
+-        "1"
+-    ],
+-    "wipe_distance": [
+-        "2"
+-    ],
+-    "z_hop": [
+-        "0.4"
+-    ],
+-    "z_hop_types": [
+-        "Auto Lift"
+-    ],
+-    "z_offset": "0"
++{
++    "type": "machine",
++    "name": "Anycubic Kobra 3 0.6 nozzle",
++    "inherits": "fdm_machine_common",
++    "from": "system",
++    "setting_id": "GM001",
++    "instantiation": "true",
++    "printer_technology": "FFF",
++    "version": "1.3.2508.11",
++    "printer_settings_id": "Anycubic Kobra 3 0.6 nozzle",
++    "printer_model": "Anycubic Kobra 3",
++    "printer_variant": "0.6",
++    "name": "Anycubic Kobra 3 0.6 nozzle",
++    "nozzle_diameter": [
++        "0.6"
++    ],
++    "default_print_profile": "0.30mm Standard @Anycubic Kobra 3 0.6 nozzle",
++    "default_filament_profile": [
++        "Anycubic PLA @Anycubic Kobra 3 0.6 nozzle"
++    ],
++    "default_filament_profile": [
++        "Anycubic PLA @Anycubic Kobra 3 0.6 nozzle"
++    ],
++    "disable_m73": "1",
++    "gcode_flavor": "klipper",
++    "printable_area": [
++        "0x0",
++        "255x0",
++        "255x255",
++        "0x255"
++    ],
++    "printable_height": "260",
++    "thumbnails": [
++        "230x110"
++    ],
++    "thumbnails_format": "PNG",
++    "thumbnails_internal": [
++        "512x512/PNG/top"
++    ],
++    "thumbnails_internal_switch": "1",
++    "adaptive_bed_mesh_margin": "0",
++    "auxiliary_fan": "0",
++    "bbl_use_printhost": "0",
++    "bed_custom_model": "",
++    "bed_custom_texture": "",
++    "bed_exclude_area": [
++        "0x0"
++    ],
++    "bed_mesh_max": "0,0",
++    "bed_mesh_min": "0,0",
++    "bed_mesh_probe_distance": "0,0",
++    "before_layer_change_gcode": "; BEFORE_LAYER_CHANGE [layer_num] @ [layer_z]mm",
++    "best_object_pos": "0.5,0.5",
++    "change_extrusion_role_gcode": "",
++    "change_filament_gcode": "; FLUSH_START\n;;; M400 P0\nT[next_extruder] ; change extruder\n; 1\n;;; G1 E-2 F2400\n;;; G1 Z{max(toolchange_z+0.6, 5.0)} F600\n;;; G1 X271.5 F12000\n;;; G1 E-5 F600\n;;; G1 X278 F600\n;;; M400 P3530\n;;; G1 E-1 F600\n;;; G1 Z{max(toolchange_z+2.6, 7.0)}  F600\n;;; G1 X278 F18000\n;;; G1 X271.5 F1200\n;;; G1 E2 F300\n;;; M400 P31050\n;;; M400 P17510\n; 2\n;;; G1 X278 F18000\n;;; G1 X271.5 F1200\n;;; G1 E2 F300\n;;; M400 P0\n;;; G1 X250 F1200\n;;; M400 P0\n;;; G1 X278 F18000\n;;; G1 X271.5 F1200\n;;; G1 E2 F300\n;;; M400 P0\n; 3.1\n;;; M106 S255\n;;; G1 X36 Y260 Z-0.8 F9600\n;;; G1 X50 Y260 Z1 F9600\n;;; G1 X86 Y260 Z1 F9600\n;;; G1 X90 Y260 Z-0.8 F9600\n;;; G1 X90 Y259 Z-0.8 F9600\n;;; G1 X86 Y259 Z1 F9600\n;;; G1 X50 Y259 Z1 F9600\n;;; G1 X36 Y259 Z-0.8 F9600\n; 3.2\n;;; G1 X36 Y260 Z-0.8 F9600\n;;; G1 X50 Y260 Z1 F9600\n;;; G1 X86 Y260 Z1 F9600\n;;; G1 X90 Y260 Z-0.8 F9600\n;;; G1 X90 Y259 Z-0.8 F9600\n;;; G1 X86 Y259 Z1 F9600\n;;; G1 X50 Y259 Z1 F9600\n;;; G1 X36 Y259 Z-0.8 F9600\n; 3.3\n;;; G1 X36 Y260 Z-0.8 F9600\n;;; G1 X50 Y260 Z1 F9600\n;;; G1 X86 Y260 Z1 F9600\n;;; G1 X90 Y260 Z-0.8 F9600\n;;; G1 X90 Y259 Z-0.8 F9600\n;;; G1 X86 Y259 Z1 F9600\n;;; G1 X50 Y259 Z1 F9600\n;;; G1 X36 Y259 Z-0.8 F9600\n;;; G1 Z{toolchange_z}\n;;; M400 P0\n; FLUSH_END",
++    "cooling_tube_length": "0",
++    "cooling_tube_retraction": "0",
++    "deretraction_speed": [
++        "30"
++    ],
++    "emit_machine_limits_to_gcode": "1",
++    "enable_filament_ramming": "0",
++    "enable_long_retraction_when_cut": "0",
++    "extra_loading_move": "0",
++    "extruder_clearance_height_to_lid": "200",
++    "extruder_clearance_height_to_rod": "30",
++    "extruder_clearance_radius": "65",
++    "extruder_colour": [
++        "#FF4D4F"
++    ],
++    "extruder_offset": [
++        "0x0"
++    ],
++    "fan_kickstart": "0",
++    "fan_speedup_overhangs": "1",
++    "fan_speedup_time": "0",
++    "head_wrap_detect_zone": [],
++    "high_current_on_filament_swap": "0",
++    "host_type": "octoprint",
++    "layer_change_gcode": "; AFTER_LAYER_CHANGE [layer_num] @ [layer_z]mm",
++    "long_retractions_when_cut": [
++        "0"
++    ],
++    "machine_end_gcode": "M400 ; wait for buffer to clear\nG92 E0 ; zero the extruder\nG1 E-1 F3600 ; retract\n{if max_layer_z < max_print_height-1}G1 Z{max_layer_z+2} F600 ; Move print head further up{endif}\nG1 X250 Y220 F12000 ; present print\nM140 S0 ; turn off heatbed\nM104 S0 ; turn off temperature\nM107;turn off fan\nM84; disable motors\n; disable stepper motors\n\n",
++    "machine_load_filament_time": "42",
++    "machine_max_acceleration_e": [
++        "20000",
++        "20000"
++    ],
++    "machine_max_acceleration_extruding": [
++        "20000",
++        "20000"
++    ],
++    "machine_max_acceleration_retracting": [
++        "20000",
++        "20000"
++    ],
++    "machine_max_acceleration_travel": [
++        "20000",
++        "20000"
++    ],
++    "machine_max_acceleration_x": [
++        "20000",
++        "20000"
++    ],
++    "machine_max_acceleration_y": [
++        "20000",
++        "20000"
++    ],
++    "machine_max_acceleration_z": [
++        "3000",
++        "3000"
++    ],
++    "machine_max_jerk_e": [
++        "20",
++        "20"
++    ],
++    "machine_max_jerk_x": [
++        "20",
++        "20"
++    ],
++    "machine_max_jerk_y": [
++        "20",
++        "20"
++    ],
++    "machine_max_jerk_z": [
++        "20",
++        "20"
++    ],
++    "machine_max_speed_e": [
++        "600",
++        "600"
++    ],
++    "machine_max_speed_x": [
++        "600",
++        "600"
++    ],
++    "machine_max_speed_y": [
++        "600",
++        "600"
++    ],
++    "machine_max_speed_z": [
++        "20",
++        "20"
++    ],
++    "machine_min_extruding_rate": [
++        "0",
++        "0"
++    ],
++    "machine_min_travel_rate": [
++        "0",
++        "0"
++    ],
++    "machine_pause_gcode": "M600",
++    "machine_start_gcode": "G9111 bedTemp=[first_layer_bed_temperature] extruderTemp=[first_layer_temperature[initial_tool]]\nM117\nM900 K0.05\n; print_bed_min = {print_bed_min[0]},{print_bed_min[1]}\n; print_bed_max = {print_bed_max[0]},{print_bed_max[1]}\n; print_bed_size = {print_bed_size[0]},{print_bed_size[1]}\n; first_layer_print_min = {first_layer_print_min[0]},{first_layer_print_min[1]}\n; first_layer_print_max = {first_layer_print_max[0]},{first_layer_print_max[1]}\n; first_layer_print_size = {first_layer_print_size[0]},{first_layer_print_size[1]}",
++    "machine_unload_filament_time": "0",
++    "manual_filament_change": "0",
++    "max_layer_height": [
++        "0.42"
++    ],
++    "min_layer_height": [
++        "0.12"
++    ],
++    "nozzle_height": "4",
++    "nozzle_hrc": "0",
++    "nozzle_type": "brass",
++    "nozzle_volume": "58.7795",
++    "parking_pos_retraction": "0",
++    "preferred_orientation": "0",
++    "printer_notes": "",
++    "printer_structure": "i3",
++    "printing_by_object_gcode": "",
++    "purge_in_prime_tower": "0",
++    "retract_before_wipe": [
++        "0%"
++    ],
++    "retract_length_toolchange": [
++        "0"
++    ],
++    "retract_lift_above": [
++        "0"
++    ],
++    "retract_lift_below": [
++        "259"
++    ],
++    "retract_lift_enforce": [
++        "All Surfaces"
++    ],
++    "retract_restart_extra": [
++        "0"
++    ],
++    "retract_restart_extra_toolchange": [
++        "0"
++    ],
++    "retract_when_changing_layer": [
++        "1"
++    ],
++    "retraction_distances_when_cut": [
++        "18"
++    ],
++    "retraction_length": [
++        "0.8"
++    ],
++    "retraction_minimum_travel": [
++        "1"
++    ],
++    "retraction_speed": [
++        "30"
++    ],
++    "scan_first_layer": "0",
++    "silent_mode": "0",
++    "single_extruder_multi_material": "1",
++    "support_air_filtration": "1",
++    "support_chamber_temp_control": "1",
++    "support_multi_bed_types": "1",
++    "template_custom_gcode": "",
++    "time_cost": "0",
++    "time_lapse_gcode": "",
++    "upward_compatible_machine": [],
++    "use_firmware_retraction": "0",
++    "use_relative_e_distances": "1",
++    "wipe": [
++        "1"
++    ],
++    "wipe_distance": [
++        "2"
++    ],
++    "z_hop": [
++        "0.4"
++    ],
++    "z_hop_types": [
++        "Auto Lift"
++    ],
++    "z_offset": "0"
+ }
+\ No newline at end of file
+diff --git a/resources/profiles/Anycubic/machine/Anycubic Kobra 3 0.8 nozzle.json b/resources/profiles/Anycubic/machine/Anycubic Kobra 3 0.8 nozzle.json
+index dc4379ce5..9bb679ca3 100644
+--- a/resources/profiles/Anycubic/machine/Anycubic Kobra 3 0.8 nozzle.json	
++++ b/resources/profiles/Anycubic/machine/Anycubic Kobra 3 0.8 nozzle.json	
+@@ -1,244 +1,235 @@
+-{
+-    "type": "machine",
+-    "name": "Anycubic Kobra 3 0.8 nozzle",
+-    "inherits": "fdm_machine_common",
+-    "from": "system",
+-    "setting_id": "GM001",
+-    "instantiation": "true",
+-    "printer_technology": "FFF",
+-    "version": "1.3.2508.11",
+-    "printer_settings_id": "Anycubic Kobra 3 0.8 nozzle",
+-    "printer_model": "Anycubic Kobra 3",
+-    "printer_variant": "0.8",
+-    "name": "Anycubic Kobra 3 0.8 nozzle",
+-    "nozzle_diameter": [
+-        "0.8"
+-    ],
+-    "default_print_profile": "0.40mm Standard @Anycubic Kobra 3 0.8 nozzle",
+-    "default_filament_profile": [
+-        "Anycubic PLA @Anycubic Kobra 3 0.8 nozzle"
+-    ],
+-    "default_filament_profile": [
+-        "Anycubic PLA @Anycubic Kobra 3 0.8 nozzle"
+-    ],
+-    "disable_m73": "1",
+-    "gcode_flavor": "klipper",
+-    "printable_area": [
+-        "0x0",
+-        "255x0",
+-        "255x255",
+-        "0x255"
+-    ],
+-    "printable_height": "260",
+-    "thumbnails": [
+-        "230x110"
+-    ],
+-    "thumbnails_format": "PNG",
+-    "thumbnails_internal": [
+-        "512x512/PNG/top"
+-    ],
+-    "thumbnails_internal_switch": "1",
+-    "adaptive_bed_mesh_margin": "0",
+-    "auxiliary_fan": "0",
+-    "bbl_use_printhost": "0",
+-    "bed_custom_model": "",
+-    "bed_custom_texture": "",
+-    "bed_exclude_area": [
+-        "0x0",
+-        "255x0",
+-        "255x255",
+-        "0x255",
+-        "0x0",
+-        "2x2",
+-        "2x253",
+-        "253x253",
+-        "253x2",
+-        "2x2"
+-    ],
+-    "bed_mesh_max": "0,0",
+-    "bed_mesh_min": "0,0",
+-    "bed_mesh_probe_distance": "0,0",
+-    "before_layer_change_gcode": "; BEFORE_LAYER_CHANGE [layer_num] @ [layer_z]mm",
+-    "best_object_pos": "0.5,0.5",
+-    "change_extrusion_role_gcode": "",
+-    "change_filament_gcode": "; FLUSH_START\n;;; M400 P0\nT[next_extruder] ; change extruder\n; 1\n;;; G1 E-2 F2400\n;;; G1 Z{max(toolchange_z+0.6, 5.0)} F600\n;;; G1 X271.5 F12000\n;;; G1 E-5 F600\n;;; G1 X278 F600\n;;; M400 P3530\n;;; G1 E-1 F600\n;;; G1 Z{max(toolchange_z+2.6, 7.0)}  F600\n;;; G1 X278 F18000\n;;; G1 X271.5 F1200\n;;; G1 E2 F300\n;;; M400 P31050\n;;; M400 P17510\n; 2\n;;; G1 X278 F18000\n;;; G1 X271.5 F1200\n;;; G1 E2 F300\n;;; M400 P0\n;;; G1 X250 F1200\n;;; M400 P0\n;;; G1 X278 F18000\n;;; G1 X271.5 F1200\n;;; G1 E2 F300\n;;; M400 P0\n; 3.1\n;;; M106 S255\n;;; G1 X36 Y260 Z-0.8 F9600\n;;; G1 X50 Y260 Z1 F9600\n;;; G1 X86 Y260 Z1 F9600\n;;; G1 X90 Y260 Z-0.8 F9600\n;;; G1 X90 Y259 Z-0.8 F9600\n;;; G1 X86 Y259 Z1 F9600\n;;; G1 X50 Y259 Z1 F9600\n;;; G1 X36 Y259 Z-0.8 F9600\n; 3.2\n;;; G1 X36 Y260 Z-0.8 F9600\n;;; G1 X50 Y260 Z1 F9600\n;;; G1 X86 Y260 Z1 F9600\n;;; G1 X90 Y260 Z-0.8 F9600\n;;; G1 X90 Y259 Z-0.8 F9600\n;;; G1 X86 Y259 Z1 F9600\n;;; G1 X50 Y259 Z1 F9600\n;;; G1 X36 Y259 Z-0.8 F9600\n; 3.3\n;;; G1 X36 Y260 Z-0.8 F9600\n;;; G1 X50 Y260 Z1 F9600\n;;; G1 X86 Y260 Z1 F9600\n;;; G1 X90 Y260 Z-0.8 F9600\n;;; G1 X90 Y259 Z-0.8 F9600\n;;; G1 X86 Y259 Z1 F9600\n;;; G1 X50 Y259 Z1 F9600\n;;; G1 X36 Y259 Z-0.8 F9600\n;;; G1 Z{toolchange_z}\n;;; M400 P0\n; FLUSH_END",
+-    "cooling_tube_length": "0",
+-    "cooling_tube_retraction": "0",
+-    "deretraction_speed": [
+-        "0"
+-    ],
+-    "emit_machine_limits_to_gcode": "1",
+-    "enable_filament_ramming": "0",
+-    "enable_long_retraction_when_cut": "0",
+-    "extra_loading_move": "0",
+-    "extruder_clearance_height_to_lid": "200",
+-    "extruder_clearance_height_to_rod": "30",
+-    "extruder_clearance_radius": "65",
+-    "extruder_colour": [
+-        "#FF4D4F"
+-    ],
+-    "extruder_offset": [
+-        "0x0"
+-    ],
+-    "fan_kickstart": "0",
+-    "fan_speedup_overhangs": "1",
+-    "fan_speedup_time": "0",
+-    "head_wrap_detect_zone": [],
+-    "high_current_on_filament_swap": "0",
+-    "host_type": "octoprint",
+-    "layer_change_gcode": "; AFTER_LAYER_CHANGE [layer_num] @ [layer_z]mm",
+-    "long_retractions_when_cut": [
+-        "0"
+-    ],
+-    "machine_end_gcode": "M400 ; wait for buffer to clear\nG92 E0 ; zero the extruder\nG1 E-2 F3000 ; retract\n{if max_layer_z < max_print_height-1}G1 Z{max_layer_z+2} F600 ; Move print head further up{endif}\nG1 X250 Y220 F12000 ; present print\nM140 S0 ; turn off heatbed\nM104 S0 ; turn off temperature\nM107;turn off fan\nM84; disable motors\n; disable stepper motors\n\n",
+-    "machine_load_filament_time": "42",
+-    "machine_max_acceleration_e": [
+-        "20000",
+-        "20000"
+-    ],
+-    "machine_max_acceleration_extruding": [
+-        "20000",
+-        "20000"
+-    ],
+-    "machine_max_acceleration_retracting": [
+-        "20000",
+-        "20000"
+-    ],
+-    "machine_max_acceleration_travel": [
+-        "20000",
+-        "20000"
+-    ],
+-    "machine_max_acceleration_x": [
+-        "20000",
+-        "20000"
+-    ],
+-    "machine_max_acceleration_y": [
+-        "20000",
+-        "20000"
+-    ],
+-    "machine_max_acceleration_z": [
+-        "3000",
+-        "3000"
+-    ],
+-    "machine_max_jerk_e": [
+-        "20",
+-        "20"
+-    ],
+-    "machine_max_jerk_x": [
+-        "20",
+-        "20"
+-    ],
+-    "machine_max_jerk_y": [
+-        "20",
+-        "20"
+-    ],
+-    "machine_max_jerk_z": [
+-        "20",
+-        "20"
+-    ],
+-    "machine_max_speed_e": [
+-        "600",
+-        "600"
+-    ],
+-    "machine_max_speed_x": [
+-        "600",
+-        "600"
+-    ],
+-    "machine_max_speed_y": [
+-        "600",
+-        "600"
+-    ],
+-    "machine_max_speed_z": [
+-        "20",
+-        "20"
+-    ],
+-    "machine_min_extruding_rate": [
+-        "0",
+-        "0"
+-    ],
+-    "machine_min_travel_rate": [
+-        "0",
+-        "0"
+-    ],
+-    "machine_pause_gcode": "M600",
+-    "machine_start_gcode": "G9111 bedTemp=[first_layer_bed_temperature] extruderTemp=[first_layer_temperature[initial_tool]]\nM117\nM900 K0.051\n; print_bed_min = {print_bed_min[0]},{print_bed_min[1]}\n; print_bed_max = {print_bed_max[0]},{print_bed_max[1]}\n; print_bed_size = {print_bed_size[0]},{print_bed_size[1]}\n; first_layer_print_min = {first_layer_print_min[0]},{first_layer_print_min[1]}\n; first_layer_print_max = {first_layer_print_max[0]},{first_layer_print_max[1]}\n; first_layer_print_size = {first_layer_print_size[0]},{first_layer_print_size[1]}",
+-    "machine_unload_filament_time": "0",
+-    "manual_filament_change": "0",
+-    "max_layer_height": [
+-        "0.56"
+-    ],
+-    "min_layer_height": [
+-        "0.16"
+-    ],
+-    "nozzle_height": "4",
+-    "nozzle_hrc": "0",
+-    "nozzle_type": "brass",
+-    "nozzle_volume": "58.7795",
+-    "parking_pos_retraction": "0",
+-    "preferred_orientation": "0",
+-    "printer_notes": "",
+-    "printer_structure": "i3",
+-    "printing_by_object_gcode": "",
+-    "purge_in_prime_tower": "0",
+-    "retract_before_wipe": [
+-        "0%"
+-    ],
+-    "retract_length_toolchange": [
+-        "0"
+-    ],
+-    "retract_lift_above": [
+-        "0.3"
+-    ],
+-    "retract_lift_below": [
+-        "259.6"
+-    ],
+-    "retract_lift_enforce": [
+-        "All Surfaces"
+-    ],
+-    "retract_restart_extra": [
+-        "0"
+-    ],
+-    "retract_restart_extra_toolchange": [
+-        "0"
+-    ],
+-    "retract_when_changing_layer": [
+-        "1"
+-    ],
+-    "retraction_distances_when_cut": [
+-        "18"
+-    ],
+-    "retraction_length": [
+-        "1"
+-    ],
+-    "retraction_minimum_travel": [
+-        "1"
+-    ],
+-    "retraction_speed": [
+-        "40"
+-    ],
+-    "scan_first_layer": "0",
+-    "silent_mode": "0",
+-    "single_extruder_multi_material": "1",
+-    "support_air_filtration": "1",
+-    "support_chamber_temp_control": "1",
+-    "support_multi_bed_types": "1",
+-    "template_custom_gcode": "",
+-    "time_cost": "0",
+-    "time_lapse_gcode": "",
+-    "upward_compatible_machine": [],
+-    "use_firmware_retraction": "0",
+-    "use_relative_e_distances": "1",
+-    "wipe": [
+-        "1"
+-    ],
+-    "wipe_distance": [
+-        "2"
+-    ],
+-    "z_hop": [
+-        "0.4"
+-    ],
+-    "z_hop_types": [
+-        "Auto Lift"
+-    ],
+-    "z_offset": "0"
++{
++    "type": "machine",
++    "name": "Anycubic Kobra 3 0.8 nozzle",
++    "inherits": "fdm_machine_common",
++    "from": "system",
++    "setting_id": "GM001",
++    "instantiation": "true",
++    "printer_technology": "FFF",
++    "version": "1.3.2508.11",
++    "printer_settings_id": "Anycubic Kobra 3 0.8 nozzle",
++    "printer_model": "Anycubic Kobra 3",
++    "printer_variant": "0.8",
++    "name": "Anycubic Kobra 3 0.8 nozzle",
++    "nozzle_diameter": [
++        "0.8"
++    ],
++    "default_print_profile": "0.40mm Standard @Anycubic Kobra 3 0.8 nozzle",
++    "default_filament_profile": [
++        "Anycubic PLA @Anycubic Kobra 3 0.8 nozzle"
++    ],
++    "default_filament_profile": [
++        "Anycubic PLA @Anycubic Kobra 3 0.8 nozzle"
++    ],
++    "disable_m73": "1",
++    "gcode_flavor": "klipper",
++    "printable_area": [
++        "0x0",
++        "255x0",
++        "255x255",
++        "0x255"
++    ],
++    "printable_height": "260",
++    "thumbnails": [
++        "230x110"
++    ],
++    "thumbnails_format": "PNG",
++    "thumbnails_internal": [
++        "512x512/PNG/top"
++    ],
++    "thumbnails_internal_switch": "1",
++    "adaptive_bed_mesh_margin": "0",
++    "auxiliary_fan": "0",
++    "bbl_use_printhost": "0",
++    "bed_custom_model": "",
++    "bed_custom_texture": "",
++    "bed_exclude_area": [
++        "0x0"
++    ],
++    "bed_mesh_max": "0,0",
++    "bed_mesh_min": "0,0",
++    "bed_mesh_probe_distance": "0,0",
++    "before_layer_change_gcode": "; BEFORE_LAYER_CHANGE [layer_num] @ [layer_z]mm",
++    "best_object_pos": "0.5,0.5",
++    "change_extrusion_role_gcode": "",
++    "change_filament_gcode": "; FLUSH_START\n;;; M400 P0\nT[next_extruder] ; change extruder\n; 1\n;;; G1 E-2 F2400\n;;; G1 Z{max(toolchange_z+0.6, 5.0)} F600\n;;; G1 X271.5 F12000\n;;; G1 E-5 F600\n;;; G1 X278 F600\n;;; M400 P3530\n;;; G1 E-1 F600\n;;; G1 Z{max(toolchange_z+2.6, 7.0)}  F600\n;;; G1 X278 F18000\n;;; G1 X271.5 F1200\n;;; G1 E2 F300\n;;; M400 P31050\n;;; M400 P17510\n; 2\n;;; G1 X278 F18000\n;;; G1 X271.5 F1200\n;;; G1 E2 F300\n;;; M400 P0\n;;; G1 X250 F1200\n;;; M400 P0\n;;; G1 X278 F18000\n;;; G1 X271.5 F1200\n;;; G1 E2 F300\n;;; M400 P0\n; 3.1\n;;; M106 S255\n;;; G1 X36 Y260 Z-0.8 F9600\n;;; G1 X50 Y260 Z1 F9600\n;;; G1 X86 Y260 Z1 F9600\n;;; G1 X90 Y260 Z-0.8 F9600\n;;; G1 X90 Y259 Z-0.8 F9600\n;;; G1 X86 Y259 Z1 F9600\n;;; G1 X50 Y259 Z1 F9600\n;;; G1 X36 Y259 Z-0.8 F9600\n; 3.2\n;;; G1 X36 Y260 Z-0.8 F9600\n;;; G1 X50 Y260 Z1 F9600\n;;; G1 X86 Y260 Z1 F9600\n;;; G1 X90 Y260 Z-0.8 F9600\n;;; G1 X90 Y259 Z-0.8 F9600\n;;; G1 X86 Y259 Z1 F9600\n;;; G1 X50 Y259 Z1 F9600\n;;; G1 X36 Y259 Z-0.8 F9600\n; 3.3\n;;; G1 X36 Y260 Z-0.8 F9600\n;;; G1 X50 Y260 Z1 F9600\n;;; G1 X86 Y260 Z1 F9600\n;;; G1 X90 Y260 Z-0.8 F9600\n;;; G1 X90 Y259 Z-0.8 F9600\n;;; G1 X86 Y259 Z1 F9600\n;;; G1 X50 Y259 Z1 F9600\n;;; G1 X36 Y259 Z-0.8 F9600\n;;; G1 Z{toolchange_z}\n;;; M400 P0\n; FLUSH_END",
++    "cooling_tube_length": "0",
++    "cooling_tube_retraction": "0",
++    "deretraction_speed": [
++        "0"
++    ],
++    "emit_machine_limits_to_gcode": "1",
++    "enable_filament_ramming": "0",
++    "enable_long_retraction_when_cut": "0",
++    "extra_loading_move": "0",
++    "extruder_clearance_height_to_lid": "200",
++    "extruder_clearance_height_to_rod": "30",
++    "extruder_clearance_radius": "65",
++    "extruder_colour": [
++        "#FF4D4F"
++    ],
++    "extruder_offset": [
++        "0x0"
++    ],
++    "fan_kickstart": "0",
++    "fan_speedup_overhangs": "1",
++    "fan_speedup_time": "0",
++    "head_wrap_detect_zone": [],
++    "high_current_on_filament_swap": "0",
++    "host_type": "octoprint",
++    "layer_change_gcode": "; AFTER_LAYER_CHANGE [layer_num] @ [layer_z]mm",
++    "long_retractions_when_cut": [
++        "0"
++    ],
++    "machine_end_gcode": "M400 ; wait for buffer to clear\nG92 E0 ; zero the extruder\nG1 E-2 F3000 ; retract\n{if max_layer_z < max_print_height-1}G1 Z{max_layer_z+2} F600 ; Move print head further up{endif}\nG1 X250 Y220 F12000 ; present print\nM140 S0 ; turn off heatbed\nM104 S0 ; turn off temperature\nM107;turn off fan\nM84; disable motors\n; disable stepper motors\n\n",
++    "machine_load_filament_time": "42",
++    "machine_max_acceleration_e": [
++        "20000",
++        "20000"
++    ],
++    "machine_max_acceleration_extruding": [
++        "20000",
++        "20000"
++    ],
++    "machine_max_acceleration_retracting": [
++        "20000",
++        "20000"
++    ],
++    "machine_max_acceleration_travel": [
++        "20000",
++        "20000"
++    ],
++    "machine_max_acceleration_x": [
++        "20000",
++        "20000"
++    ],
++    "machine_max_acceleration_y": [
++        "20000",
++        "20000"
++    ],
++    "machine_max_acceleration_z": [
++        "3000",
++        "3000"
++    ],
++    "machine_max_jerk_e": [
++        "20",
++        "20"
++    ],
++    "machine_max_jerk_x": [
++        "20",
++        "20"
++    ],
++    "machine_max_jerk_y": [
++        "20",
++        "20"
++    ],
++    "machine_max_jerk_z": [
++        "20",
++        "20"
++    ],
++    "machine_max_speed_e": [
++        "600",
++        "600"
++    ],
++    "machine_max_speed_x": [
++        "600",
++        "600"
++    ],
++    "machine_max_speed_y": [
++        "600",
++        "600"
++    ],
++    "machine_max_speed_z": [
++        "20",
++        "20"
++    ],
++    "machine_min_extruding_rate": [
++        "0",
++        "0"
++    ],
++    "machine_min_travel_rate": [
++        "0",
++        "0"
++    ],
++    "machine_pause_gcode": "M600",
++    "machine_start_gcode": "G9111 bedTemp=[first_layer_bed_temperature] extruderTemp=[first_layer_temperature[initial_tool]]\nM117\nM900 K0.051\n; print_bed_min = {print_bed_min[0]},{print_bed_min[1]}\n; print_bed_max = {print_bed_max[0]},{print_bed_max[1]}\n; print_bed_size = {print_bed_size[0]},{print_bed_size[1]}\n; first_layer_print_min = {first_layer_print_min[0]},{first_layer_print_min[1]}\n; first_layer_print_max = {first_layer_print_max[0]},{first_layer_print_max[1]}\n; first_layer_print_size = {first_layer_print_size[0]},{first_layer_print_size[1]}",
++    "machine_unload_filament_time": "0",
++    "manual_filament_change": "0",
++    "max_layer_height": [
++        "0.56"
++    ],
++    "min_layer_height": [
++        "0.16"
++    ],
++    "nozzle_height": "4",
++    "nozzle_hrc": "0",
++    "nozzle_type": "brass",
++    "nozzle_volume": "58.7795",
++    "parking_pos_retraction": "0",
++    "preferred_orientation": "0",
++    "printer_notes": "",
++    "printer_structure": "i3",
++    "printing_by_object_gcode": "",
++    "purge_in_prime_tower": "0",
++    "retract_before_wipe": [
++        "0%"
++    ],
++    "retract_length_toolchange": [
++        "0"
++    ],
++    "retract_lift_above": [
++        "0.3"
++    ],
++    "retract_lift_below": [
++        "259.6"
++    ],
++    "retract_lift_enforce": [
++        "All Surfaces"
++    ],
++    "retract_restart_extra": [
++        "0"
++    ],
++    "retract_restart_extra_toolchange": [
++        "0"
++    ],
++    "retract_when_changing_layer": [
++        "1"
++    ],
++    "retraction_distances_when_cut": [
++        "18"
++    ],
++    "retraction_length": [
++        "1"
++    ],
++    "retraction_minimum_travel": [
++        "1"
++    ],
++    "retraction_speed": [
++        "40"
++    ],
++    "scan_first_layer": "0",
++    "silent_mode": "0",
++    "single_extruder_multi_material": "1",
++    "support_air_filtration": "1",
++    "support_chamber_temp_control": "1",
++    "support_multi_bed_types": "1",
++    "template_custom_gcode": "",
++    "time_cost": "0",
++    "time_lapse_gcode": "",
++    "upward_compatible_machine": [],
++    "use_firmware_retraction": "0",
++    "use_relative_e_distances": "1",
++    "wipe": [
++        "1"
++    ],
++    "wipe_distance": [
++        "2"
++    ],
++    "z_hop": [
++        "0.4"
++    ],
++    "z_hop_types": [
++        "Auto Lift"
++    ],
++    "z_offset": "0"
+ }
+\ No newline at end of file
+diff --git a/src/slic3r/Anycubic/detail/serialnumber.cpp b/src/slic3r/Anycubic/detail/serialnumber.cpp
+index bc1155f30..4f3c4fad7 100644
+--- a/src/slic3r/Anycubic/detail/serialnumber.cpp
++++ b/src/slic3r/Anycubic/detail/serialnumber.cpp
+@@ -38,6 +38,8 @@ wxString getSerialNumber(void) {
+ 
+   return serialNumber;
+ }
++#elif defined(__WXWASM__)
++wxString getSerialNumber(void) { return wxString(); } // b3d: the browser has no machine serial number
+ #elif __WXGTK__
+ wxString getSerialNumber(void) {
+   wxString serialNumber = "";
+diff --git a/src/slic3r/Anycubic/plugins/home_dialog/detail/AcDialog.cpp b/src/slic3r/Anycubic/plugins/home_dialog/detail/AcDialog.cpp
+index 860cc8b6d..116902fd1 100644
+--- a/src/slic3r/Anycubic/plugins/home_dialog/detail/AcDialog.cpp
++++ b/src/slic3r/Anycubic/plugins/home_dialog/detail/AcDialog.cpp
+@@ -9,7 +9,7 @@
+ #define DEFAULT_STYLE (wxCAPTION | wxCLOSE_BOX | wxNO_BORDER)
+ #elif defined(__WXMAC__)
+ #define DEFAULT_STYLE (wxSTAY_ON_TOP | wxCAPTION | wxCLOSE_BOX | wxNO_BORDER)
+-#elif defined(__WXGTK__)
++#elif defined(__WXGTK__) || defined(__WXWASM__)
+ #define DEFAULT_STYLE (wxCAPTION | wxCLOSE_BOX)
+ #endif // __WXMSW__
+ 
+diff --git a/src/slic3r/Anycubic/plugins/info_manage/info_manage_plugin.cpp b/src/slic3r/Anycubic/plugins/info_manage/info_manage_plugin.cpp
+index e515af0b8..54ec08b08 100644
+--- a/src/slic3r/Anycubic/plugins/info_manage/info_manage_plugin.cpp
++++ b/src/slic3r/Anycubic/plugins/info_manage/info_manage_plugin.cpp
+@@ -8,6 +8,7 @@
+ #include <slic3r/GUI/MainFrame.hpp>
+ #include <slic3r/GUI/Notebook.hpp>
+ #include <libslic3r/Semver.hpp>
++#include <libslic3r/format.hpp> // b3d: Slic3r::format, reached on the desktop through other headers
+ #include <string>
+ 
+ #include <wx/filename.h>
+diff --git a/src/slic3r/Anycubic/protocol/check_protocol.cpp b/src/slic3r/Anycubic/protocol/check_protocol.cpp
+index 2d83cbeca..58ddf4603 100644
+--- a/src/slic3r/Anycubic/protocol/check_protocol.cpp
++++ b/src/slic3r/Anycubic/protocol/check_protocol.cpp
+@@ -12,7 +12,7 @@
+ #include <iguana/json.hpp>
+ #include <utility/json/reader.hxx>
+ 
+-#include <libslic3r/SemVer.hpp>
++#include <libslic3r/Semver.hpp>
+ #include <slic3r/Utils/Http.hpp>
+ 
+ #include <boost/log/trivial.hpp>
+@@ -135,7 +135,7 @@ bool get_params(CheckParams &tmp) {
+ #if defined(_WIN32)
+     tmp.os_version = "10.0.0.0";
+     tmp.os_name = "windows";
+-#elif defined(__linux__)
++#elif defined(__linux__) || defined(__EMSCRIPTEN__)
+     tmp.os_version = "24.04";
+     tmp.os_name = "ubuntu";
+ #elif defined(__APPLE__)
+@@ -213,7 +213,7 @@ bool UpdateChecker::check_app_update_available(
+   params.version_code = VERSION_CODE;
+ #if defined(_WIN32)
+   params.platform = 7; // win平台FDM
+-#elif defined(__linux__)
++#elif defined(__linux__) || defined(__EMSCRIPTEN__)
+   params.platform = 10; // linux FDM
+ #elif defined(__APPLE__)
+   if (isArmArch()) {
+diff --git a/src/slic3r/Anycubic/protocol/os_linux.cpp b/src/slic3r/Anycubic/protocol/os_linux.cpp
+index 4c6f62768..a0e81aeea 100644
+--- a/src/slic3r/Anycubic/protocol/os_linux.cpp
++++ b/src/slic3r/Anycubic/protocol/os_linux.cpp
+@@ -1,6 +1,6 @@
+ #include "os.hpp"
+ 
+-#ifdef __linux__
++#if defined(__linux__) || defined(__EMSCRIPTEN__)
+ #include "os_common.hpp"
+ 
+ #include <fstream>
+diff --git a/src/slic3r/GUI/BBLTopbar.cpp b/src/slic3r/GUI/BBLTopbar.cpp
+index 048644346..11b7dd080 100644
+--- a/src/slic3r/GUI/BBLTopbar.cpp
++++ b/src/slic3r/GUI/BBLTopbar.cpp
+@@ -277,6 +277,9 @@ void BBLTopbar::Init(wxFrame* parent)
+     //this->AddSeparator();
+     this->AddSpacer(FromDIP(4));
+ 
++#ifdef __WXWASM__
++    maximize_btn = nullptr; // the browser tab is the window: no minimize / maximize / close
++#else
+     wxBitmap iconize_bitmap = create_scaled_bitmap("topbar_min", nullptr, TOPBAR_ICON_SIZE);
+     wxAuiToolBarItem* iconize_btn = this->AddTool(wxID_ICONIZE_FRAME, "", iconize_bitmap);
+ 
+@@ -295,6 +298,7 @@ void BBLTopbar::Init(wxFrame* parent)
+ 
+     wxBitmap close_bitmap = create_scaled_bitmap("topbar_close", nullptr, TOPBAR_ICON_SIZE);
+     wxAuiToolBarItem* close_btn = this->AddTool(wxID_CLOSE_FRAME, "", close_bitmap);
++#endif
+ 
+     Realize();
+     // m_toolbar_h = this->GetSize().GetHeight();
+@@ -452,12 +456,12 @@ void BBLTopbar::SetTitle(wxString title)
+ 
+ void BBLTopbar::SetMaximizedSize()
+ {
+-    maximize_btn->SetBitmap(maximize_bitmap);
++    if (maximize_btn) maximize_btn->SetBitmap(maximize_bitmap);
+ }
+ 
+ void BBLTopbar::SetWindowSize()
+ {
+-    maximize_btn->SetBitmap(window_bitmap);
++    if (maximize_btn) maximize_btn->SetBitmap(window_bitmap);
+ }
+ 
+ void BBLTopbar::UpdateToolbarWidth(int width)
+@@ -506,6 +510,7 @@ void BBLTopbar::Rescale() {
+     item->SetBitmap(create_scaled_bitmap("topbar_store", this, TOPBAR_ICON_SIZE));
+     */
+ 
++#ifndef __WXWASM__
+     item = this->FindTool(wxID_ICONIZE_FRAME);
+     item->SetBitmap(create_scaled_bitmap("topbar_min", this, TOPBAR_ICON_SIZE));
+ 
+@@ -521,6 +526,7 @@ void BBLTopbar::Rescale() {
+ 
+     item = this->FindTool(wxID_CLOSE_FRAME);
+     item->SetBitmap(create_scaled_bitmap("topbar_close", this, TOPBAR_ICON_SIZE));
++#endif
+ 
+     Realize();
+ }
+diff --git a/src/slic3r/GUI/DeviceManager.hpp b/src/slic3r/GUI/DeviceManager.hpp
+index 85263899e..55d4df739 100644
+--- a/src/slic3r/GUI/DeviceManager.hpp
++++ b/src/slic3r/GUI/DeviceManager.hpp
+@@ -375,7 +375,7 @@ public:
+     bool parse_hms_info(unsigned attr, unsigned code);
+     std::string get_long_error_code();
+ 
+-    static wxString get_module_name(ModuleID module_id);
++    static wxString (get_module_name)(ModuleID module_id); // b3d: kept out of easy_log's get_module_name macro
+     static wxString get_hms_msg_level_str(HMSMessageLevel level);
+ };
+ 
+diff --git a/src/slic3r/GUI/GUI_App.cpp b/src/slic3r/GUI/GUI_App.cpp
+index 96b072a08..9a1c0c10c 100644
+--- a/src/slic3r/GUI/GUI_App.cpp
++++ b/src/slic3r/GUI/GUI_App.cpp
+@@ -820,6 +820,14 @@ void GUI_App::post_init()
+     m_open_method = "double_click";
+     bool switch_to_3d = false;
+ 
++#ifdef __WXWASM__
++    // first visit: the setup wizard installs the printers first, then the start files open (their presets exist then)
++    std::vector<std::string> files_after_wizard;
++    if (this->preset_updater && !this->init_params->input_gcode &&
++        (!m_app_conf_exists || preset_bundle->printers.only_default_printers()))
++        std::swap(files_after_wizard, this->init_params->input_files);
++#endif
++
+     if (!this->init_params->input_files.empty()) {
+ 
+         BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(", init with input files, size %1%, input_gcode %2%")
+@@ -994,8 +1002,23 @@ void GUI_App::post_init()
+     // This is ugly but I honestly found no better way to do it.
+     // Neither wxShowEvent nor wxWindowCreateEvent work reliably.
+     if (this->preset_updater) { // G-Code Viewer does not initialize preset_updater.
++#ifdef __WXWASM__
++        CallAfter([this, files_after_wizard] {
++#else
+         CallAfter([this] {
++#endif
+             bool cw_showed = this->config_wizard_startup();
++#ifdef __WXWASM__
++            if (!files_after_wizard.empty()) {
++                mainframe->select_tab(size_t(MainFrame::tp3DEditor));
++                plater_->select_view_3D("3D");
++                wxArrayString input_files;
++                for (auto& file : files_after_wizard)
++                    input_files.push_back(wxString::FromUTF8(file));
++                this->plater()->set_project_filename(_L("Untitled"));
++                this->plater()->load_files(input_files);
++            }
++#endif
+ #ifdef ENABLE_OLD_VERSION_UPDATE
+             std::string http_url = get_http_url(app_config->get_country_code());
+             std::string language = GUI::into_u8(current_language_code());
+@@ -2704,6 +2727,8 @@ bool GUI_App::on_init_inner()
+     // Let the libslic3r know the callback, which will translate messages on demand.
+     Slic3r::I18N::set_translate_callback(libslic3r_translate_callback);
+ 
++    // b3d: the 3D view's text atlas (~0.6 s) is built on a helper thread while the main window is made (ImGuiWrapper::prebuild_font_atlas)
++    m_imgui->prebuild_font_atlas(em_unit() * 1.5f);
+     BOOST_LOG_TRIVIAL(info) << "create the main window";
+     renew_mainframe(MainFrame::tpHome);
+ #ifdef ENABLE_BBS_TAB
+diff --git a/src/slic3r/GUI/ImGuiWrapper.cpp b/src/slic3r/GUI/ImGuiWrapper.cpp
+index a47bee51c..909c49e39 100644
+--- a/src/slic3r/GUI/ImGuiWrapper.cpp
++++ b/src/slic3r/GUI/ImGuiWrapper.cpp
+@@ -2658,9 +2658,18 @@ void ImGuiWrapper::pop_radio_style()
+     ImGui::PopStyleColor(1);
+ }
+ 
+-void ImGuiWrapper::init_font(bool compress)
++void ImGuiWrapper::prebuild_font_atlas(float font_size)
++{
++    // b3d: GLCanvas3D::_resize() will ask for this font size (em_unit * 1.5); set_scaling() then finds it equal and keeps the build
++    std::lock_guard<std::mutex> lock(m_atlas_mutex);
++    if (m_atlas_thread.joinable() || m_atlas_ready) return;
++    m_font_size = font_size;
++    m_atlas_thread = std::thread([this] { build_font_atlas(); });
++}
++
++// The CPU part of init_font(), unchanged: fonts, glyph ranges, icon rectangles, the atlas pixels and the icons drawn into them.
++void ImGuiWrapper::build_font_atlas()
+ {
+-    destroy_font();
+ 
+     ImGuiIO& io = ImGui::GetIO();
+     io.Fonts->Clear();
+@@ -2781,6 +2790,21 @@ void ImGuiWrapper::init_font(bool compress)
+         load_icon_from_svg(icon, icon_sz);
+     }
+ 
++    m_atlas_pixels = pixels; m_atlas_w = width; m_atlas_h = height;
++    m_atlas_font_size = m_font_size; m_atlas_ranges = m_glyph_ranges;
++    m_atlas_ready = true;
++}
++
++void ImGuiWrapper::init_font(bool compress)
++{
++    destroy_font();
++    if (m_atlas_thread.joinable()) m_atlas_thread.join();
++    if (!m_atlas_ready || m_atlas_font_size != m_font_size || m_atlas_ranges != m_glyph_ranges) build_font_atlas();
++    m_atlas_ready = false;
++    ImGuiIO& io = ImGui::GetIO();
++    unsigned char* pixels = m_atlas_pixels;
++    int width = m_atlas_w, height = m_atlas_h;
++
+     // Upload texture to graphics system
+     GLint last_texture;
+     glsafe(::glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture));
+diff --git a/src/slic3r/GUI/ImGuiWrapper.hpp b/src/slic3r/GUI/ImGuiWrapper.hpp
+index 65c822512..05ec4e1e0 100644
+--- a/src/slic3r/GUI/ImGuiWrapper.hpp
++++ b/src/slic3r/GUI/ImGuiWrapper.hpp
+@@ -6,6 +6,8 @@
+ #include <cstdlib>
+ 
+ #include <imgui/imgui.h>
++#include <thread>
++#include <mutex>
+ 
+ #include <wx/string.h>
+ 
+@@ -56,6 +58,16 @@ class ImGuiWrapper
+     bool m_is_korean{ false };
+     float m_font_size{ 18.0 };
+     unsigned m_font_texture{ 0 };
++    // b3d (off-thread phase 2k): the font atlas is built on a helper thread while the main window is made (prebuild_font_atlas);
++    // init_font() joins it and only uploads the texture. Built for m_atlas_font_size / m_atlas_ranges; anything else: built again.
++    std::thread m_atlas_thread;
++    std::mutex m_atlas_mutex;
++    bool m_atlas_ready{ false };
++    float m_atlas_font_size{ 0 };
++    const ImWchar* m_atlas_ranges{ nullptr };
++    unsigned char* m_atlas_pixels{ nullptr };
++    int m_atlas_w{ 0 }, m_atlas_h{ 0 };
++    void build_font_atlas();
+     unsigned m_font_another_texture{ 0 };
+     float m_style_scaling{ 1.0 };
+     unsigned m_mouse_buttons{ 0 };
+@@ -68,6 +80,7 @@ class ImGuiWrapper
+     std::string m_clipboard_text;
+ 
+ public:
++    void prebuild_font_atlas(float font_size);   // b3d: start building the atlas now, on a helper thread
+     struct LastSliderStatus {
+         bool hovered { false };
+         bool edited  { false };
+diff --git a/src/slic3r/GUI/MainFrame.cpp b/src/slic3r/GUI/MainFrame.cpp
+index 1dbeed863..818e7e91a 100644
+--- a/src/slic3r/GUI/MainFrame.cpp
++++ b/src/slic3r/GUI/MainFrame.cpp
+@@ -71,6 +71,17 @@
+ #include <slic3r/GUI/CreatePresetsDialog.hpp>
+ 
+ 
++#ifdef __EMSCRIPTEN__
++#include <emscripten/em_asm.h>
++#endif
++namespace Slic3r {
++// b3d z49: the person asked for their printer: the page may now reach the home network (agent/b3d-lan.js)
++#ifdef __EMSCRIPTEN__
++static void b3d_lan_person_asks() { MAIN_THREAD_ASYNC_EM_ASM({ if (typeof B3DLan !== 'undefined' && B3DLan.asked) B3DLan.asked(); }); }
++#else
++static void b3d_lan_person_asks() {}
++#endif
++}
+ namespace Slic3r {
+ namespace GUI {
+ 
+@@ -1034,6 +1045,9 @@ void MainFrame::init_tabpanel() {
+         int sel = m_tabpanel->GetSelection();
+         //wxString page_text = m_tabpanel->GetPageText(sel);
+         m_last_selected_tab = m_tabpanel->GetSelection();
++#ifdef ENABLE_BBS_TAB
++        if (sel == tpMonitor) b3d_lan_person_asks(); // b3d z49
++#endif
+         if (panel == m_plater) {
+             if (sel == tp3DEditor) {
+                 wxPostEvent(m_plater, SimpleEvent(EVT_GLVIEWTOOLBAR_3D));
+diff --git a/src/slic3r/GUI/MediaPlayCtrl.h b/src/slic3r/GUI/MediaPlayCtrl.h
+index 7eba8e37c..af9cc7432 100644
+--- a/src/slic3r/GUI/MediaPlayCtrl.h
++++ b/src/slic3r/GUI/MediaPlayCtrl.h
+@@ -67,10 +67,10 @@ private:
+     static bool get_stream_url(std::string *url = nullptr);
+ 
+ private:
+-    static const wxMediaState MEDIASTATE_IDLE = (wxMediaState) 3;
+-    static const wxMediaState MEDIASTATE_INITIALIZING = (wxMediaState) 4;
+-    static const wxMediaState MEDIASTATE_LOADING = (wxMediaState) 5;
+-    static const wxMediaState MEDIASTATE_BUFFERING = (wxMediaState) 6;
++    static inline const wxMediaState MEDIASTATE_IDLE = static_cast<wxMediaState>(3);
++    static inline const wxMediaState MEDIASTATE_INITIALIZING = static_cast<wxMediaState>(4);
++    static inline const wxMediaState MEDIASTATE_LOADING = static_cast<wxMediaState>(5);
++    static inline const wxMediaState MEDIASTATE_BUFFERING = static_cast<wxMediaState>(6);
+ 
+     wxMediaCtrl2 * m_media_ctrl;
+     wxMediaState m_last_state = MEDIASTATE_IDLE;
+diff --git a/src/slic3r/GUI/Plater.cpp b/src/slic3r/GUI/Plater.cpp
+index acbbe8bc0..ed5dd3817 100644
+--- a/src/slic3r/GUI/Plater.cpp
++++ b/src/slic3r/GUI/Plater.cpp
+@@ -139,6 +139,28 @@
+ #include <libslic3r/CutUtils.hpp>
+ #include <wx/glcanvas.h>    // Needs to be last because reasons :-/
+ #include <libslic3r/miniz_extension.hpp>
++// Boolean3d (slicer-wx app-edits/z70): a part Boolean3d made opens on the person's own printer (see the edit's text).
++namespace Slic3r { namespace GUI {
++static bool b3d_part_file(const std::string &path)
++{
++    // Boolean3d writes 3D/3dmodel.bambu beside 3D/3dmodel.model; a slicer saving the project does not.
++    if (!boost::iends_with(path, ".3mf")) return false;
++    mz_zip_archive zip;
++    mz_zip_zero_struct(&zip);
++    if (!open_zip_reader(&zip, path)) return false;
++    const bool ours = mz_zip_reader_locate_file(&zip, "3D/3dmodel.bambu", nullptr, 0) >= 0;
++    close_zip_reader(&zip);
++    return ours;
++}
++// Plater's "filament count changed" is on_filaments_change in the forks, on_filament_count_change in OrcaSlicer.
++// Boolean3d (slicer-wx app-edits/z70) step 2: set when a part Boolean3d made was opened, read once by load_project.
++static bool b3d_part_unsaved = false;
++// The title's "changed" mark: update_title_dirty_status in most forks, absent in Creality Print.
++template<class P> static auto b3d_title_dirty(P *p, int) -> decltype(p->update_title_dirty_status(), void()) { p->update_title_dirty_status(); }
++template<class P> static void b3d_title_dirty(P *, long) {}
++template<class P> static auto b3d_filaments_changed(P *p, size_t n, int) -> decltype(p->on_filaments_change(n), void()) { p->on_filaments_change(n); }
++template<class P> static void b3d_filaments_changed(P *p, size_t n, long) { p->on_filament_count_change(n); }
++} }
+ #include "WipeTowerDialog.hpp"
+ #include "ObjColorDialog.hpp"
+ 
+@@ -3933,6 +3955,24 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path>& input_
+                         }
+                     }
+ 
++                    // Boolean3d (slicer-wx app-edits/z70): a part Boolean3d made keeps the person's printer, process and filaments;
++                    // its plates and object settings are read as a project's, its colours go into the filament slots.
++                    if (load_config && b3d_part_file(path.string())) {
++                        PresetBundle *b3d_bundle = wxGetApp().preset_bundle;
++                        const auto *b3d_cols = config_loaded.option<ConfigOptionStrings>("filament_colour");
++                        if (b3d_bundle && b3d_cols && !b3d_cols->values.empty()) {
++                            const size_t n = b3d_cols->values.size();
++                            if (b3d_bundle->filament_presets.size() < n) b3d_bundle->set_num_filaments(unsigned(n));
++                            if (auto *slots = b3d_bundle->project_config.option<ConfigOptionStrings>("filament_colour"))
++                                for (size_t i = 0; i < n && i < slots->values.size(); ++i) slots->values[i] = b3d_cols->values[i];
++                            b3d_filaments_changed(q, b3d_bundle->filament_presets.size(), 0);
++                        }
++                        config_loaded.clear();
++                        b3d_part_unsaved = true; // Boolean3d (slicer-wx app-edits/z70) step 2
++                        for (Preset *p : project_presets) delete p;
++                        project_presets.clear();
++                    }
++
+                     // plate data
+                     if (plate_data.size() > 0) {
+                         BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << ":" << __LINE__ << boost::format(", import 3mf UPDATE_GCODE_RESULT \n");
+@@ -9131,6 +9171,12 @@ void Plater::load_project(wxString const& filename2,
+     else
+         p->dirty_state.update_from_undo_redo_stack(true);
+     up_to_date(true, true);
++    // Boolean3d (slicer-wx app-edits/z70) step 2: the part opened on the person's presets, not the file's: the file is out of date.
++    if (b3d_part_unsaved) {
++        b3d_part_unsaved = false;
++        p->dirty_state.update_from_undo_redo_stack(true);
++        b3d_title_dirty(p.get(), 0);
++    }
+ 
+     wxGetApp().params_panel()->switch_to_object_if_has_object_configs();
+ 
+diff --git a/src/slic3r/GUI/Preferences.cpp b/src/slic3r/GUI/Preferences.cpp
+index 4df9bc37c..eceea40e4 100644
+--- a/src/slic3r/GUI/Preferences.cpp
++++ b/src/slic3r/GUI/Preferences.cpp
+@@ -1335,7 +1335,11 @@ wxWindow* PreferencesDialog::create_general_page()
+ 
+     sizer_page->Add(title_general_settings, 0, wxEXPAND, 0);
+     sizer_page->Add(item_language, 0, wxTOP, FromDIP(3));
++#ifdef __WXWASM__
++    sizer_page->Add(item_region, 0, wxTOP, FromDIP(3))->Show(false); // maker cloud: not in the browser build
++#else
+     sizer_page->Add(item_region, 0, wxTOP, FromDIP(3));
++#endif
+     sizer_page->Add(item_currency, 0, wxTOP, FromDIP(3));
+     sizer_page->Add(item_default_page, 0, wxTOP, FromDIP(3));
+     sizer_page->Add(item_camera_navigation_style, 0, wxTOP, FromDIP(3));
+@@ -1353,15 +1357,43 @@ wxWindow* PreferencesDialog::create_general_page()
+     sizer_page->Add(item_auto_arrange, 0, wxTOP, FromDIP(3));
+     sizer_page->Add(title_presets, 0, wxTOP | wxEXPAND, FromDIP(20));
+     sizer_page->Add(item_calc_mode, 0, wxTOP, FromDIP(3));
++#ifdef __WXWASM__
++    sizer_page->Add(item_user_sync, 0, wxTOP, FromDIP(3))->Show(false); // maker cloud: not in the browser build
++#else
+     sizer_page->Add(item_user_sync, 0, wxTOP, FromDIP(3));
++#endif
++#ifdef __WXWASM__
++    sizer_page->Add(item_system_sync, 0, wxTOP, FromDIP(3))->Show(false); // maker cloud: not in the browser build
++#else
+     sizer_page->Add(item_system_sync, 0, wxTOP, FromDIP(3));
++#endif
+     sizer_page->Add(item_remember_printer_config, 0, wxTOP, FromDIP(3));
+     sizer_page->Add(item_save_presets, 0, wxTOP, FromDIP(3));
++#ifdef __WXWASM__
++    sizer_page->Add(title_network, 0, wxTOP | wxEXPAND, FromDIP(20))->Show(false); // maker cloud: not in the browser build
++#else
+     sizer_page->Add(title_network, 0, wxTOP | wxEXPAND, FromDIP(20));
++#endif
++#ifdef __WXWASM__
++    sizer_page->Add(item_check_stable_version_only, 0, wxTOP, FromDIP(3))->Show(false); // maker cloud: not in the browser build
++#else
+     sizer_page->Add(item_check_stable_version_only, 0, wxTOP, FromDIP(3));
++#endif
++#ifdef __WXWASM__
++    sizer_page->Add(item_stealth_mode, 0, wxTOP, FromDIP(3))->Show(false); // maker cloud: not in the browser build
++#else
+     sizer_page->Add(item_stealth_mode, 0, wxTOP, FromDIP(3));
++#endif
++#ifdef __WXWASM__
++    sizer_page->Add(item_enable_plugin, 0, wxTOP, FromDIP(3))->Show(false); // maker cloud: not in the browser build
++#else
+     sizer_page->Add(item_enable_plugin, 0, wxTOP, FromDIP(3));
++#endif
++#ifdef __WXWASM__
++    sizer_page->Add(item_legacy_network_plugin, 0, wxTOP, FromDIP(3))->Show(false); // maker cloud: not in the browser build
++#else
+     sizer_page->Add(item_legacy_network_plugin, 0, wxTOP, FromDIP(3));
++#endif
+ #ifdef _WIN32
+     sizer_page->Add(title_associate_file, 0, wxTOP| wxEXPAND, FromDIP(20));
+     sizer_page->Add(item_associate_3mf, 0, wxTOP, FromDIP(3));
+diff --git a/src/slic3r/GUI/SelectMachine.cpp b/src/slic3r/GUI/SelectMachine.cpp
+index e6ba6fff6..0b9cd7e99 100644
+--- a/src/slic3r/GUI/SelectMachine.cpp
++++ b/src/slic3r/GUI/SelectMachine.cpp
+@@ -28,6 +28,17 @@
+ #include "BitmapCache.hpp"
+ #include "BindDialog.hpp"
+ 
++#ifdef __EMSCRIPTEN__
++#include <emscripten/em_asm.h>
++#endif
++namespace Slic3r {
++// b3d z49: the person asked for their printer: the page may now reach the home network (agent/b3d-lan.js)
++#ifdef __EMSCRIPTEN__
++static void b3d_lan_person_asks() { MAIN_THREAD_ASYNC_EM_ASM({ if (typeof B3DLan !== 'undefined' && B3DLan.asked) B3DLan.asked(); }); }
++#else
++static void b3d_lan_person_asks() {}
++#endif
++}
+ namespace Slic3r { namespace GUI {
+ 
+ wxDEFINE_EVENT(EVT_UPDATE_USER_MACHINE_LIST, wxCommandEvent);
+@@ -1217,6 +1228,7 @@ bool SelectMachineDialog::build_nozzles_info(std::string& nozzles_info)
+ 
+ void SelectMachineDialog::prepare(int print_plate_idx)
+ {
++    b3d_lan_person_asks(); // b3d z49
+     m_print_plate_idx = print_plate_idx;
+ }
+ 
+diff --git a/src/slic3r/GUI/SelectMachinePop.cpp b/src/slic3r/GUI/SelectMachinePop.cpp
+index 0c3b13ffa..39bdec80a 100644
+--- a/src/slic3r/GUI/SelectMachinePop.cpp
++++ b/src/slic3r/GUI/SelectMachinePop.cpp
+@@ -28,6 +28,17 @@
+ #include "BitmapCache.hpp"
+ #include "BindDialog.hpp"
+ 
++#ifdef __EMSCRIPTEN__
++#include <emscripten/em_asm.h>
++#endif
++namespace Slic3r {
++// b3d z49: the person asked for their printer: the page may now reach the home network (agent/b3d-lan.js)
++#ifdef __EMSCRIPTEN__
++static void b3d_lan_person_asks() { MAIN_THREAD_ASYNC_EM_ASM({ if (typeof B3DLan !== 'undefined' && B3DLan.asked) B3DLan.asked(); }); }
++#else
++static void b3d_lan_person_asks() {}
++#endif
++}
+ namespace Slic3r { namespace GUI {
+ 
+ wxDEFINE_EVENT(EVT_UPDATE_WINDOWS_POSITION, wxCommandEvent);
+@@ -351,6 +362,9 @@ SelectMachinePopup::SelectMachinePopup(wxWindow *parent)
+     m_sizxer_scrolledWindow->Add(own_title, 0, wxEXPAND | wxLEFT, FromDIP(15));
+     m_sizxer_scrolledWindow->Add(m_sizer_my_devices, 0, wxEXPAND, 0);
+     m_sizxer_scrolledWindow->Add(m_panel_ping_code, 0, wxEXPAND, 0);
++#ifdef __WXWASM__
++    m_panel_ping_code->Hide(); // cloud account bind: not in the browser build
++#endif
+     m_sizxer_scrolledWindow->Add(m_panel_direct_connection, 0, wxEXPAND, 0);
+     m_sizxer_scrolledWindow->Add(other_title, 0, wxEXPAND | wxLEFT, FromDIP(15));
+     m_sizxer_scrolledWindow->Add(m_sizer_other_devices, 0, wxEXPAND, 0);
+@@ -378,6 +392,7 @@ void SelectMachinePopup::Popup(wxWindow *WXUNUSED(focus))
+ {
+     BOOST_LOG_TRIVIAL(trace) << "get_print_info: start";
+     start_ssdp(true);
++    b3d_lan_person_asks(); // b3d z49
+     if (m_refresh_timer) {
+         m_refresh_timer->Stop();
+         m_refresh_timer->Start(MACHINE_LIST_REFRESH_INTERVAL);
+@@ -832,7 +847,7 @@ void SelectMachinePopup::OnLeftUp(wxMouseEvent &event)
+ 
+         //pin code
+         auto pc_rect = m_panel_ping_code->ClientToScreen(wxPoint(0, 0));
+-        if (mouse_pos.x > pc_rect.x && mouse_pos.y > pc_rect.y && mouse_pos.x < (pc_rect.x + m_panel_ping_code->GetSize().x) && mouse_pos.y < (pc_rect.y + m_panel_ping_code->GetSize().y)) {
++        if (m_panel_ping_code->IsShown() && mouse_pos.x > pc_rect.x && mouse_pos.y > pc_rect.y && mouse_pos.x < (pc_rect.x + m_panel_ping_code->GetSize().x) && mouse_pos.y < (pc_rect.y + m_panel_ping_code->GetSize().y)) {
+             wxGetApp().popup_ping_bind_dialog();
+         }
+ 
+diff --git a/src/slic3r/Utils/PresetUpdater.cpp b/src/slic3r/Utils/PresetUpdater.cpp
+index d007e28e9..549bde186 100644
+--- a/src/slic3r/Utils/PresetUpdater.cpp
++++ b/src/slic3r/Utils/PresetUpdater.cpp
+@@ -1106,8 +1106,9 @@ void PresetUpdater::priv::check_installed_vendor_profiles() const
+     const auto enabled_vendors = app_config->vendors();
+ 
+     std::set<std::string> bundles;
+-    // Anycubic: always install filament library
+-    bundles.insert(PresetBundle::ORCA_FILAMENT_LIBRARY);
++    // Anycubic: always install filament library. Browser (off-thread p2-orca-updater.py): the library is installed from the
++    // resources like any vendor (version compare), so the link the page made to the resources stays and nothing is copied.
++    const std::string b3d_always = PresetBundle::ORCA_FILAMENT_LIBRARY;
+     for (auto &dir_entry : boost::filesystem::directory_iterator(rsrc_path)) {
+         const auto &path = dir_entry.path();
+         std::string file_path = path.string();
+@@ -1118,7 +1119,7 @@ void PresetUpdater::priv::check_installed_vendor_profiles() const
+             vendor_name.erase(vendor_name.size() - 5);
+             if (bundles.find(vendor_name) != bundles.end())continue;
+ 
+-            const auto is_vendor_enabled = (vendor_name == PresetBundle::ORCA_DEFAULT_BUNDLE) // always update configs from resource to vendor for ORCA_DEFAULT_BUNDLE
++            const auto is_vendor_enabled = (vendor_name == PresetBundle::ORCA_DEFAULT_BUNDLE) || (vendor_name == b3d_always) // always update configs from resource to vendor for ORCA_DEFAULT_BUNDLE
+                                            || (enabled_vendors.find(vendor_name) != enabled_vendors.end());
+             if (enabled_config_update) {
+                 if ( fs::exists(path_in_vendor)) {

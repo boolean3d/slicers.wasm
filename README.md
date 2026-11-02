@@ -27,6 +27,9 @@ the helper program that lets a browser copy talk to a printer on your own networ
 - **OrcaSlicer** is made by SoftFever and the OrcaSlicer contributors, and is based on Bambu Studio and
   PrusaSlicer. GNU AGPL-3.0.
 - **PrusaSlicer** is made by Prusa Research, and is based on Slic3r. GNU AGPL-3.0.
+- **Snapmaker Orca**, **Anycubic Slicer Next**, **ElegooSlicer** and **Creality Print** are made by Snapmaker,
+  Anycubic, Elegoo and Creality, and are based on OrcaSlicer. GNU AGPL-3.0. Anycubic's open-plugins: Mulan PSL v2.
+  Creality's closed add-ons are not included.
 - **wxWidgets** (the window toolkit the three are written with) is made by the wxWidgets team; Bambu Studio and
   OrcaSlicer use OrcaSlicer's copy of it, PrusaSlicer its own. wxWindows Library Licence.
 - **The browser port of wxWidgets** was started by Adam Hilss (ahilss/wxWidgets-wasm, the port behind
@@ -37,8 +40,8 @@ the helper program that lets a browser copy talk to a printer on your own networ
   Hiosdra/OrcaWasm.
 - **The browser copies** are put together by Boolean3d. What we changed is listed under "Our changes" below.
 
-These browser copies are not made, endorsed or supported by Bambu Lab, by the OrcaSlicer team or by
-Prusa Research. For help with the slicers themselves, use their own downloads and forums. We never use their
+These browser copies are not made, endorsed or supported by Bambu Lab, by the OrcaSlicer team, by
+Prusa Research, by Snapmaker, Anycubic, Elegoo or Creality. For help with the slicers themselves, use their own downloads and forums. We never use their
 logos, and we do not call these copies official.
 
 ## How it works, in short
@@ -54,7 +57,7 @@ network is reached through the helper (below), never through anyone's cloud.
 
 | Folder | What |
 |---|---|
-| `bambu-studio/`, `orcaslicer/`, `prusaslicer/` | One folder per slicer. `browser-build/`: the build recipe (CMake, build scripts) and the small pieces the browser needs (`start-up.js`, `stand-ins/` for desktop-only parts; for PrusaSlicer the build-time source edits in `prusaslicer-source-edits.cmake`). `wxwidgets-opengl/`, `wxwidgets-web/`, `wxwidgets-drawing/`: the browser backends added to wxWidgets. `shared/`: what the three builds share: page scripts, fonts, network relay, slicing thread limit, display scaling, the OCCT build for STEP import. `patches/`: our changes to wxWidgets, to the slicer and to the engine, each against a pinned upstream version |
+| `bambu-studio/`, `orcaslicer/`, `prusaslicer/`, `snapmaker-orca/`, `anycubic-slicer-next/`, `elegooslicer/`, `crealityprint/` | One folder per slicer (the last four: printer makers' own OrcaSlicer forks). `browser-build/`: the build recipe (CMake, build scripts) and the small pieces the browser needs (`start-up.js`, `stand-ins/` for desktop-only parts; for PrusaSlicer the build-time source edits in `prusaslicer-source-edits.cmake`). `wxwidgets-opengl/`, `wxwidgets-web/`, `wxwidgets-drawing/`: the browser backends added to wxWidgets. `shared/`: what the three builds share: page scripts, fonts, network relay, slicing thread limit, display scaling, the OCCT build for STEP import. `patches/`: our changes to wxWidgets, to the slicer and to the engine, each against a pinned upstream version |
 | `bambu-studio/browser-build/printer-link/`, `orcaslicer/browser-build/printer-link/` | The printer connection in the browser: talks to a Bambu Lab printer on your own network through the helper below, never through Bambu Lab's servers |
 | `helper/` | The printer helper (Node, no packages, MIT): runs on a computer on the printer's network |
 | `package/` | Packs a build for a web host (compressed files, the headers they must be served with, the loading screen with the credits above) and a small server that hosts the result |
@@ -74,11 +77,11 @@ without a hash).
 ```bash
 git clone https://github.com/boolean3d/slicers.wasm.git
 cd slicers.wasm
-bash build.sh bambu ~/slicers-work/bambu 24        # or: orca, prusa (each its own work dir)
+bash build.sh bambu ~/slicers-work/bambu 24        # or: orca, prusa, snapmaker, anycubic, elegoo, creality (each its own work dir)
 ```
 
 The last argument is how many compile jobs to run at once; use the number of cores you have. The build ends with
-`built: <work dir>/bgui/bambustudio.html` (OrcaSlicer: `orcaslicer.html`; PrusaSlicer: `<work dir>/pgui/prusa/src/prusaslicer.html`). Run the same command
+`built: <work dir>/bgui/bambustudio.html` (OrcaSlicer: `orcaslicer.html`; Snapmaker Orca `snapmakerorca.html`, Anycubic Slicer Next `anycubicslicer.html`, ElegooSlicer `elegooslicer.html`, Creality Print `crealityprint.html`; PrusaSlicer: `<work dir>/pgui/prusa/src/prusaslicer.html`). Run the same command
 again after a failure: it keeps what is already downloaded and built.
 
 ## Host it yourself
@@ -162,5 +165,6 @@ host a browser copy for others, the AGPL asks you to offer them its source: the 
 (`--source`). Our changes to wxWidgets are under the wxWindows Library Licence, like wxWidgets itself. The helper is
 MIT (`helper/LICENSE`). Details per file in `LICENSING.md`; every pinned source and library in `SOURCE.md`.
 
-"Bambu Studio", "Bambu Lab", "OrcaSlicer", "PrusaSlicer" and "Prusa" are their owners' names, used here only to say
+"Bambu Studio", "Bambu Lab", "OrcaSlicer", "PrusaSlicer", "Prusa", "Snapmaker", "Anycubic", "Elegoo", "ElegooSlicer",
+"Creality" and "Creality Print" are their owners' names, used here only to say
 what the programs are.

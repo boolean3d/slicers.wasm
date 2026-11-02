@@ -1,0 +1,511 @@
+diff --git a/src/common_func/common_func.cpp b/src/common_func/common_func.cpp
+index 1466deae6e..a288a8a588 100644
+--- a/src/common_func/common_func.cpp
++++ b/src/common_func/common_func.cpp
+@@ -19,7 +19,7 @@
+ #include <fstream>
+ #include <nlohmann/json.hpp>
+ 
+-#ifdef __linux__
++#if defined(__linux__) || defined(__EMSCRIPTEN__)   // b3d: the browser tab is laid out like Linux
+ static std::string get_linux_config_dir()
+ {
+     const char* xdg_config = getenv("XDG_CONFIG_HOME");
+diff --git a/src/mqtt/externals/paho-mqtt-c/src/SHA1.c b/src/mqtt/externals/paho-mqtt-c/src/SHA1.c
+index 3ef07d920d..44ec36952e 100644
+--- a/src/mqtt/externals/paho-mqtt-c/src/SHA1.c
++++ b/src/mqtt/externals/paho-mqtt-c/src/SHA1.c
+@@ -53,7 +53,7 @@ int SHA1_Final(unsigned char *md, SHA_CTX *c)
+ }
+ 
+ #else /* if defined(_WIN32) || defined(_WIN64) */
+-#if defined(__linux__) || defined(__CYGWIN__)
++#if defined(__linux__) || defined(__EMSCRIPTEN__) || defined(__CYGWIN__)
+ #  include <endian.h>
+ #elif defined(__APPLE__)
+ #  include <libkern/OSByteOrder.h>
+diff --git a/src/mqtt/externals/paho-mqtt-c/src/WebSocket.c b/src/mqtt/externals/paho-mqtt-c/src/WebSocket.c
+index 4338898b4a..379c547d33 100644
+--- a/src/mqtt/externals/paho-mqtt-c/src/WebSocket.c
++++ b/src/mqtt/externals/paho-mqtt-c/src/WebSocket.c
+@@ -35,7 +35,7 @@
+ #include "SocketBuffer.h"
+ #include "StackTrace.h"
+ 
+-#if defined(__linux__)
++#if defined(__linux__) || defined(__EMSCRIPTEN__)
+ #  include <endian.h>
+ #elif defined(__APPLE__)
+ #  include <libkern/OSByteOrder.h>
+diff --git a/src/slic3r/GUI/BBLTopbar.cpp b/src/slic3r/GUI/BBLTopbar.cpp
+index 0bf251d729..5afc2152ee 100644
+--- a/src/slic3r/GUI/BBLTopbar.cpp
++++ b/src/slic3r/GUI/BBLTopbar.cpp
+@@ -277,6 +277,9 @@ void BBLTopbar::Init(wxFrame* parent)
+     //this->AddSeparator();
+     this->AddSpacer(FromDIP(4));
+ 
++#ifdef __WXWASM__
++    maximize_btn = nullptr; // the browser tab is the window: no minimize / maximize / close
++#else
+     wxBitmap iconize_bitmap = create_scaled_bitmap("topbar_min", nullptr, TOPBAR_ICON_SIZE);
+     wxAuiToolBarItem* iconize_btn = this->AddTool(wxID_ICONIZE_FRAME, "", iconize_bitmap);
+ 
+@@ -295,6 +298,7 @@ void BBLTopbar::Init(wxFrame* parent)
+ 
+     wxBitmap close_bitmap = create_scaled_bitmap("topbar_close", nullptr, TOPBAR_ICON_SIZE);
+     wxAuiToolBarItem* close_btn = this->AddTool(wxID_CLOSE_FRAME, "", close_bitmap);
++#endif
+ 
+     Realize();
+     // m_toolbar_h = this->GetSize().GetHeight();
+@@ -452,12 +456,12 @@ void BBLTopbar::SetTitle(wxString title)
+ 
+ void BBLTopbar::SetMaximizedSize()
+ {
+-    maximize_btn->SetBitmap(maximize_bitmap);
++    if (maximize_btn) maximize_btn->SetBitmap(maximize_bitmap);
+ }
+ 
+ void BBLTopbar::SetWindowSize()
+ {
+-    maximize_btn->SetBitmap(window_bitmap);
++    if (maximize_btn) maximize_btn->SetBitmap(window_bitmap);
+ }
+ 
+ void BBLTopbar::UpdateToolbarWidth(int width)
+@@ -506,6 +510,7 @@ void BBLTopbar::Rescale() {
+     item->SetBitmap(create_scaled_bitmap("topbar_store", this, TOPBAR_ICON_SIZE));
+     */
+ 
++#ifndef __WXWASM__
+     item = this->FindTool(wxID_ICONIZE_FRAME);
+     item->SetBitmap(create_scaled_bitmap("topbar_min", this, TOPBAR_ICON_SIZE));
+ 
+@@ -521,6 +526,7 @@ void BBLTopbar::Rescale() {
+ 
+     item = this->FindTool(wxID_CLOSE_FRAME);
+     item->SetBitmap(create_scaled_bitmap("topbar_close", this, TOPBAR_ICON_SIZE));
++#endif
+ 
+     Realize();
+ }
+diff --git a/src/slic3r/GUI/GUI_App.cpp b/src/slic3r/GUI/GUI_App.cpp
+index 8f24d7e81a..bde337977d 100644
+--- a/src/slic3r/GUI/GUI_App.cpp
++++ b/src/slic3r/GUI/GUI_App.cpp
+@@ -997,6 +997,14 @@ void GUI_App::post_init()
+     m_open_method = "double_click";
+     bool switch_to_3d = false;
+ 
++#ifdef __WXWASM__
++    // first visit: the setup wizard installs the printers first, then the start files open (their presets exist then)
++    std::vector<std::string> files_after_wizard;
++    if (this->preset_updater && !this->init_params->input_gcode &&
++        (!m_app_conf_exists || preset_bundle->printers.only_default_printers()))
++        std::swap(files_after_wizard, this->init_params->input_files);
++#endif
++
+     if (!this->init_params->input_files.empty()) {
+ 
+         BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(", init with input files, size %1%, input_gcode %2%")
+@@ -1145,9 +1153,24 @@ void GUI_App::post_init()
+     // This is ugly but I honestly found no better way to do it.
+     // Neither wxShowEvent nor wxWindowCreateEvent work reliably.
+     if (this->preset_updater) { // G-Code Viewer does not initialize preset_updater.
++#ifdef __WXWASM__
++        CallAfter([this, files_after_wizard] {
++#else
+         CallAfter([this] {
++#endif
+            
+             bool cw_showed = this->config_wizard_startup();
++#ifdef __WXWASM__
++            if (!files_after_wizard.empty()) {
++                mainframe->select_tab(size_t(MainFrame::tp3DEditor));
++                plater_->select_view_3D("3D");
++                wxArrayString input_files;
++                for (auto& file : files_after_wizard)
++                    input_files.push_back(wxString::FromUTF8(file));
++                this->plater()->set_project_filename(_L("Untitled"));
++                this->plater()->load_files(input_files);
++            }
++#endif
+ 
+             SSWCP_MqttAgent_Instance::m_dialog = new WebPresetDialog(this);
+ 
+@@ -2280,6 +2303,9 @@ bool GUI_App::check_older_app_config(Semver current_version, bool backup)
+ }
+ 
+ void GUI_App::copy_web_resources() {
++#ifdef __EMSCRIPTEN__
++    return;
++#endif
+     StartupProfiler profiler("GUI_App::copy_web_resources");
+ 
+     auto data_web_path = boost::filesystem::path(data_dir()) / "web";
+@@ -2967,6 +2993,8 @@ bool GUI_App::on_init_inner()
+     // Let the libslic3r know the callback, which will translate messages on demand.
+     Slic3r::I18N::set_translate_callback(libslic3r_translate_callback);
+ 
++    // b3d: the 3D view's text atlas (~0.6 s) is built on a helper thread while the main window is made (ImGuiWrapper::prebuild_font_atlas)
++    m_imgui->prebuild_font_atlas(em_unit() * 1.5f);
+     BOOST_LOG_TRIVIAL(info) << "create the main window";
+     mainframe = new MainFrame();
+     if (!m_updateDialog)
+diff --git a/src/slic3r/GUI/HttpServer.cpp b/src/slic3r/GUI/HttpServer.cpp
+index be9ade8512..605aa59154 100644
+--- a/src/slic3r/GUI/HttpServer.cpp
++++ b/src/slic3r/GUI/HttpServer.cpp
+@@ -12,6 +12,9 @@
+ #include "slic3r/Utils/NetworkAgent.hpp"
+ #include  "sentry_wrapper/SentryWrapper.hpp"
+ #include <boost/beast/core/detail/base64.hpp>
++#ifdef __EMSCRIPTEN__
++#include <emscripten.h>
++#endif
+ #ifdef _WIN32
+ #include <windows.h>
+ #include <io.h>
+@@ -491,6 +494,12 @@ boost::asio::ip::port_type HttpServer::find_available_port(boost::asio::ip::port
+ void HttpServer::start()
+ {
+     BOOST_LOG_TRIVIAL(info) << "start_http_service...";
++#ifdef __EMSCRIPTEN__
++    // (browser) no socket: the web view answers http://127.0.0.1:<port>/ from the program's own web files
++    MAIN_THREAD_EM_ASM({ (Module.wxwvPageServers = Module.wxwvPageServers || {})[$0] = UTF8ToString($1); }, port, resources_dir().c_str());
++    start_http_server = true;
++    return;
++#endif
+ 
+     try {
+         // 如果指定端口不可用，查找下一个可用端口
+diff --git a/src/slic3r/GUI/ImGuiWrapper.cpp b/src/slic3r/GUI/ImGuiWrapper.cpp
+index 6b93098aa2..f239337443 100644
+--- a/src/slic3r/GUI/ImGuiWrapper.cpp
++++ b/src/slic3r/GUI/ImGuiWrapper.cpp
+@@ -2658,9 +2658,18 @@ void ImGuiWrapper::pop_radio_style()
+     ImGui::PopStyleColor(1);
+ }
+ 
+-void ImGuiWrapper::init_font(bool compress)
++void ImGuiWrapper::prebuild_font_atlas(float font_size)
++{
++    // b3d: GLCanvas3D::_resize() will ask for this font size (em_unit * 1.5); set_scaling() then finds it equal and keeps the build
++    std::lock_guard<std::mutex> lock(m_atlas_mutex);
++    if (m_atlas_thread.joinable() || m_atlas_ready) return;
++    m_font_size = font_size;
++    m_atlas_thread = std::thread([this] { build_font_atlas(); });
++}
++
++// The CPU part of init_font(), unchanged: fonts, glyph ranges, icon rectangles, the atlas pixels and the icons drawn into them.
++void ImGuiWrapper::build_font_atlas()
+ {
+-    destroy_font();
+ 
+     ImGuiIO& io = ImGui::GetIO();
+     io.Fonts->Clear();
+@@ -2781,6 +2790,21 @@ void ImGuiWrapper::init_font(bool compress)
+         load_icon_from_svg(icon, icon_sz);
+     }
+ 
++    m_atlas_pixels = pixels; m_atlas_w = width; m_atlas_h = height;
++    m_atlas_font_size = m_font_size; m_atlas_ranges = m_glyph_ranges;
++    m_atlas_ready = true;
++}
++
++void ImGuiWrapper::init_font(bool compress)
++{
++    destroy_font();
++    if (m_atlas_thread.joinable()) m_atlas_thread.join();
++    if (!m_atlas_ready || m_atlas_font_size != m_font_size || m_atlas_ranges != m_glyph_ranges) build_font_atlas();
++    m_atlas_ready = false;
++    ImGuiIO& io = ImGui::GetIO();
++    unsigned char* pixels = m_atlas_pixels;
++    int width = m_atlas_w, height = m_atlas_h;
++
+     // Upload texture to graphics system
+     GLint last_texture;
+     glsafe(::glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture));
+diff --git a/src/slic3r/GUI/ImGuiWrapper.hpp b/src/slic3r/GUI/ImGuiWrapper.hpp
+index 65c8225120..05ec4e1e03 100644
+--- a/src/slic3r/GUI/ImGuiWrapper.hpp
++++ b/src/slic3r/GUI/ImGuiWrapper.hpp
+@@ -6,6 +6,8 @@
+ #include <cstdlib>
+ 
+ #include <imgui/imgui.h>
++#include <thread>
++#include <mutex>
+ 
+ #include <wx/string.h>
+ 
+@@ -56,6 +58,16 @@ class ImGuiWrapper
+     bool m_is_korean{ false };
+     float m_font_size{ 18.0 };
+     unsigned m_font_texture{ 0 };
++    // b3d (off-thread phase 2k): the font atlas is built on a helper thread while the main window is made (prebuild_font_atlas);
++    // init_font() joins it and only uploads the texture. Built for m_atlas_font_size / m_atlas_ranges; anything else: built again.
++    std::thread m_atlas_thread;
++    std::mutex m_atlas_mutex;
++    bool m_atlas_ready{ false };
++    float m_atlas_font_size{ 0 };
++    const ImWchar* m_atlas_ranges{ nullptr };
++    unsigned char* m_atlas_pixels{ nullptr };
++    int m_atlas_w{ 0 }, m_atlas_h{ 0 };
++    void build_font_atlas();
+     unsigned m_font_another_texture{ 0 };
+     float m_style_scaling{ 1.0 };
+     unsigned m_mouse_buttons{ 0 };
+@@ -68,6 +80,7 @@ class ImGuiWrapper
+     std::string m_clipboard_text;
+ 
+ public:
++    void prebuild_font_atlas(float font_size);   // b3d: start building the atlas now, on a helper thread
+     struct LastSliderStatus {
+         bool hovered { false };
+         bool edited  { false };
+diff --git a/src/slic3r/GUI/MainFrame.cpp b/src/slic3r/GUI/MainFrame.cpp
+index 7336c444ef..e9e45580fb 100644
+--- a/src/slic3r/GUI/MainFrame.cpp
++++ b/src/slic3r/GUI/MainFrame.cpp
+@@ -87,6 +87,17 @@
+ #define UPDATE_BUSER    true
+ #define UPDATE_BUAUTO   false
+ 
++#ifdef __EMSCRIPTEN__
++#include <emscripten/em_asm.h>
++#endif
++namespace Slic3r {
++// b3d z49: the person asked for their printer: the page may now reach the home network (agent/b3d-lan.js)
++#ifdef __EMSCRIPTEN__
++static void b3d_lan_person_asks() { MAIN_THREAD_ASYNC_EM_ASM({ if (typeof B3DLan !== 'undefined' && B3DLan.asked) B3DLan.asked(); }); }
++#else
++static void b3d_lan_person_asks() {}
++#endif
++}
+ namespace Slic3r {
+ namespace GUI {
+ 
+@@ -1153,6 +1164,7 @@ void MainFrame::init_tabpanel() {
+         int sel = m_tabpanel->GetSelection();
+         //wxString page_text = m_tabpanel->GetPageText(sel);
+         m_last_selected_tab = m_tabpanel->GetSelection();
++        if (sel == tpMonitor) b3d_lan_person_asks(); // b3d z49
+         if (panel == m_plater) {
+             if (sel == tp3DEditor) {
+                 if (!m_plater || !m_plater->is_view3D_shown())
+diff --git a/src/slic3r/GUI/Plater.cpp b/src/slic3r/GUI/Plater.cpp
+index 4a3f68b8f8..7143273cc9 100644
+--- a/src/slic3r/GUI/Plater.cpp
++++ b/src/slic3r/GUI/Plater.cpp
+@@ -181,6 +181,28 @@
+ #include <libslic3r/CutUtils.hpp>
+ #include <wx/glcanvas.h>    // Needs to be last because reasons :-/
+ #include <libslic3r/miniz_extension.hpp>
++// Boolean3d (slicer-wx app-edits/z70): a part Boolean3d made opens on the person's own printer (see the edit's text).
++namespace Slic3r { namespace GUI {
++static bool b3d_part_file(const std::string &path)
++{
++    // Boolean3d writes 3D/3dmodel.bambu beside 3D/3dmodel.model; a slicer saving the project does not.
++    if (!boost::iends_with(path, ".3mf")) return false;
++    mz_zip_archive zip;
++    mz_zip_zero_struct(&zip);
++    if (!open_zip_reader(&zip, path)) return false;
++    const bool ours = mz_zip_reader_locate_file(&zip, "3D/3dmodel.bambu", nullptr, 0) >= 0;
++    close_zip_reader(&zip);
++    return ours;
++}
++// Plater's "filament count changed" is on_filaments_change in the forks, on_filament_count_change in OrcaSlicer.
++// Boolean3d (slicer-wx app-edits/z70) step 2: set when a part Boolean3d made was opened, read once by load_project.
++static bool b3d_part_unsaved = false;
++// The title's "changed" mark: update_title_dirty_status in most forks, absent in Creality Print.
++template<class P> static auto b3d_title_dirty(P *p, int) -> decltype(p->update_title_dirty_status(), void()) { p->update_title_dirty_status(); }
++template<class P> static void b3d_title_dirty(P *, long) {}
++template<class P> static auto b3d_filaments_changed(P *p, size_t n, int) -> decltype(p->on_filaments_change(n), void()) { p->on_filaments_change(n); }
++template<class P> static void b3d_filaments_changed(P *p, size_t n, long) { p->on_filament_count_change(n); }
++} }
+ #include "WipeTowerDialog.hpp"
+ #include "ObjColorDialog.hpp"
+ 
+@@ -11885,6 +11907,24 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path>& input_
+                         }
+                     }
+ 
++                    // Boolean3d (slicer-wx app-edits/z70): a part Boolean3d made keeps the person's printer, process and filaments;
++                    // its plates and object settings are read as a project's, its colours go into the filament slots.
++                    if (load_config && b3d_part_file(path.string())) {
++                        PresetBundle *b3d_bundle = wxGetApp().preset_bundle;
++                        const auto *b3d_cols = config_loaded.option<ConfigOptionStrings>("filament_colour");
++                        if (b3d_bundle && b3d_cols && !b3d_cols->values.empty()) {
++                            const size_t n = b3d_cols->values.size();
++                            if (b3d_bundle->filament_presets.size() < n) b3d_bundle->set_num_filaments(unsigned(n));
++                            if (auto *slots = b3d_bundle->project_config.option<ConfigOptionStrings>("filament_colour"))
++                                for (size_t i = 0; i < n && i < slots->values.size(); ++i) slots->values[i] = b3d_cols->values[i];
++                            b3d_filaments_changed(q, b3d_bundle->filament_presets.size(), 0);
++                        }
++                        config_loaded.clear();
++                        b3d_part_unsaved = true; // Boolean3d (slicer-wx app-edits/z70) step 2
++                        for (Preset *p : project_presets) delete p;
++                        project_presets.clear();
++                    }
++
+                     // plate data
+                     if (plate_data.size() > 0) {
+                         BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << ":" << __LINE__ << boost::format(", import 3mf UPDATE_GCODE_RESULT \n");
+@@ -17677,6 +17717,12 @@ void Plater::load_project(wxString const& filename2,
+     else
+         p->dirty_state.update_from_undo_redo_stack(true);
+     up_to_date(true, true);
++    // Boolean3d (slicer-wx app-edits/z70) step 2: the part opened on the person's presets, not the file's: the file is out of date.
++    if (b3d_part_unsaved) {
++        b3d_part_unsaved = false;
++        p->dirty_state.update_from_undo_redo_stack(true);
++        b3d_title_dirty(p.get(), 0);
++    }
+ 
+     wxGetApp().params_panel()->switch_to_object_if_has_object_configs();
+ 
+diff --git a/src/slic3r/GUI/SelectMachine.cpp b/src/slic3r/GUI/SelectMachine.cpp
+index f33ac56d4a..0d62d27631 100644
+--- a/src/slic3r/GUI/SelectMachine.cpp
++++ b/src/slic3r/GUI/SelectMachine.cpp
+@@ -28,6 +28,17 @@
+ #include "BitmapCache.hpp"
+ #include "BindDialog.hpp"
+ 
++#ifdef __EMSCRIPTEN__
++#include <emscripten/em_asm.h>
++#endif
++namespace Slic3r {
++// b3d z49: the person asked for their printer: the page may now reach the home network (agent/b3d-lan.js)
++#ifdef __EMSCRIPTEN__
++static void b3d_lan_person_asks() { MAIN_THREAD_ASYNC_EM_ASM({ if (typeof B3DLan !== 'undefined' && B3DLan.asked) B3DLan.asked(); }); }
++#else
++static void b3d_lan_person_asks() {}
++#endif
++}
+ namespace Slic3r { namespace GUI {
+ 
+ wxDEFINE_EVENT(EVT_UPDATE_USER_MACHINE_LIST, wxCommandEvent);
+@@ -1226,6 +1237,7 @@ bool SelectMachineDialog::build_nozzles_info(std::string& nozzles_info)
+ 
+ void SelectMachineDialog::prepare(int print_plate_idx)
+ {
++    b3d_lan_person_asks(); // b3d z49
+     m_print_plate_idx = print_plate_idx;
+ }
+ 
+diff --git a/src/slic3r/GUI/SelectMachinePop.cpp b/src/slic3r/GUI/SelectMachinePop.cpp
+index 77a982b592..02875affb5 100644
+--- a/src/slic3r/GUI/SelectMachinePop.cpp
++++ b/src/slic3r/GUI/SelectMachinePop.cpp
+@@ -28,6 +28,17 @@
+ #include "BitmapCache.hpp"
+ #include "BindDialog.hpp"
+ 
++#ifdef __EMSCRIPTEN__
++#include <emscripten/em_asm.h>
++#endif
++namespace Slic3r {
++// b3d z49: the person asked for their printer: the page may now reach the home network (agent/b3d-lan.js)
++#ifdef __EMSCRIPTEN__
++static void b3d_lan_person_asks() { MAIN_THREAD_ASYNC_EM_ASM({ if (typeof B3DLan !== 'undefined' && B3DLan.asked) B3DLan.asked(); }); }
++#else
++static void b3d_lan_person_asks() {}
++#endif
++}
+ namespace Slic3r { namespace GUI {
+ 
+ wxDEFINE_EVENT(EVT_UPDATE_WINDOWS_POSITION, wxCommandEvent);
+@@ -351,6 +362,9 @@ SelectMachinePopup::SelectMachinePopup(wxWindow *parent)
+     m_sizxer_scrolledWindow->Add(own_title, 0, wxEXPAND | wxLEFT, FromDIP(15));
+     m_sizxer_scrolledWindow->Add(m_sizer_my_devices, 0, wxEXPAND, 0);
+     m_sizxer_scrolledWindow->Add(m_panel_ping_code, 0, wxEXPAND, 0);
++#ifdef __WXWASM__
++    m_panel_ping_code->Hide(); // cloud account bind: not in the browser build
++#endif
+     m_sizxer_scrolledWindow->Add(m_panel_direct_connection, 0, wxEXPAND, 0);
+     m_sizxer_scrolledWindow->Add(other_title, 0, wxEXPAND | wxLEFT, FromDIP(15));
+     m_sizxer_scrolledWindow->Add(m_sizer_other_devices, 0, wxEXPAND, 0);
+@@ -378,6 +392,7 @@ void SelectMachinePopup::Popup(wxWindow *WXUNUSED(focus))
+ {
+     BOOST_LOG_TRIVIAL(trace) << "get_print_info: start";
+     start_ssdp(true);
++    b3d_lan_person_asks(); // b3d z49
+     if (m_refresh_timer) {
+         m_refresh_timer->Stop();
+         m_refresh_timer->Start(MACHINE_LIST_REFRESH_INTERVAL);
+@@ -831,7 +846,7 @@ void SelectMachinePopup::OnLeftUp(wxMouseEvent &event)
+ 
+         //pin code
+         auto pc_rect = m_panel_ping_code->ClientToScreen(wxPoint(0, 0));
+-        if (mouse_pos.x > pc_rect.x && mouse_pos.y > pc_rect.y && mouse_pos.x < (pc_rect.x + m_panel_ping_code->GetSize().x) && mouse_pos.y < (pc_rect.y + m_panel_ping_code->GetSize().y)) {
++        if (m_panel_ping_code->IsShown() && mouse_pos.x > pc_rect.x && mouse_pos.y > pc_rect.y && mouse_pos.x < (pc_rect.x + m_panel_ping_code->GetSize().x) && mouse_pos.y < (pc_rect.y + m_panel_ping_code->GetSize().y)) {
+             wxGetApp().popup_ping_bind_dialog();
+         }
+ 
+diff --git a/src/slic3r/GUI/WebGuideDialog.cpp b/src/slic3r/GUI/WebGuideDialog.cpp
+index fa6d3f97dc..6d7f3eb408 100644
+--- a/src/slic3r/GUI/WebGuideDialog.cpp
++++ b/src/slic3r/GUI/WebGuideDialog.cpp
+@@ -384,7 +384,7 @@ void GuideFrame::OnScriptMessage(wxWebViewEvent &evt)
+     try {
+         wxString strInput = evt.GetString();
+         // BOOST_LOG_TRIVIAL(trace) << "GuideFrame::OnScriptMessage;OnRecv:" << strInput.c_str();
+-        json     j        = json::parse(strInput);
++        json     j        = json::parse(strInput.utf8_string());
+ 
+         wxString strCmd = j["command"];
+         // BOOST_LOG_TRIVIAL(trace) << "GuideFrame::OnScriptMessage;Command:" << strCmd;
+diff --git a/src/slic3r/GUI/WebPresetDialog.cpp b/src/slic3r/GUI/WebPresetDialog.cpp
+index 3444ef08ea..cc6e3ec862 100644
+--- a/src/slic3r/GUI/WebPresetDialog.cpp
++++ b/src/slic3r/GUI/WebPresetDialog.cpp
+@@ -404,7 +404,7 @@ void WebPresetDialog::OnScriptMessage(wxWebViewEvent& evt)
+     try {
+         wxString strInput = evt.GetString();
+         // BOOST_LOG_TRIVIAL(trace) << "WebPresetDialog::OnScriptMessage;OnRecv:" << strInput.c_str();
+-        json j = json::parse(strInput);
++        json j = json::parse(strInput.utf8_string());
+ 
+         wxString strCmd = j["command"];
+         // BOOST_LOG_TRIVIAL(trace) << "WebPresetDialog::OnScriptMessage;Command:" << strCmd;
+diff --git a/src/slic3r/GUI/Widgets/DropDown.cpp b/src/slic3r/GUI/Widgets/DropDown.cpp
+index 3497c11c98..216e2869e5 100644
+--- a/src/slic3r/GUI/Widgets/DropDown.cpp
++++ b/src/slic3r/GUI/Widgets/DropDown.cpp
+@@ -70,7 +70,7 @@ void DropDown::Create(wxWindow *     parent,
+ 
+     // BBS set default font
+     SetFont(Label::Body_14);
+-#ifdef __WXOSX__
++#if defined(__WXOSX__) || defined(__WXWASM__) // the popup has the mouse capture: moves over the main list come here
+     // PopupWindow releases mouse on idle, which may cause various problems,
+     //  such as losting mouse move, and dismissing soon on first LEFT_DOWN event.
+     Bind(wxEVT_IDLE, [] (wxIdleEvent & evt) {});
+diff --git a/src/slic3r/Utils/PresetUpdater.cpp b/src/slic3r/Utils/PresetUpdater.cpp
+index 0dd81680b4..37333a0804 100644
+--- a/src/slic3r/Utils/PresetUpdater.cpp
++++ b/src/slic3r/Utils/PresetUpdater.cpp
+@@ -1606,8 +1606,9 @@ void PresetUpdater::priv::check_installed_vendor_profiles() const
+     const auto enabled_vendors = app_config->vendors();
+ 
+     std::set<std::string> bundles;
+-    // Orca: always install filament library
+-    bundles.insert(PresetBundle::ORCA_FILAMENT_LIBRARY);
++    // Orca: always install filament library. Browser (off-thread p2-orca-updater.py): the library is installed from the
++    // resources like any vendor (version compare), so the link the page made to the resources stays and nothing is copied.
++    const std::string b3d_always = PresetBundle::ORCA_FILAMENT_LIBRARY;
+     for (auto &dir_entry : boost::filesystem::directory_iterator(rsrc_path)) {
+         const auto &path = dir_entry.path();
+         std::string file_path = path.string();
+@@ -1618,7 +1619,7 @@ void PresetUpdater::priv::check_installed_vendor_profiles() const
+             vendor_name.erase(vendor_name.size() - 5);
+             if (bundles.find(vendor_name) != bundles.end())continue;
+ 
+-            const auto is_vendor_enabled = (vendor_name == PresetBundle::SM_BUNDLE) // always update configs from resource to vendor for ORCA_DEFAULT_BUNDLE
++            const auto is_vendor_enabled = (vendor_name == PresetBundle::SM_BUNDLE) || (vendor_name == b3d_always) // always update configs from resource to vendor for ORCA_DEFAULT_BUNDLE
+                                            || (enabled_vendors.find(vendor_name) != enabled_vendors.end());
+             if (enabled_config_update) {
+                 if ( fs::exists(path_in_vendor)) {

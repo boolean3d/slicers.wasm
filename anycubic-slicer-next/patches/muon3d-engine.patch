@@ -1,0 +1,53 @@
+diff --git a/engine/cmake/Dependencies.cmake b/engine/cmake/Dependencies.cmake
+index 66f4a8f..5b14a1a 100644
+--- a/engine/cmake/Dependencies.cmake
++++ b/engine/cmake/Dependencies.cmake
+@@ -116,9 +116,17 @@ set(SLIC3R_STATIC ON)
+ set(ENGINE_DEPS_SRC_HEADER_ONLY agg ankerl earcut fast_float nanosvg nlohmann libigl)
+ set(ENGINE_DEPS_SRC_LIBRARIES admesh clipper clipper2 expat glu-libtess libnest2d mcut miniz qhull qoi semver)
+ foreach (dir IN LISTS ENGINE_DEPS_SRC_HEADER_ONLY ENGINE_DEPS_SRC_LIBRARIES)
+-    add_subdirectory("${ORCA_SRC}/deps_src/${dir}" "${CMAKE_BINARY_DIR}/deps_src/${dir}")
++    if (EXISTS "${ORCA_SRC}/deps_src/${dir}/CMakeLists.txt")   # brand-anycubic-1: an Orca 2.3.1 tree has no earcut, clipper2
++        add_subdirectory("${ORCA_SRC}/deps_src/${dir}" "${CMAKE_BINARY_DIR}/deps_src/${dir}")
++    endif ()
++endforeach ()
++set(_engine_quiet)
++foreach (t admesh clipper Clipper2 expat glu-libtess libnest2d mcut miniz_static qoi semver)
++    if (TARGET ${t})
++        list(APPEND _engine_quiet ${t})
++    endif ()
+ endforeach ()
+-engine_silence_warnings(admesh clipper Clipper2 expat glu-libtess libnest2d mcut miniz_static qoi semver)
++engine_silence_warnings(${_engine_quiet})
+ engine_without_tbbmalloc(clipper)
+ 
+ # Orca's top-level CMakeLists falls back to the bundled expat the same way when no system expat exists.
+diff --git a/engine/cmake/Engine.cmake b/engine/cmake/Engine.cmake
+index 8182907..1f9aad4 100644
+--- a/engine/cmake/Engine.cmake
++++ b/engine/cmake/Engine.cmake
+@@ -9,6 +9,11 @@
+ #  flush/*.txt                       GenericFlushPredictor: flush volumes for 2+ filaments
+ #  filament_mixing/*.json            ColorDecomposeRecipe (mixed filaments)
+ #  profiles/BBL/cli_config.json      the CLI's machine-limit clamp for Bambu Lab A1 / A1 mini / A2L
++# GUI spike: only libslic3r is wanted, not the engine module.
++if (ENGINE_LIBSLIC3R_ONLY)
++    return()
++endif ()
++
+ set(ENGINE_RESOURCE_PATTERNS
+     info/nozzle_info.json
+     info/nozzle_incompatibles.json
+diff --git a/engine/cmake/Libslic3r.cmake b/engine/cmake/Libslic3r.cmake
+index 2d27a6c..887b0b6 100644
+--- a/engine/cmake/Libslic3r.cmake
++++ b/engine/cmake/Libslic3r.cmake
+@@ -135,7 +135,7 @@ target_link_libraries(libslic3r
+         boost_libs
+         cereal::cereal
+         clipper
+-        Clipper2
++        $<TARGET_NAME_IF_EXISTS:Clipper2>
+         glu-libtess
+         JPEG::JPEG
+         libslic3r_cgal

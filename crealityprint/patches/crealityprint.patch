@@ -1,0 +1,89 @@
+diff --git a/src/slic3r/GUI/Plater.cpp b/src/slic3r/GUI/Plater.cpp
+index 29ea56d..e98d315 100644
+--- a/src/slic3r/GUI/Plater.cpp
++++ b/src/slic3r/GUI/Plater.cpp
+@@ -193,6 +193,28 @@
+ #include <libslic3r/CutUtils.hpp>
+ #include <wx/glcanvas.h> // Needs to be last because reasons :-/
+ #include <libslic3r/miniz_extension.hpp>
++// Boolean3d (slicer-wx app-edits/z70): a part Boolean3d made opens on the person's own printer (see the edit's text).
++namespace Slic3r { namespace GUI {
++static bool b3d_part_file(const std::string &path)
++{
++    // Boolean3d writes 3D/3dmodel.bambu beside 3D/3dmodel.model; a slicer saving the project does not.
++    if (!boost::iends_with(path, ".3mf")) return false;
++    mz_zip_archive zip;
++    mz_zip_zero_struct(&zip);
++    if (!open_zip_reader(&zip, path)) return false;
++    const bool ours = mz_zip_reader_locate_file(&zip, "3D/3dmodel.bambu", nullptr, 0) >= 0;
++    close_zip_reader(&zip);
++    return ours;
++}
++// Plater's "filament count changed" is on_filaments_change in the forks, on_filament_count_change in OrcaSlicer.
++// Boolean3d (slicer-wx app-edits/z70) step 2: set when a part Boolean3d made was opened, read once by load_project.
++static bool b3d_part_unsaved = false;
++// The title's "changed" mark: update_title_dirty_status in most forks, absent in Creality Print.
++template<class P> static auto b3d_title_dirty(P *p, int) -> decltype(p->update_title_dirty_status(), void()) { p->update_title_dirty_status(); }
++template<class P> static void b3d_title_dirty(P *, long) {}
++template<class P> static auto b3d_filaments_changed(P *p, size_t n, int) -> decltype(p->on_filaments_change(n), void()) { p->on_filaments_change(n); }
++template<class P> static void b3d_filaments_changed(P *p, size_t n, long) { p->on_filament_count_change(n); }
++} }
+ #include "WipeTowerDialog.hpp"
+ #include "ObjColorDialog.hpp"
+ 
+@@ -8755,6 +8777,24 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path>& input_
+                         }
+                     }
+ 
++                    // Boolean3d (slicer-wx app-edits/z70): a part Boolean3d made keeps the person's printer, process and filaments;
++                    // its plates and object settings are read as a project's, its colours go into the filament slots.
++                    if (load_config && b3d_part_file(path.string())) {
++                        PresetBundle *b3d_bundle = wxGetApp().preset_bundle;
++                        const auto *b3d_cols = config_loaded.option<ConfigOptionStrings>("filament_colour");
++                        if (b3d_bundle && b3d_cols && !b3d_cols->values.empty()) {
++                            const size_t n = b3d_cols->values.size();
++                            if (b3d_bundle->filament_presets.size() < n) b3d_bundle->set_num_filaments(unsigned(n));
++                            if (auto *slots = b3d_bundle->project_config.option<ConfigOptionStrings>("filament_colour"))
++                                for (size_t i = 0; i < n && i < slots->values.size(); ++i) slots->values[i] = b3d_cols->values[i];
++                            b3d_filaments_changed(q, b3d_bundle->filament_presets.size(), 0);
++                        }
++                        config_loaded.clear();
++                        b3d_part_unsaved = true; // Boolean3d (slicer-wx app-edits/z70) step 2
++                        for (Preset *p : project_presets) delete p;
++                        project_presets.clear();
++                    }
++
+                     // plate data
+                     if (plate_data.size() > 0) {
+                         BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << ":" << __LINE__ << boost::format(", import 3mf UPDATE_GCODE_RESULT \n");
+@@ -8830,7 +8870,7 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path>& input_
+                         }
+ #if !AUTOMATION_TOOL || !AUTO_CONVERT_3MF
+                         if (model.objects.size() != 0 && load_config) {
+-                            isCreality3mf = Check3mfVendor::getInstance()->check(path.string(), "", &busy);
++                            isCreality3mf = b3d_part_file(path.string()) || Check3mfVendor::getInstance()->check(path.string(), "", &busy); // Boolean3d (slicer-wx app-edits/z70) step 3
+                         }
+ #endif
+                         if (isCreality3mf) {
+@@ -8842,7 +8882,7 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path>& input_
+                     } else {
+ #if !AUTOMATION_TOOL || !AUTO_CONVERT_3MF
+                         if (model.objects.size() != 0 && load_config) {
+-                            isCreality3mf = Check3mfVendor::getInstance()->check(path.string(), "", &busy);
++                            isCreality3mf = b3d_part_file(path.string()) || Check3mfVendor::getInstance()->check(path.string(), "", &busy); // Boolean3d (slicer-wx app-edits/z70) step 3
+                         }
+ #endif
+                     }
+@@ -16977,6 +17017,12 @@ void Plater::load_project(wxString const& filename2, wxString const& originfile)
+     else
+         p->dirty_state.update_from_undo_redo_stack(true);
+     up_to_date(true, true);
++    // Boolean3d (slicer-wx app-edits/z70) step 2: the part opened on the person's presets, not the file's: the file is out of date.
++    if (b3d_part_unsaved) {
++        b3d_part_unsaved = false;
++        p->dirty_state.update_from_undo_redo_stack(true);
++        b3d_title_dirty(p.get(), 0);
++    }
+ 
+     wxGetApp().params_panel()->switch_to_object_if_has_object_configs();
+ 

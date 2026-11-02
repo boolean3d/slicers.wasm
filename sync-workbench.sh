@@ -34,8 +34,16 @@ case $APP in
   orca)  FOLDER=orcaslicer; SRC_DIR=orca; SRC_TAG=v2.3.2; SRC_PATCH=orcaslicer.patch; ENG_DIR=eng-orca; ENG_COMMIT=cdd8195; NOT_THIS_APP=gui/bambu-pre.js ;;
   prusa) FOLDER=prusaslicer; SRC_DIR=prusa; SRC_TAG=version_2.9.6; SRC_PATCH=; ENG_DIR=; WX_DIR=pwx; WX_COMMIT=5462e7d7cf; NOT_THIS_APP=gui/bambu-pre.js
          DIRS="gui wxgl wxweb wxgc wxjs net" ;;
-  *) echo "usage: sync-workbench.sh bambu|orca|prusa <workbench>"; exit 2 ;;
+  # The printer makers' own OrcaSlicer forks: an Orca workbench each (owx/, orca/ = the maker's tree, eng-orca/, spike/).
+  snapmaker) FOLDER=snapmaker-orca; SRC_DIR=orca; SRC_TAG=v2.4.0; SRC_PATCH=snapmaker-orca.patch; ENG_DIR=eng-orca; ENG_COMMIT=cdd8195
+         NOT_THIS_APP=gui/bambu-pre.js; DIRS="gui wxgl wxweb wxgc brand-shims"; RECIPE=${RECIPE:-$WB/bundle} ;;
+  anycubic) FOLDER=anycubic-slicer-next; SRC_DIR=orca; SRC_TAG=987a3c2bf; SRC_PATCH=anycubic-slicer-next.patch; ENG_DIR=eng-orca; ENG_COMMIT=cdd8195
+         NOT_THIS_APP=gui/bambu-pre.js; EXTRA="open-plugins e3bdacc open-plugins.patch"; RECIPE=${RECIPE:-$WB/../brand-elegoo/p2} ;;
+  elegoo) FOLDER=elegooslicer; SRC_DIR=orca; SRC_TAG=v1.5.3.5; SRC_PATCH=elegooslicer.patch; ENG_DIR=eng-orca; ENG_COMMIT=cdd8195
+         NOT_THIS_APP=gui/bambu-pre.js; WX_COMMIT=5b7e8c0cde; WX33=1; RECIPE=${RECIPE:-$WB/../p2} ;;
+  *) echo "usage: sync-workbench.sh bambu|orca|prusa|snapmaker|anycubic|elegoo <workbench>"; exit 2 ;;
 esac
+EXTRA=${EXTRA:-}; WX33=${WX33:-}
 ENG_URL=https://github.com/Muon-3D/muon3d-slicer-engine.git
 # Written in a fresh folder under the workbench's names, then renamed, then put in place of the app folder.
 DEST="$HERE/$FOLDER"; OUT=$(mktemp -d)/$APP; mkdir -p "$OUT"
@@ -74,6 +82,9 @@ if [ -n "$SRC_PATCH" ]; then
 elif [ -n "$(tree_diff "$WB/$SRC_DIR" $SRC_TAG "${TREE_EXCLUDES[@]}")" ]; then
   echo "sync-workbench.sh: $WB/$SRC_DIR differs from $SRC_TAG; this app's slicer changes belong in gui/cmake"; exit 1
 fi
+# Other upstream trees a maker's program builds from (Anycubic's open-plugins): each against its commit.
+set -- $EXTRA
+while [ $# -ge 3 ]; do tree_diff "$WB/$1" $2 "${TREE_EXCLUDES[@]}" > "$OUT/patches/$3"; shift 3; done
 if [ -z "$ENG_DIR" ]; then :
 elif git -C "$WB/$ENG_DIR" rev-parse -q --verify HEAD > /dev/null 2>&1; then
   tree_diff "$WB/$ENG_DIR" $ENG_COMMIT ':(exclude)orca' > "$OUT/patches/engine.patch"
@@ -87,12 +98,15 @@ for d in $DIRS; do
   rm -rf "$OUT/$d"
   (cd "$WB/spike" && tar chf - --exclude=__pycache__ --exclude=build --exclude='gui/resources' --exclude='gui/shims' $BACKUPS \
      --exclude="$NOT_THIS_APP" --exclude='gui/build-wxweb.sh' \
-     --exclude='gui/bed-mark-off.py' --exclude='gui/combo-thaw.py' "$d") | (cd "$OUT" && tar xf -)
+     --exclude='gui/bed-mark-off.py' --exclude='gui/combo-thaw.py' \
+     --exclude='gui/ac/ac-*edits.py' --exclude='gui/ac/_wxforms.py' --exclude='gui/ac/wx-z*.sh' --exclude='gui/ac/z[0-9]*.py' "$d") | (cd "$OUT" && tar xf -)
 done
+# wx 3.3 (ElegooSlicer, built on Orca 2.4's wx): its own wx build script in place of Orca's 3.1 one.
+if [ -n "$WX33" ]; then mv -f "$OUT/gui/build-wx33.sh" "$OUT/gui/build-wx.sh"; fi
 # The vendor presets bundle's writer (from the off-thread recipe the workbench applies; RECIPE= names it): build.sh runs it
 # on the patched tree. Its other edits (wxfs-bundle.js, CMake lines) are already in spike/.
 if [ -n "$ENG_DIR" ]; then
-  RECIPE=${RECIPE:-$WB/../off-thread-bambu/bulk/recipe}
+  RECIPE=${RECIPE:-$WB/../off-thread-bambu/bulk/recipe}   # (a maker's fork: its own copy, set above or by RECIPE=)
   mkdir -p "$OUT/gui/bundle" && cp "$RECIPE/p2-bundle.py" "$RECIPE/wxfs-bundle.js" "$OUT/gui/bundle/"
 fi
 rm -rf "$OUT/slicer-wx"
@@ -101,7 +115,7 @@ rm -rf "$OUT/slicer-wx"
 
 # The one place this repository's build differs from the workbench's: build.sh applies wxwidgets.patch, which already
 # holds the wx edits the workbench runs as scripts.
-sed -i -E 's#^\(cd \$\{SRCTREE\} && python3 /w/spike/edit(5|-filedlg)\.py.*#\# (the wx edits are already in patches/wxwidgets.patch)#' "$OUT/gui/build-wx.sh"
+sed -i -E 's#^(\[ -n "\$\{SKIP_EDITS:-\}" \] \|\| )?\(cd \$\{SRCTREE\} && (python3 /w/spike/edit(5|-filedlg)\.py|for e in /w/spike/slicer-wx/edits/).*#\# (the wx edits are already in patches/wxwidgets.patch)#' "$OUT/gui/build-wx.sh"
 grep -q 'the wx edits are already in patches/wxwidgets.patch' "$OUT/gui/build-wx.sh" \
   || { echo "sync-workbench.sh: build-wx.sh's edit line changed; update this script"; exit 1; }
 # PrusaSlicer's build-gui.sh runs the same edits again before its build

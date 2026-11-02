@@ -16,6 +16,12 @@ This file says what that source is. `build.sh` fetches and builds all of it.
 | PrusaSlicer | tag `version_2.9.6` | https://github.com/prusa3d/PrusaSlicer, unchanged in the tree; build-time edits in `prusaslicer/browser-build/prusaslicer-source-edits.cmake` (patched copies made in the build tree) |
 | wxWidgets (PrusaSlicer's fork, 3.2.6) | commit `5462e7d7cf` | https://github.com/prusa3d/wxWidgets, our change (with Adam Hilss's wasm port carried onto it): `prusaslicer/patches/wxwidgets.patch` |
 | Muon3D slicer engine (PrusaSlicer build) | tag `v0.6.1` | only its library build scripts (`engine/deps`), unchanged; PrusaSlicer builds its own slicing core |
+| Snapmaker Orca | tag `v2.4.0` | https://github.com/Snapmaker/OrcaSlicer, our change: `snapmaker-orca/patches/snapmaker-orca.patch`; built with OrcaSlicer's wxWidgets (`139e4f2`) and engine (`cdd8195`), each with `snapmaker-orca/patches/` |
+| Anycubic Slicer Next | commit `987a3c2bf9ed13934137326bfd522896c70e5101` (branch develop; it tags no releases of its own) | https://github.com/ANYCUBIC-3D/AnycubicSlicerNext, our change: `anycubic-slicer-next/patches/anycubic-slicer-next.patch`; OrcaSlicer's wxWidgets (`139e4f2`) and engine (`cdd8195`) with `anycubic-slicer-next/patches/` |
+| Anycubic open-plugins | commit `e3bdacc1a11bf925760abcc8b022005780363db6` (Mulan PSL v2) | https://github.com/ANYCUBIC-3D/open-plugins, our change: `anycubic-slicer-next/patches/open-plugins.patch` |
+| ElegooSlicer | tag `v1.5.3.5` | https://github.com/elegooofficial/ElegooSlicer, our change: `elegooslicer/patches/elegooslicer.patch` (its elegoo-link printer and cloud library is left out: `browser-build/stand-ins/elegoo_link_none.cpp`) |
+| wxWidgets 3.3 (OrcaSlicer's fork, branch v3.3.2) | commit `5b7e8c0cde` | https://github.com/SoftFever/Orca-deps-wxWidgets, for ElegooSlicer and Creality Print; our change: `elegooslicer/patches/wxwidgets.patch`, `crealityprint/patches/wxwidgets.patch` |
+| Creality Print | tag `v7.3.0` | https://github.com/CrealityOfficial/CrealityPrint, our change: `crealityprint/patches/crealityprint.patch`; engine `cdd8195` with `crealityprint/patches/muon3d-engine.patch`. Creality's closed add-ons (TPMS infills, colour mixing) are not included: stand-ins |
 
 ## Libraries built into the slicers
 
@@ -33,7 +39,7 @@ This file says what that source is. `build.sh` fetches and builds all of it.
 | OpenSSL | 3.0.15 | Apache-2.0 | `build.sh`, sha256 `23c666d0…9533` |
 | curl | 8.10.1 | curl | `build.sh`, sha256 `d15ebab7…bbc0` |
 | OpenCV (core, imgproc, imgcodecs) | 4.6.0 | Apache-2.0 | `build.sh`, sha256 `1ec1cba6…9277` |
-| Draco (OrcaSlicer only) | 1.5.7 | Apache-2.0 | `build.sh`, sha256 `27b72ba2…6b77` |
+| Draco (OrcaSlicer and the makers' Orca forks) | 1.5.7 | Apache-2.0 | `build.sh`, sha256 `27b72ba2…6b77` |
 | FFmpeg (Bambu Studio only; camera view) | n7.0.2 | GPL-2.0-or-later as configured | `bambu-studio/browser-build/build-gui-libraries-bambu.sh`, sha256 `5eb46d18…d533` |
 | libharu (Bambu Studio only) | Bambu Studio's copy in `deps/libharu` | Zlib | in the Bambu Studio tree |
 | Expat | wxWidgets' copy (`src/expat`), and the engine patch's copy for the Bambu build | MIT | in the trees |
@@ -73,7 +79,7 @@ The toolchain is used unmodified and is not part of the Corresponding Source: Em
 
 ## Keeping this source the source of what is served
 
-`sync-workbench.sh bambu|orca|prusa <workbench>` rewrites a slicer's folder (patches and browser layer) from the workbench a
+`sync-workbench.sh bambu|orca|prusa|snapmaker|anycubic|elegoo <workbench>` rewrites a slicer's folder (patches and browser layer) from the workbench a
 build is made in. The workbench uses short working names; `rename-workbench-files.py` moves the copy to the plain
 names used here and rewrites every reference to them. It is run before every package that goes to the web host, and `build.sh` from scratch then shows
 the folder reproduces the build.

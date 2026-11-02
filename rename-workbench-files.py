@@ -4,7 +4,7 @@
 # with the workbench's names, then runs this on it: every file and folder below is moved to its plain name and every
 # reference to it in the folder's text files is rewritten to match, so the folder builds under build.sh as it is.
 #
-#   python3 rename-workbench-files.py bambu|orca|prusa <app folder in workbench names>
+#   python3 rename-workbench-files.py bambu|orca|prusa|snapmaker|anycubic|elegoo <app folder in workbench names>
 #
 # patches/*.patch are diffs of upstream trees and are left as they are (only the files are renamed). A name in the
 # table that is not in the folder is skipped; a working name still in a file name afterwards stops with an error.
@@ -45,6 +45,7 @@ MOVES = [
     ('gui/build-occt-prusa.sh', 'gui/build-occt-prusaslicer.sh'),
     ('gui/build-gui.sh', 'gui/build-slicer.sh'),
     ('gui/build-wx.sh', 'gui/build-wxwidgets.sh'),
+    ('gui/ac', 'gui/open-plugins'),
     ('gui', 'browser-build'),
     ('slicer-wx/js/wxfs-bundle.js', 'slicer-wx/js/presets-bundle-reader.js'),
     ('slicer-wx/js/wxpage-web.js', 'slicer-wx/js/page-bridge-web.js'),
@@ -55,6 +56,7 @@ MOVES = [
     ('wxweb', 'wxwidgets-web'),
     ('wxgc', 'wxwidgets-drawing'),
     ('wxjs', 'shared-js-prusaslicer'),
+    ('brand-shims', 'stand-in-headers-maker'),
     ('patches/bambustudio.patch', 'patches/bambu-studio.patch'),
     ('patches/engine.patch', 'patches/muon3d-engine.patch'),
 ]
@@ -84,6 +86,8 @@ TEXT += [
     (r'(?<![\w.-])wxweb(?![\w.-])', 'wxwidgets-web'),
     (r'(?<![\w.-])wxgc(?![\w.-])', 'wxwidgets-drawing'),
     (r'(?<![\w.-])wxjs(?![\w.-])', 'shared-js-prusaslicer'),
+    (r'(?<![\w.-])brand-shims(?![\w-])', 'stand-in-headers-maker'),
+    (r'(CMAKE_CURRENT_SOURCE_DIR\}/|gui/)ac/', r'\1open-plugins/'),
     (r'(?<![\w.$/-])gui/', 'browser-build/'),
     (r'(/w/browser-port/|browser-port/)gui\b', r'\1browser-build'),
     # the same folders named in comments: agent/lan_printer_agent.cpp, stubs/web_debug.cpp, gui/agent

@@ -1,0 +1,112 @@
+diff --git a/3rdparty/fmt/base.h b/3rdparty/fmt/base.h
+index 6276494..819920d 100644
+--- a/3rdparty/fmt/base.h
++++ b/3rdparty/fmt/base.h
+@@ -111,7 +111,9 @@
+ #endif
+ 
+ // Detect consteval, C++20 constexpr extensions and std::is_constant_evaluated.
+-#if !defined(__cpp_lib_is_constant_evaluated)
++#if defined(__EMSCRIPTEN__) // b3d: the browser toolchain's clang, see ac-op-edits.py
++#  define FMT_USE_CONSTEVAL 0
++#elif !defined(__cpp_lib_is_constant_evaluated)
+ #  define FMT_USE_CONSTEVAL 0
+ #elif FMT_CPLUSPLUS < 201709L
+ #  define FMT_USE_CONSTEVAL 0
+diff --git a/3rdparty/iguana/detail/string_stream.hpp b/3rdparty/iguana/detail/string_stream.hpp
+index 8f12b4e..cab8c9d 100644
+--- a/3rdparty/iguana/detail/string_stream.hpp
++++ b/3rdparty/iguana/detail/string_stream.hpp
+@@ -46,7 +46,7 @@ namespace iguana
+ 				m_status = read_overflow;
+ 				return 0;
+ 			}
+-			std::memcpy(buffer, this->m_read_ptr, len);
++			std::memcpy(const_cast<char *>(buffer), this->m_read_ptr, len);
+ 			this->m_read_ptr += len;
+ 			return len;
+ 		}
+diff --git a/WebView/include/webview.h b/WebView/include/webview.h
+index db59ebd..186b96e 100644
+--- a/WebView/include/webview.h
++++ b/WebView/include/webview.h
+@@ -22,12 +22,21 @@
+ #include "wx/versioninfo.h"
+ #include "wx/translation.h"
+ 
++#if !wxCHECK_VERSION(3, 2, 0) // b3d: the browser build's wx (3.1) lacks these two wx 3.3 names
++enum class wxVersionContext { RunTime, BuildTime };
++#endif
++#ifndef wxDECLARE_DYNAMIC_CLASS_NO_ASSIGN_DEF_COPY
++#define wxDECLARE_DYNAMIC_CLASS_NO_ASSIGN_DEF_COPY(name) wxDECLARE_NO_ASSIGN_DEF_COPY(name); wxDECLARE_DYNAMIC_CLASS(name)
++#endif
++
+ #if defined(__WXOSX__)
+     #include "osx/webviewhistoryitem_webkit.h"
+ #elif defined(__WXGTK__)
+     #include "gtk/webviewhistoryitem_webkit.h"
+ #elif defined(__WXMSW__)
+     #include "msw/webviewhistoryitem_ie.h"
++#elif defined(__WXWASM__)
++    #include "wx/wasm/webviewhistoryitem_wasm.h" // the browser build (b3d)
+ #else
+     #error "wxWebView not implemented on this platform."
+ #endif
+diff --git a/WebView/src/common/webview.cpp b/WebView/src/common/webview.cpp
+index baf1166..473e4c4 100644
+--- a/WebView/src/common/webview.cpp
++++ b/WebView/src/common/webview.cpp
+@@ -29,6 +29,8 @@
+ #include "gtk/webview_webkit.h"
+ #elif defined(__WXMSW__)
+ #include "msw/webview_edge.h"
++#elif defined(__WXWASM__)
++#include "webview_wasm_ac.h" // the browser build's backend (b3d)
+ #endif
+ 
+ 
+@@ -44,6 +46,8 @@ extern const char wxWebViewBackendWebKit[] = "wxWebViewWebKit";
+ 
+ #ifdef __WXMSW__
+ extern const char wxWebViewBackendDefault[] = "wxWebViewEdge";
++#elif defined(__WXWASM__)
++extern const char wxWebViewBackendDefault[] = "wxWebViewWasm";
+ #else
+ extern const char wxWebViewBackendDefault[] = "wxWebViewWebKit";
+ #endif
+@@ -548,6 +552,9 @@ void wxWebView::InitFactoryMap()
+         (new wxWebViewFactoryEdge));
+ #endif
+ 
++#elif defined(__WXWASM__)
++    if(m_factoryMap.find(wxWebViewBackendWasm) == m_factoryMap.end())
++        RegisterFactory(wxWebViewBackendWasm, wxSharedPtr<wxWebViewFactory>(new wxWebViewFactoryWasm));
+ #elif USE_WEBVIEW_WEBKIT || USE_WEBVIEW_WEBKIT2
+     if(m_factoryMap.find(wxWebViewBackendWebKit) == m_factoryMap.end())
+         RegisterFactory(wxWebViewBackendWebKit, wxSharedPtr<wxWebViewFactory>
+diff --git a/plugins_manager/detail/plaform.hpp b/plugins_manager/detail/plaform.hpp
+index 7bf6013..851bada 100644
+--- a/plugins_manager/detail/plaform.hpp
++++ b/plugins_manager/detail/plaform.hpp
+@@ -14,7 +14,7 @@
+ #ifdef __APPLE__
+ #define PLUGIN_EXT wxASCII_STR(".dylib")
+ #define PLUGIN_PREFIX wxASCII_STR("libplugin_")
+-#elif __linux__
++#elif defined(__linux__) || defined(__EMSCRIPTEN__)
+ #define PLUGIN_EXT wxASCII_STR(".so")
+ #define PLUGIN_PREFIX wxASCII_STR("libplugin_")
+ #elif _WIN32
+diff --git a/plugins_manager/detail/xrc/xh_webview.cpp b/plugins_manager/detail/xrc/xh_webview.cpp
+index 82bf99c..27e7563 100644
+--- a/plugins_manager/detail/xrc/xh_webview.cpp
++++ b/plugins_manager/detail/xrc/xh_webview.cpp
+@@ -35,7 +35,7 @@ wxObject *WebviewHandler::DoCreateResource() {
+     url = GetParamValue(wxASCII_STR("win_url"));
+ #elif defined(__WXOSX__)
+     url = GetParamValue(wxASCII_STR("osx_url"));
+-#elif defined(__WXGTK__)
++#elif defined(__WXGTK__) || defined(__WXWASM__)
+     url = GetParamValue(wxASCII_STR("gtk_url"));
+ #else
+ #error "Unsupported platform"

@@ -1,0 +1,203 @@
+diff --git a/src/slic3r/GUI/GUI_App.cpp b/src/slic3r/GUI/GUI_App.cpp
+index 97914d4d..e43a2ab7 100644
+--- a/src/slic3r/GUI/GUI_App.cpp
++++ b/src/slic3r/GUI/GUI_App.cpp
+@@ -3174,6 +3174,8 @@ bool GUI_App::on_init_inner()
+         scrn->SetText(scrn_txt);
+         wxYield();
+     }
++    // b3d: the 3D view's text atlas (~0.6 s) is built on a helper thread while the main window is made (ImGuiWrapper::prebuild_font_atlas)
++    m_imgui->prebuild_font_atlas(em_unit() * 1.5f);
+     BOOST_LOG_TRIVIAL(info) << "create the main window";
+     mainframe = new MainFrame();
+     // hide settings tabs after first Layout
+diff --git a/src/slic3r/GUI/ImGuiWrapper.cpp b/src/slic3r/GUI/ImGuiWrapper.cpp
+index 2f0ab762..ee005d14 100644
+--- a/src/slic3r/GUI/ImGuiWrapper.cpp
++++ b/src/slic3r/GUI/ImGuiWrapper.cpp
+@@ -2759,9 +2759,18 @@ void ImGuiWrapper::pop_radio_style()
+     ImGui::PopStyleVar(1);
+ }
+ 
+-void ImGuiWrapper::init_font(bool compress)
++void ImGuiWrapper::prebuild_font_atlas(float font_size)
++{
++    // b3d: GLCanvas3D::_resize() will ask for this font size (em_unit * 1.5); set_scaling() then finds it equal and keeps the build
++    std::lock_guard<std::mutex> lock(m_atlas_mutex);
++    if (m_atlas_thread.joinable() || m_atlas_ready) return;
++    m_font_size = font_size;
++    m_atlas_thread = std::thread([this] { build_font_atlas(); });
++}
++
++// The CPU part of init_font(), unchanged: fonts, glyph ranges, icon rectangles, the atlas pixels and the icons drawn into them.
++void ImGuiWrapper::build_font_atlas()
+ {
+-    destroy_font();
+ 
+     ImGuiIO& io = ImGui::GetIO();
+     io.Fonts->Clear();
+@@ -2890,6 +2899,21 @@ void ImGuiWrapper::init_font(bool compress)
+         load_icon_from_svg(icon, icon_sz);
+     }
+ 
++    m_atlas_pixels = pixels; m_atlas_w = width; m_atlas_h = height;
++    m_atlas_font_size = m_font_size; m_atlas_ranges = m_glyph_ranges;
++    m_atlas_ready = true;
++}
++
++void ImGuiWrapper::init_font(bool compress)
++{
++    destroy_font();
++    if (m_atlas_thread.joinable()) m_atlas_thread.join();
++    if (!m_atlas_ready || m_atlas_font_size != m_font_size || m_atlas_ranges != m_glyph_ranges) build_font_atlas();
++    m_atlas_ready = false;
++    ImGuiIO& io = ImGui::GetIO();
++    unsigned char* pixels = m_atlas_pixels;
++    int width = m_atlas_w, height = m_atlas_h;
++
+     // Upload texture to graphics system
+     GLint last_texture;
+     glsafe(::glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture));
+diff --git a/src/slic3r/GUI/ImGuiWrapper.hpp b/src/slic3r/GUI/ImGuiWrapper.hpp
+index af921403..e001a07c 100644
+--- a/src/slic3r/GUI/ImGuiWrapper.hpp
++++ b/src/slic3r/GUI/ImGuiWrapper.hpp
+@@ -6,6 +6,8 @@
+ #include <cstdlib>
+ 
+ #include <imgui/imgui.h>
++#include <thread>
++#include <mutex>
+ 
+ #include <wx/string.h>
+ 
+@@ -56,6 +58,16 @@ class ImGuiWrapper
+     bool m_is_korean{ false };
+     float m_font_size{ 18.0 };
+     unsigned m_font_texture{ 0 };
++    // b3d (off-thread phase 2k): the font atlas is built on a helper thread while the main window is made (prebuild_font_atlas);
++    // init_font() joins it and only uploads the texture. Built for m_atlas_font_size / m_atlas_ranges; anything else: built again.
++    std::thread m_atlas_thread;
++    std::mutex m_atlas_mutex;
++    bool m_atlas_ready{ false };
++    float m_atlas_font_size{ 0 };
++    const ImWchar* m_atlas_ranges{ nullptr };
++    unsigned char* m_atlas_pixels{ nullptr };
++    int m_atlas_w{ 0 }, m_atlas_h{ 0 };
++    void build_font_atlas();
+     unsigned m_font_another_texture{ 0 };
+     float m_style_scaling{ 1.0 };
+     unsigned m_mouse_buttons{ 0 };
+@@ -68,6 +80,7 @@ class ImGuiWrapper
+     std::string m_clipboard_text;
+ 
+ public:
++    void prebuild_font_atlas(float font_size);   // b3d: start building the atlas now, on a helper thread
+     struct LastSliderStatus {
+         bool hovered { false };
+         bool edited  { false };
+diff --git a/src/slic3r/GUI/Plater.cpp b/src/slic3r/GUI/Plater.cpp
+index 7a90f41a..8faa8604 100644
+--- a/src/slic3r/GUI/Plater.cpp
++++ b/src/slic3r/GUI/Plater.cpp
+@@ -154,6 +154,28 @@
+ #include <libslic3r/CutUtils.hpp>
+ #include <wx/glcanvas.h>    // Needs to be last because reasons :-/
+ #include <libslic3r/miniz_extension.hpp>
++// Boolean3d (slicer-wx app-edits/z70): a part Boolean3d made opens on the person's own printer (see the edit's text).
++namespace Slic3r { namespace GUI {
++static bool b3d_part_file(const std::string &path)
++{
++    // Boolean3d writes 3D/3dmodel.bambu beside 3D/3dmodel.model; a slicer saving the project does not.
++    if (!boost::iends_with(path, ".3mf")) return false;
++    mz_zip_archive zip;
++    mz_zip_zero_struct(&zip);
++    if (!open_zip_reader(&zip, path)) return false;
++    const bool ours = mz_zip_reader_locate_file(&zip, "3D/3dmodel.bambu", nullptr, 0) >= 0;
++    close_zip_reader(&zip);
++    return ours;
++}
++// Plater's "filament count changed" is on_filaments_change in the forks, on_filament_count_change in OrcaSlicer.
++// Boolean3d (slicer-wx app-edits/z70) step 2: set when a part Boolean3d made was opened, read once by load_project.
++static bool b3d_part_unsaved = false;
++// The title's "changed" mark: update_title_dirty_status in most forks, absent in Creality Print.
++template<class P> static auto b3d_title_dirty(P *p, int) -> decltype(p->update_title_dirty_status(), void()) { p->update_title_dirty_status(); }
++template<class P> static void b3d_title_dirty(P *, long) {}
++template<class P> static auto b3d_filaments_changed(P *p, size_t n, int) -> decltype(p->on_filaments_change(n), void()) { p->on_filaments_change(n); }
++template<class P> static void b3d_filaments_changed(P *p, size_t n, long) { p->on_filament_count_change(n); }
++} }
+ #include "WipeTowerDialog.hpp"
+ #include "ObjColorDialog.hpp"
+ 
+@@ -6114,7 +6136,7 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path>& input_
+                     else
+                         load_type  = static_cast<LoadType>(std::stoi(import_project_action));
+ 
+-                    if(load_config && en_3mf_file_type != En3mfType::From_Elegoo) {
++                    if(load_config && en_3mf_file_type != En3mfType::From_Elegoo && !b3d_part_file(path.string())) { // Boolean3d (slicer-wx app-edits/z70) step 3
+                         MessageDialog msg_window(q, _L("The 3MF file you are importing may be incompatible, continuing could cause errors. Would you like to import the entire file or just the model data?"),
+                                                     _L("Load 3mf"), wxYES_NO | wxCANCEL | wxCENTRE);
+                         msg_window.SetButtonLabel(wxID_YES, _L("Load Whole File"));
+@@ -6370,6 +6392,24 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path>& input_
+                     // uniformly in PrintConfigDef::handle_legacy() via the old->new key rename
+                     // (wall_filament -> wall_filament_id, etc.), which also covers saved presets.
+ 
++                    // Boolean3d (slicer-wx app-edits/z70): a part Boolean3d made keeps the person's printer, process and filaments;
++                    // its plates and object settings are read as a project's, its colours go into the filament slots.
++                    if (load_config && b3d_part_file(path.string())) {
++                        PresetBundle *b3d_bundle = wxGetApp().preset_bundle;
++                        const auto *b3d_cols = config_loaded.option<ConfigOptionStrings>("filament_colour");
++                        if (b3d_bundle && b3d_cols && !b3d_cols->values.empty()) {
++                            const size_t n = b3d_cols->values.size();
++                            if (b3d_bundle->filament_presets.size() < n) b3d_bundle->set_num_filaments(unsigned(n));
++                            if (auto *slots = b3d_bundle->project_config.option<ConfigOptionStrings>("filament_colour"))
++                                for (size_t i = 0; i < n && i < slots->values.size(); ++i) slots->values[i] = b3d_cols->values[i];
++                            b3d_filaments_changed(q, b3d_bundle->filament_presets.size(), 0);
++                        }
++                        config_loaded.clear();
++                        b3d_part_unsaved = true; // Boolean3d (slicer-wx app-edits/z70) step 2
++                        for (Preset *p : project_presets) delete p;
++                        project_presets.clear();
++                    }
++
+                     // plate data
+                     if (plate_data.size() > 0) {
+                         BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << ":" << __LINE__ << boost::format(", import 3mf UPDATE_GCODE_RESULT \n");
+@@ -12406,6 +12446,12 @@ void Plater::load_project(wxString const& filename2,
+     else
+         p->dirty_state.update_from_undo_redo_stack(true);
+     up_to_date(true, true);
++    // Boolean3d (slicer-wx app-edits/z70) step 2: the part opened on the person's presets, not the file's: the file is out of date.
++    if (b3d_part_unsaved) {
++        b3d_part_unsaved = false;
++        p->dirty_state.update_from_undo_redo_stack(true);
++        b3d_title_dirty(p.get(), 0);
++    }
+ 
+     wxGetApp().params_panel()->switch_to_object_if_has_object_configs();
+ 
+diff --git a/src/slic3r/Utils/PresetUpdater.cpp b/src/slic3r/Utils/PresetUpdater.cpp
+index 6b99e6bc..f4b7b793 100644
+--- a/src/slic3r/Utils/PresetUpdater.cpp
++++ b/src/slic3r/Utils/PresetUpdater.cpp
+@@ -1440,8 +1440,9 @@ void PresetUpdater::priv::check_installed_vendor_profiles() const
+     const auto enabled_vendors = app_config->vendors();
+ 
+     std::set<std::string> bundles;
+-    // Orca: always install filament library
+-    bundles.insert(PresetBundle::ORCA_FILAMENT_LIBRARY);
++    // Orca: always install filament library. Browser (off-thread p2-orca-updater.py): the library is installed from the
++    // resources like any vendor (version compare), so the link the page made to the resources stays and nothing is copied.
++    const std::string b3d_always = PresetBundle::ORCA_FILAMENT_LIBRARY;
+     for (auto &dir_entry : boost::filesystem::directory_iterator(rsrc_path)) {
+         const auto &path = dir_entry.path();
+         std::string file_path = path.string();
+@@ -1452,7 +1453,7 @@ void PresetUpdater::priv::check_installed_vendor_profiles() const
+             vendor_name.erase(vendor_name.size() - 5);
+             if (bundles.find(vendor_name) != bundles.end())continue;
+ 
+-            const auto is_vendor_enabled = (vendor_name == PresetBundle::ORCA_DEFAULT_BUNDLE) // always update configs from resource to vendor for ORCA_DEFAULT_BUNDLE
++            const auto is_vendor_enabled = (vendor_name == PresetBundle::ORCA_DEFAULT_BUNDLE) || (vendor_name == b3d_always) // always update configs from resource to vendor for ORCA_DEFAULT_BUNDLE
+                                            || (enabled_vendors.find(vendor_name) != enabled_vendors.end());
+             if (enabled_config_update) {
+                 if ( fs::exists(path_in_vendor)) {
