@@ -16,6 +16,12 @@
         'Open source under the GNU AGPL-3.0. Running in your browser.',
         'This browser copy is not made or endorsed by the OrcaSlicer team.'],
     },
+    snapmaker: {
+      name: 'Snapmaker Orca',
+      lines: ['Made by Snapmaker. Based on OrcaSlicer by SoftFever and the OrcaSlicer contributors.',
+        'Open source under the GNU AGPL-3.0. Running in your browser.',
+        'Unofficial build, not endorsed by Snapmaker.'],
+    },
     prusa: {
       name: 'PrusaSlicer',
       lines: ['Made by Prusa Research. Based on Slic3r by Alessandro Ranellucci and the RepRap community.',
