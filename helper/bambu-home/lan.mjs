@@ -267,5 +267,8 @@ export function controlRequests(c, { model = null, printing = false } = {}) {
     return ["chamber_light", "chamber_light2"].map((node) => ({ system: { sequence_id: seq(), command: "ledctrl", led_node: node, led_mode: c.on ? "on" : "off",
       led_on_time: 500, led_off_time: 500, loop_times: 1, interval_time: 1000 } }));
   }
+  // Pause and resume, as Bambu Studio's print buttons send them on the LAN (the print "pause" / "resume" commands tablink.mjs
+  // passes from Bambu Studio in a browser tab).
+  if (c?.do === "pause" || c?.do === "resume") return [{ print: { sequence_id: seq(), command: c.do, param: "" } }];
   return [];
 }

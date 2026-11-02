@@ -8,7 +8,8 @@
 // own HTTP calls, unchanged); this module is what the helper itself reads: the printer's state for `status`.
 //
 //   const p = prusaLink({ host: "192.168.1.40", password: "…" });
-//   await p.version()  await p.status()  await p.storage()  await p.upload("/usb/benchy.bgcode", bytes)
+//   await p.version()  await p.status()  await p.storage()  await p.upload("/usb/benchy.bgcode", bytes, {print})
+//   await p.job()  await p.jobDo(id, "stop" | "pause" | "resume")
 //   reportOf(await p.status()) -> the printer in the printers door's words
 
 import { createHash, randomBytes } from "node:crypto";
@@ -58,10 +59,17 @@ export function prusaLink({ host, user = "maker", password = "", apiKey = null, 
     info: () => json("/api/v1/info"),
     status: () => json("/api/v1/status"),
     storage: async () => (await json("/api/v1/storage"))?.storage_list ?? [],
-    /** Puts a file on the printer's storage ("/usb/<name>"). Never starts it: Print-After-Upload stays off. */
-    async upload(path, bytes) {
-      const r = await call("PUT", `/api/v1/files${path}`, { body: bytes, headers: { "Content-Type": "application/octet-stream", Overwrite: "?1", "Print-After-Upload": "?0" } });
+    /** Puts a file on the printer's storage ("/usb/<name>"); starts it only with `print` (Print-After-Upload). */
+    async upload(path, bytes, { print = false } = {}) {
+      const r = await call("PUT", `/api/v1/files${path}`, { body: bytes, headers: { "Content-Type": "application/octet-stream", Overwrite: "?1", "Print-After-Upload": print ? "?1" : "?0" } });
       if (r.status !== 201 && r.status !== 204) throw new Error(`The printer did not take the file (${r.status}).`);
+    },
+    /** The job now (id, progress, state), or null when there is none. */
+    job: () => json("/api/v1/job"),
+    /** The job `id` stopped, paused or resumed (PrusaLink's /api/v1/job/{id}). */
+    async jobDo(id, what) {
+      const r = what === "stop" ? await call("DELETE", `/api/v1/job/${id}`) : await call("PUT", `/api/v1/job/${id}/${what}`);
+      if (r.status !== 204) throw new Error(`The printer would not ${what} the print (${r.status}).`);
     },
   };
 }

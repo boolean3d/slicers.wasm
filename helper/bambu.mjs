@@ -352,12 +352,18 @@ export const rtspsCamera = (model) => /^(BL-P00[12]|C13|O1)/.test(String(model |
 async function watchedFfmpeg(args, { onData, onEnd, spawn = null, stallMs = 20000, graceMs = 2000, stdin = false }) {
   const run = spawn ?? (await import("node:child_process")).spawn;
   const ff = run("ffmpeg", ["-hide_banner", "-loglevel", "error", ...(stdin ? [] : ["-nostdin"]), ...args],
-    { stdio: [stdin ? "pipe" : "ignore", "pipe", "pipe"] });
+    // windowsHide: from the Windows app (no console of its own) a console program would otherwise open a black window
+    { stdio: [stdin ? "pipe" : "ignore", "pipe", "pipe"], windowsHide: true });
   let err = "", stalled = false, closed = false, killer = null, watchdog = null;
+  // Only a process that is there gets a signal. An ffmpeg that could not start (not installed) has no pid, and
+  // until Node reports that, its kill() can reach the system as kill(0): every process in this one's group (it
+  // ended the merge gate's whole test run, 10-26).
+  const there = () => !closed && ff.pid !== undefined && ff.exitCode == null && ff.signalCode == null;
+  const signal = (sig) => { if (there()) try { ff.kill(sig); } catch { /* gone already */ } };
   const kill = () => {
     try { ff.stdin?.destroy(); } catch { /* gone already */ }
-    try { ff.kill("SIGTERM"); } catch { /* gone already */ }
-    if (!killer && !closed) { killer = setTimeout(() => { try { ff.kill("SIGKILL"); } catch { /* gone already */ } }, graceMs); killer.unref?.(); }
+    signal("SIGTERM");
+    if (!killer && there()) { killer = setTimeout(() => signal("SIGKILL"), graceMs); killer.unref?.(); }
   };
   const quiet = () => {
     clearTimeout(watchdog);

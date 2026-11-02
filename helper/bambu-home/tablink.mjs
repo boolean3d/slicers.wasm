@@ -29,6 +29,10 @@
 //                                            goes in the line's address next time (ws://…:8770/?token=…), as does a
 //                                            tunnel's (?to=host:port&token=…, refused without one). A page whose
 //                                            origin is not ours is refused at the handshake (403).
+//   {op:"printers", id}                   -> {id, ev:"printers", printers:[{kind, name, model, host, port, slicerHost}]}: the
+//                                            other printers the helper found on this network (Klipper, PrusaLink: one
+//                                            driver each, ../drivers), to a paired line only; a slicer reaches each
+//                                            through the tunnel (?to=host:port) at its slicerHost
 //   {op:"hello", camera_acks:true}        (first, from a page that confirms pictures) then {op:"camera_got", dev_id} for
 //                                            every camera message it received: the helper keeps at most CAMERA_BYTES_IN_FLIGHT
 //                                            unconfirmed per camera and drops the newer pictures, so the printer's
@@ -73,7 +77,7 @@ const safeName = (s) => String(s || "print").replace(/[\\/:*?"<>|\u0000-\u001f]/
  * from the account, OWNER when not given). Returns {port: Promise<number|null>, heardPrinter, attach(line, {may}), close()}.
  */
 export function startTabLink({ port = 8770, host = "0.0.0.0", pool, shelf, cameras, heard = new Map(), pairing = null, name = null, version = null,
-  mqttPort = 8883, ftpPort = 990, cameraInput = null, say = console.log, onPrinted = () => {}, page = null, search = null }) {
+  mqttPort = 8883, ftpPort = 990, cameraInput = null, say = console.log, onPrinted = () => {}, page = null, search = null, printers = () => [] }) {
   const tabs = new Set();
   // bySecret: the browser that downloaded it may still pair by itself (pairing.mjs 2b), so a page holding a secret sends it
   const whoAmI = () => ({ id: pairing?.helperId ?? null, name: name || os.hostname(), version, bySecret: !!pairing?.bySecret });
@@ -282,6 +286,8 @@ export function startTabLink({ port = 8770, host = "0.0.0.0", pool, shelf, camer
         if (tab.discovering) heardSoFar();
         return;
       }
+      // a browser removed in the app since it paired: this line is no longer paired either
+      if (tab.paired && tab.token && pairing && !pairing.verify(tab.token)) { tab.paired = false; tab.token = null; tab.may = null; askedToPair = false; }
       if (!tab.paired) return unpaired(m);
       // the person said yes in the page (control, asked once): kept for this browser; the message that asked goes on
       if (m.op === "allow") {
@@ -318,6 +324,7 @@ export function startTabLink({ port = 8770, host = "0.0.0.0", pool, shelf, camer
       else if (m.op === "send") { const l = mine.get(m.dev_id); if (l?.link.isOpen()) l.link.request(parse(m.msg, {})); }
       else if (m.op === "detect") detect(m.ip, typeof m.code === "string" && m.code ? m.code : null).then((r) => send({ id: m.id, ...r }));
       else if (m.op === "search") searchFor(m);
+      else if (m.op === "printers") send({ id: m.id, ev: "printers", printers: printers() });
       else if (m.op === "verify") job(m, null);
       else if (m.op === "upload" || m.op === "print") pending = m;
       else if (m.op === "camera") camera(m);
