@@ -173,6 +173,12 @@
     writing++;
     try { FS.writeFile(abs, data); } finally { writing--; }
   }
+  /** A path without its '.' and '..' steps: a project KiCad opened through its Open box sits at Uploads/../Projects/... */
+  function plain(abs) {
+    var out = [];
+    abs.split('/').forEach(function (s) { if (s === '..') out.pop(); else if (s && s !== '.') out.push(s); });
+    return '/' + out.join('/');
+  }
   var reading = 0;   // nor are our own reads the program's
   function read(abs) { reading++; try { return Module.FS.readFile(abs); } catch (e) { return null; } finally { reading--; } }
 
@@ -257,6 +263,7 @@
   var timers = {}, line = Promise.resolve();
   function soon(abs) {
     if (writing || typeof abs !== 'string' || SKIP.test(abs)) return;
+    abs = plain(abs);
     var at = entryOf(abs);
     if (!at) return;
     // The program wrote the file before reading the part's new version in: that version is not in it, and is offered again.

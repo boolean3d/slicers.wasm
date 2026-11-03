@@ -94,13 +94,15 @@ function makeDoor() {
 async function tab({ door, search = '', storage = new Map(), opfs = new Map(), linked = true, app = '/bambu/2.08/' }) {
   const files = new Map();   // path -> Uint8Array
   const notices = [];        // what the page said (no document here: the notice line logs it)
+  // As the program's file system: a path through '..' is the file it names (an open stream knows the plain path).
+  const n = (p) => p.split('/').reduce((o, s) => (s === '..' ? o.slice(0, -1) : s && s !== '.' ? [...o, s] : o), []).join('/').replace(/^/, '/');
   const FS = {
     mkdirTree() {},
-    writeFile(p, data) { const s = this.open(p, 'w'); files.set(p, Uint8Array.from(data)); this.close(s); },
-    readFile(p) { if (!files.has(p)) throw new Error('ENOENT'); return files.get(p); },
-    open(p, mode) { return { path: p, flags: mode === 'w' ? 577 : 0 }; },
+    writeFile(p, data) { const s = this.open(p, 'w'); files.set(n(p), Uint8Array.from(data)); this.close(s); },
+    readFile(p) { if (!files.has(n(p))) throw new Error('ENOENT'); return files.get(n(p)); },
+    open(p, mode) { return { path: n(p), flags: mode === 'w' ? 577 : 0 }; },
     close() {},
-    rename(a, b) { files.set(b, files.get(a)); files.delete(a); },
+    rename(a, b) { files.set(n(b), files.get(n(a))); files.delete(n(a)); },
   };
   const Module = { FS, preRun: [], arguments: [], deps: 0, addRunDependency() { this.deps++; }, removeRunDependency() { this.deps--; } };
   Module.b3dHome = {
@@ -374,6 +376,22 @@ test('KiCad: a STEP exported beside the board is linked made from the board vers
   t2.write(dir + 'other.step', 'ISO-10303-21; three');
   await t2.settle();
   assert.equal(door.links.length, 2);
+});
+
+test('KiCad: a project opened from its Open box (named from Uploads/, ../Projects/...) saves as versions of the project', async () => {
+  const door = makeDoor(), p = door.addProject('Desk lamp');
+  const board = door.addFile(p, 'Electronics/lamp.kicad_pcb', enc('pcb v1'));
+  door.addFile(p, 'Electronics/lamp.kicad_pro', enc('{}'));
+  const t = await tab({ door, app: '/kicad/10.0.7-k40/kicad/' });
+  await t.P.open(p);
+  // KiCad was handed /home/web_user/Uploads/../Projects/Desk lamp/Electronics/lamp.kicad_pro; it saves the board beside it.
+  const at = '/home/web_user/Uploads/../Projects/Desk lamp/Electronics/';
+  t.write(at + 'lamp.kicad_pcb-save', 'pcb v2'); t.FS.rename(at + 'lamp.kicad_pcb-save', at + 'lamp.kicad_pcb');
+  await t.settle();
+  const s = saves(door);
+  assert.equal(s.length, 1, 'one save');
+  assert.equal(s[0].file, board); assert.equal(s[0].tool, 'kicad');
+  assert.equal(dec(zlib.gunzipSync(door.blobs[sha(enc('pcb v2'))])), 'pcb v2');
 });
 
 test('a slicer file made from a part saved since: offered, Update puts the part\'s new 3MF on the path, the Reload makes it made from that version', async () => {
