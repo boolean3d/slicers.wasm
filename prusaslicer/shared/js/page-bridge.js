@@ -128,6 +128,11 @@ addToLibrary({
         wxPage.post({ wx: 'in', t: 'resize', w: window.innerWidth, h: window.innerHeight,
                       top: mainWindow ? mainWindow.offsetTop : 0, dpr: window.devicePixelRatio });
       });
+      // (z59) a new devicePixelRatio with no window resize (moved to another screen) is told like a resize
+      (function wxDprWatch() {
+        var q = matchMedia('(resolution: ' + window.devicePixelRatio + 'dppx)');
+        q.addEventListener('change', function() { window.dispatchEvent(new Event('resize')); wxDprWatch(); }, { once: true });
+      })();
       window.addEventListener('focus', function() { if (!pageOwn(document.activeElement)) wxPage.focusText(); wxPage.post({ wx: 'in', t: 'focus' }); });
       window.addEventListener('blur', function() { wxPage.post({ wx: 'in', t: 'blur' }); });
     },

@@ -101,11 +101,17 @@ public:
     // window (if any) over this window's rectangle
     void SyncElement();
 
+    // Multisampling asked for in the attribute list (Samplers): 0 = none. The context made on this canvas takes it
+    // as its antialias option, as the desktop honours the list.
+    int GetSamples() const { return m_samples; }
+
 protected:
     virtual void DoMoveWindow(int x, int y, int width, int height) wxOVERRIDE;
 
 private:
     void Init();
+
+    int m_samples;
 
     wxDECLARE_CLASS(wxGLCanvas);
 };

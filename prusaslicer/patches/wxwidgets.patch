@@ -2389,10 +2389,10 @@ index 0000000000..d37002c502
 +</html>
 diff --git a/build/wasm/wx.js b/build/wasm/wx.js
 new file mode 100644
-index 0000000000..3c02862adf
+index 0000000000..6a4dfc3459
 --- /dev/null
 +++ b/build/wasm/wx.js
-@@ -0,0 +1,1526 @@
+@@ -0,0 +1,1616 @@
 +if (typeof navigator !== 'undefined') {
 +  var browserInfo = (function () {
 +    var ua = navigator.userAgent;
@@ -2499,6 +2499,69 @@ index 0000000000..3c02862adf
 +  var wxInWorker = (typeof document === 'undefined');
 +  var wxPageDpr = 0;        // devicePixelRatio, sent by the page with every canvas and resize
 +  var wxPageMainTop = 0;    // #main-window offsetTop, sent with resize
++
++  // (z59) window canvases at device pixels; at a fractional devicePixelRatio, edges and pictures on whole device pixels
++  var wxDevScale = function () {
++    var d = (typeof window !== 'undefined') ? window.devicePixelRatio
++          : (wxPageDpr > 0 ? wxPageDpr : (typeof _wxpage_dpr === 'function' ? _wxpage_dpr() : 1.0));
++    return d > 0 ? d : 1.0;
++  };
++  // device pixels the browser shows a CSS span [p, p + n) at
++  var wxDevSpan = function (p, n, s) { return Math.max(0, Math.round((p + n) * s) - Math.round(p * s)); };
++  // the context's transform when it draws at a fractional scale with no rotation; null: draw as usual
++  var wxFrac = function (ctx) {
++    var sf = ctx.scaleFactor || 1.0;
++    if (sf === Math.round(sf)) return null;
++    var m = ctx.getTransform();
++    return (m.b || m.c) ? null : m;
++  };
++  var wxSnapX = function (m, x) { return Math.round(m.a * x + m.e); };
++  var wxSnapY = function (m, y) { return Math.round(m.d * y + m.f); };
++  var wxDevFill = function (ctx, m, x0, y0, x1, y1, style) {
++    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
++    if (style !== undefined) ctx.fillStyle = style;
++    ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
++    ctx.restore();
++  };
++  var wxPenPx = function (ctx, m) { return Math.max(1, Math.round((ctx.lineWidth || 1) * m.a)); };
++  var wxPenSolid = function (ctx) { return !(ctx.dashCount > 0) && typeof ctx.strokeStyle === 'string'; };
++  // a horizontal / vertical pen line as a device-pixel fill (caps: the end pixel is drawn, as wx's round caps do)
++  var wxDevStrokeH = function (ctx, m, xa, xb, y, caps) {
++    var lw = ctx.lineWidth || 1, pw = wxPenPx(ctx, m);
++    var y0 = Math.round(m.d * (y + 0.5 - lw / 2) + m.f);
++    var x0 = wxSnapX(m, Math.min(xa, xb)), x1 = wxSnapX(m, Math.max(xa, xb) + (caps ? 1 : 0));
++    if (x1 <= x0) x1 = x0 + 1;
++    wxDevFill(ctx, m, x0, y0, x1, y0 + pw, ctx.strokeStyle);
++  };
++  var wxDevStrokeV = function (ctx, m, x, ya, yb, caps) {
++    var lw = ctx.lineWidth || 1, pw = wxPenPx(ctx, m);
++    var x0 = Math.round(m.a * (x + 0.5 - lw / 2) + m.e);
++    var y0 = wxSnapY(m, Math.min(ya, yb)), y1 = wxSnapY(m, Math.max(ya, yb) + (caps ? 1 : 0));
++    if (y1 <= y0) y1 = y0 + 1;
++    wxDevFill(ctx, m, x0, y0, x0 + pw, y1, ctx.strokeStyle);
++  };
++  // a clip on whole device pixels (an edge pixel half inside drew a seam between controls)
++  var wxClipRect = function (ctx, x, y, w, h) {
++    var m = wxFrac(ctx);
++    ctx.beginPath();
++    if (!m) { ctx.rect(x, y, w, h); ctx.clip(); return; }
++    var X0 = wxSnapX(m, x), Y0 = wxSnapY(m, y);
++    ctx.setTransform(1, 0, 0, 1, 0, 0);
++    ctx.rect(X0, Y0, wxSnapX(m, x + w) - X0, wxSnapY(m, y + h) - Y0);
++    ctx.clip();
++    ctx.setTransform(m);
++  };
++  // a picture on whole device pixels, smoothed only when its size changes
++  var wxDevImage = function (ctx, m, src, sx, sy, sw, sh, x, y, w, h) {
++    var X0 = wxSnapX(m, x), Y0 = wxSnapY(m, y), X1 = wxSnapX(m, x + w), Y1 = wxSnapY(m, y + h);
++    if (X1 <= X0 || Y1 <= Y0) return;
++    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
++    var scaled = (X1 - X0) !== sw || (Y1 - Y0) !== sh;
++    ctx.imageSmoothingEnabled = scaled;
++    if (scaled) ctx.imageSmoothingQuality = 'high';
++    ctx.drawImage(src, sx, sy, sw, sh, X0, Y0, X1 - X0, Y1 - Y0);
++    ctx.restore();
++  };
 +  var wxHeapFresh = function () {
 +    if (typeof wasmMemory !== 'undefined' && HEAPU8.buffer !== wasmMemory.buffer) updateMemoryViews();
 +  };
@@ -2569,7 +2632,9 @@ index 0000000000..3c02862adf
 +        break;
 +      }
 +      case 'resize':
++        var wxDprChanged = d.dpr !== wxPageDpr || d.top !== wxPageMainTop;   // (z59)
 +        wxPageDpr = d.dpr; wxPageMainTop = d.top; displayScaleFactor = null;
++        if (wxDprChanged) windowMap.forEach(function (wd, wid) { if (wd.rect && wd.canvas) setWindowRect(wid, wd.rect[0], wd.rect[1], wd.rect[2], wd.rect[3]); });
 +        _wxWasmInResize(d.w, d.h);
 +        break;
 +      case 'focus': _wxWasmInFocus(1); break;
@@ -2761,12 +2826,16 @@ index 0000000000..3c02862adf
 +    }
 +
 +    var canvas = windowData.canvas;
++    windowData.rect = [x, y, width, height];   // (z59) remade at a new devicePixelRatio
 +
 +    if (canvas) {
-+      var scaleFactor = getDisplayScaleFactor();
++      // (z59) the device pixels the browser shows this window at (a rounded scale stretched it: soft at 1.25)
++      var scaleFactor = wxDevScale();
++      windowData.devScale = scaleFactor;
++      var wxTop = wxInWorker ? wxPageMainTop : 0;
 +
-+      canvas.width = width * scaleFactor;
-+      canvas.height = height * scaleFactor;
++      canvas.width = wxDevSpan(x, width, scaleFactor);
++      canvas.height = wxDevSpan(y + wxTop, height, scaleFactor);
 +      if (canvas.style) {
 +        canvas.style.width = width + 'px';
 +        canvas.style.height = height + 'px';
@@ -3011,9 +3080,7 @@ index 0000000000..3c02862adf
 +      }
 +
 +      // TODO: save/restore clip
-+      ctx.beginPath();
-+      ctx.rect(0, 0, ctx.width, ctx.height);
-+      ctx.clip();
++      wxClipRect(ctx, 0, 0, ctx.width, ctx.height);   // (z59)
 +    }
 +  };
 +
@@ -3032,7 +3099,7 @@ index 0000000000..3c02862adf
 +    ctx.y = y;
 +    ctx.width = width;
 +    ctx.height = height;
-+    ctx.scaleFactor = scaleFactor;
++    ctx.scaleFactor = windowData.devScale || scaleFactor;   // (z59) the canvas' own scale (C++ passes its content scale)
 +    ctx.isInitialized = false;
 +    ctx.depth++;
 +
@@ -3128,9 +3195,7 @@ index 0000000000..3c02862adf
 +
 +      ctx.save();
 +
-+      ctx.beginPath();
-+      ctx.rect(0, 0, ctx.width, ctx.height);
-+      ctx.clip()
++      wxClipRect(ctx, 0, 0, ctx.width, ctx.height);   // (z59)
 +
 +      ctx.dashCount = 0;
 +      ctx.isInitialized = true;
@@ -3231,9 +3296,7 @@ index 0000000000..3c02862adf
 +
 +    resetClip(ctx);
 +
-+    ctx.beginPath();
-+    ctx.rect(x, y, width, height);
-+    ctx.clip();
++    wxClipRect(ctx, x, y, width, height);   // (z59)
 +  };
 +
 +  var destroyClip = function (id) {
@@ -3241,9 +3304,7 @@ index 0000000000..3c02862adf
 +
 +    resetClip(ctx);
 +
-+    ctx.beginPath();
-+    ctx.rect(0, 0, ctx.width, ctx.height);
-+    ctx.clip();
++    wxClipRect(ctx, 0, 0, ctx.width, ctx.height);   // (z59)
 +  };
 +
 +  var clearRect = function (id, width, height, color) {
@@ -3290,6 +3351,20 @@ index 0000000000..3c02862adf
 +      ctx.beginPath();
 +      ctx.rect(x, y, width, height);
 +      strokeOffset(ctx);
++    }
++  };
++
++  // (z59) at a fractional scale: edges on whole device pixels, pens a whole number of device pixels
++  var wxDrawRectCss = drawRect;
++  drawRect = function (id, x, y, width, height, fill, stroke) {
++    var ctx = getContext(id);
++    var m = wxFrac(ctx);
++    if (!m || (stroke && !wxPenSolid(ctx))) return wxDrawRectCss(id, x, y, width, height, fill, stroke);
++    if (fill) wxDevFill(ctx, m, wxSnapX(m, x), wxSnapY(m, y), wxSnapX(m, x + width - (stroke ? 1 : 0)), wxSnapY(m, y + height - (stroke ? 1 : 0)));
++    if (stroke) {
++      var r = x + width - 1, b = y + height - 1;
++      wxDevStrokeH(ctx, m, x, r, y, 1); wxDevStrokeH(ctx, m, x, r, b, 1);
++      wxDevStrokeV(ctx, m, x, y, b, 1); wxDevStrokeV(ctx, m, r, y, b, 1);
 +    }
 +  };
 +
@@ -3398,6 +3473,16 @@ index 0000000000..3c02862adf
 +    strokeOffset(ctx);
 +  };
 +
++  // (z59) a horizontal or vertical solid line at a fractional scale: on whole device pixels
++  var wxDrawLineCss = drawLine;
++  drawLine = function (id, x1, y1, x2, y2) {
++    var ctx = getContext(id);
++    var m = wxFrac(ctx);
++    if (!m || !wxPenSolid(ctx) || (y1 !== y2 && x1 !== x2)) return wxDrawLineCss(id, x1, y1, x2, y2);
++    var cap = ctx.lineCap !== 'butt';
++    if (y1 === y2) wxDevStrokeH(ctx, m, x1, x2, y1, cap); else wxDevStrokeV(ctx, m, x1, y1, y2, cap);
++  };
++
 +  var drawLines = function (id, n, ptr) {
 +    var ctx = getContext(id);
 +
@@ -3467,7 +3552,10 @@ index 0000000000..3c02862adf
 +      source = offscreenContext.canvas;
 +    }
 +
-+    if (bitmap.scaleFactor == 1.0) {
++    var m = wxFrac(ctx);   // (z59)
++    if (m) {
++      wxDevImage(ctx, m, source, 0, 0, w, h, x, y, w / bitmap.scaleFactor, h / bitmap.scaleFactor);
++    } else if (bitmap.scaleFactor == 1.0) {
 +      ctx.drawImage(source, x, y);
 +    } else {
 +      var sf = 1.0 / bitmap.scaleFactor;
@@ -3491,6 +3579,8 @@ index 0000000000..3c02862adf
 +    //console.log('blit: ' + sx + ' ' + sy + ' ' + dx + ' ' + dy + ' ' + width + ' ' + height + ' ' + srcCtx.scaleFactor + ' ' + dstCtx.scaleFactor);
 +
 +    var sf = srcCtx.scaleFactor
++    var m = wxFrac(dstCtx);   // (z59)
++    if (m) { wxDevImage(dstCtx, m, srcCtx.canvas, sx * sf, sy * sf, width * sf, height * sf, dx, dy, width, height); return; }
 +    dstCtx.drawImage(srcCtx.canvas, sx * sf, sy * sf, width * sf, height * sf, dx, dy, width, height);
 +  };
 +
@@ -4855,6 +4945,20 @@ index 30529db8ce..6b56db2470 100644
  #endif // platforms
  
      // default ctor (default copy ctor is ok)
+diff --git a/include/wx/fswatcher.h b/include/wx/fswatcher.h
+index 700c92df2f..5d89ba742f 100644
+--- a/include/wx/fswatcher.h
++++ b/include/wx/fswatcher.h
+@@ -397,6 +397,9 @@ protected:
+ #elif defined(__WINDOWS__)
+     #include "wx/msw/fswatcher.h"
+     #define wxFileSystemWatcher wxMSWFileSystemWatcher
++#elif defined(__WXWASM__)
++    #include "wx/wasm/fswatcher.h"
++    #define wxFileSystemWatcher wxWasmFileSystemWatcher
+ #else
+     #include "wx/generic/fswatcher.h"
+     #define wxFileSystemWatcher wxPollingFileSystemWatcher
 diff --git a/include/wx/gdicmn.h b/include/wx/gdicmn.h
 index 2f5f8ee99f..0ad8c4e45f 100644
 --- a/include/wx/gdicmn.h
@@ -5286,6 +5390,22 @@ index c3964098b6..7aca8fdf68 100644
  protected:
      // this is called when the popup is disappeared because of anything
      // else but direct call to Dismiss()
+diff --git a/include/wx/private/fswatcher.h b/include/wx/private/fswatcher.h
+index d3602f7861..fb1d761ff3 100644
+--- a/include/wx/private/fswatcher.h
++++ b/include/wx/private/fswatcher.h
+@@ -27,6 +27,11 @@
+     #define wxFSWatchEntry wxFSWatchEntryMSW
+     WX_DECLARE_STRING_HASH_MAP(wxSharedPtr<wxFSWatchEntry>,wxFSWatchEntries);
+     #include "wx/msw/private/fswatcher.h"
++#elif defined(__WXWASM__)
++    class wxFSWatchEntryWasm;
++    #define wxFSWatchEntry wxFSWatchEntryWasm
++    WX_DECLARE_STRING_HASH_MAP(wxSharedPtr<wxFSWatchEntry>,wxFSWatchEntries);
++    #include "wx/wasm/private/fswatcher.h"
+ #else
+     #define wxFSWatchEntry wxFSWatchEntryPolling
+ #endif
 diff --git a/include/wx/private/secretstore.h b/include/wx/private/secretstore.h
 index 443273d627..11615a7aa8 100644
 --- a/include/wx/private/secretstore.h
@@ -5835,6 +5955,19 @@ index 65136534e9..900347d8c7 100644
      virtual bool ShowAssertDialog(const wxString& msg) wxOVERRIDE;
  #endif
  
+diff --git a/include/wx/unix/chkconf.h b/include/wx/unix/chkconf.h
+index d51d36466d..28fa07c6ca 100644
+--- a/include/wx/unix/chkconf.h
++++ b/include/wx/unix/chkconf.h
+@@ -21,7 +21,7 @@
+ #endif /* wxUSE_CONSOLE_EVENTLOOP */
+ 
+ #if wxUSE_FSWATCHER
+-#   if !defined(wxHAS_INOTIFY) && !defined(wxHAS_KQUEUE)
++#   if !defined(wxHAS_INOTIFY) && !defined(wxHAS_KQUEUE) && !defined(__WXWASM__)
+ #       ifdef wxABORT_ON_CONFIG_ERROR
+ #           error "wxFileSystemWatcher requires either inotify() or kqueue()"
+ #       else
 diff --git a/include/wx/utils.h b/include/wx/utils.h
 index 2131128cb0..bd4f5afcbb 100644
 --- a/include/wx/utils.h
@@ -7282,12 +7415,49 @@ index 0000000000..92287c13d7
 +};
 +
 +#endif // _WX_WASM_FONT_H_
+diff --git a/include/wx/wasm/fswatcher.h b/include/wx/wasm/fswatcher.h
+new file mode 100644
+index 0000000000..4774fb4ed1
+--- /dev/null
++++ b/include/wx/wasm/fswatcher.h
+@@ -0,0 +1,31 @@
++/////////////////////////////////////////////////////////////////////////////
++// Name:        wx/wasm/fswatcher.h
++// Purpose:     wxWasmFileSystemWatcher: the browser has nothing to watch, so it
++//              accepts every path and never sends an event
++// Licence:     wxWindows licence
++/////////////////////////////////////////////////////////////////////////////
++
++#ifndef _WX_WASM_FSWATCHER_H_
++#define _WX_WASM_FSWATCHER_H_
++
++#include "wx/defs.h"
++
++#if wxUSE_FSWATCHER
++
++class WXDLLIMPEXP_BASE wxWasmFileSystemWatcher : public wxFileSystemWatcherBase
++{
++public:
++    wxWasmFileSystemWatcher();
++
++    wxWasmFileSystemWatcher(const wxFileName& path,
++                            int events = wxFSW_EVENT_ALL);
++
++    virtual ~wxWasmFileSystemWatcher();
++
++protected:
++    bool Init();
++};
++
++#endif // wxUSE_FSWATCHER
++
++#endif // _WX_WASM_FSWATCHER_H_
 diff --git a/include/wx/wasm/glcanvas.h b/include/wx/wasm/glcanvas.h
 new file mode 100644
-index 0000000000..a74b907731
+index 0000000000..ef5126ffbc
 --- /dev/null
 +++ b/include/wx/wasm/glcanvas.h
-@@ -0,0 +1,113 @@
+@@ -0,0 +1,119 @@
 +/////////////////////////////////////////////////////////////////////////////
 +// Name:        wx/wasm/glcanvas.h
 +// Purpose:     wxGLCanvas for the WebAssembly port. A WebGL2 context is tied
@@ -7391,11 +7561,17 @@ index 0000000000..a74b907731
 +    // window (if any) over this window's rectangle
 +    void SyncElement();
 +
++    // Multisampling asked for in the attribute list (Samplers): 0 = none. The context made on this canvas takes it
++    // as its antialias option, as the desktop honours the list.
++    int GetSamples() const { return m_samples; }
++
 +protected:
 +    virtual void DoMoveWindow(int x, int y, int width, int height) wxOVERRIDE;
 +
 +private:
 +    void Init();
++
++    int m_samples;
 +
 +    wxDECLARE_CLASS(wxGLCanvas);
 +};
@@ -7665,6 +7841,31 @@ index 0000000000..a94c61519b
 +};
 +
 +#endif // _WX_WASM_PRIVATE_DISPLAY_H_
+diff --git a/include/wx/wasm/private/fswatcher.h b/include/wx/wasm/private/fswatcher.h
+new file mode 100644
+index 0000000000..0cecce5762
+--- /dev/null
++++ b/include/wx/wasm/private/fswatcher.h
+@@ -0,0 +1,19 @@
++/////////////////////////////////////////////////////////////////////////////
++// Name:        wx/wasm/private/fswatcher.h
++// Purpose:     the watch entry of wxWasmFileSystemWatcher: only what was asked
++// Licence:     wxWindows licence
++/////////////////////////////////////////////////////////////////////////////
++
++#ifndef _WX_WASM_PRIVATE_FSWATCHER_H_
++#define _WX_WASM_PRIVATE_FSWATCHER_H_
++
++class wxFSWatchEntryWasm : public wxFSWatchInfo
++{
++public:
++    explicit wxFSWatchEntryWasm(const wxFSWatchInfo& winfo) :
++        wxFSWatchInfo(winfo)
++    {
++    }
++};
++
++#endif // _WX_WASM_PRIVATE_FSWATCHER_H_
 diff --git a/include/wx/wasm/private/keyboard.h b/include/wx/wasm/private/keyboard.h
 new file mode 100644
 index 0000000000..149bc7233a
@@ -10083,6 +10284,54 @@ index 6be5402ce2..6d6fd747dd 100644
      // see the comment in ctor: if the initial value hasn't been changed, use
      // the default Yes from now on
      if ( m_exitOnFrameDelete == Later )
+diff --git a/src/common/bmpbndl.cpp b/src/common/bmpbndl.cpp
+index 5c8733aa54..5a99300d1c 100644
+--- a/src/common/bmpbndl.cpp
++++ b/src/common/bmpbndl.cpp
+@@ -546,6 +546,17 @@ wxBitmapBundle wxBitmapBundle::FromFiles(const wxString& path, const wxString& f
+ 
+ #endif
+ 
++// (z61) the physical size of a bundle's bitmap for a window: on wasm the content scale (2 at any scale above 1),
++// which FromPhys also uses, so the picture keeps its logical size; elsewhere the DPI scale as before
++static double wxBundleScaleFor(const wxWindow* window)
++{
++#ifdef __WXWASM__
++    return window->GetContentScaleFactor();
++#else
++    return window->GetDPIScaleFactor();
++#endif
++}
++
+ wxSize wxBitmapBundle::GetDefaultSize() const
+ {
+     if ( !m_impl )
+@@ -558,14 +569,14 @@ wxSize wxBitmapBundle::GetPreferredBitmapSizeFor(const wxWindow* window) const
+ {
+     wxCHECK_MSG( window, wxDefaultSize, "window must be valid" );
+ 
+-    return GetPreferredBitmapSizeAtScale(window->GetDPIScaleFactor());
++    return GetPreferredBitmapSizeAtScale(wxBundleScaleFor(window));
+ }
+ 
+ wxSize wxBitmapBundle::GetPreferredLogicalSizeFor(const wxWindow* window) const
+ {
+     wxCHECK_MSG( window, wxDefaultSize, "window must be valid" );
+ 
+-    return window->FromPhys(GetPreferredBitmapSizeAtScale(window->GetDPIScaleFactor()));
++    return window->FromPhys(GetPreferredBitmapSizeAtScale(wxBundleScaleFor(window)));
+ }
+ 
+ wxSize wxBitmapBundle::GetPreferredBitmapSizeAtScale(double scale) const
+@@ -652,7 +663,7 @@ wxSize
+ wxBitmapBundle::GetConsensusSizeFor(wxWindow* win,
+                                     const wxVector<wxBitmapBundle>& bundles)
+ {
+-    return GetConsensusSizeFor(win->GetDPIScaleFactor(), bundles);
++    return GetConsensusSizeFor(wxBundleScaleFor(win), bundles);
+ }
+ 
+ /* static */
 diff --git a/src/common/combocmn.cpp b/src/common/combocmn.cpp
 index 8f443bc180..67dcd861b1 100644
 --- a/src/common/combocmn.cpp
@@ -10456,6 +10705,22 @@ index 110199a490..22a16ab41e 100644
  
      if ( m_labelWin )
      {
+diff --git a/src/common/tbarbase.cpp b/src/common/tbarbase.cpp
+index bc744e8e37..35eb6cfc1e 100644
+--- a/src/common/tbarbase.cpp
++++ b/src/common/tbarbase.cpp
+@@ -488,7 +488,11 @@ void wxToolBarBase::AdjustToolBitmapSize()
+ 
+         // We want to round 1.5 down to 1, but 1.75 up to 2.
+         int scaleFactorRoundedDown =
++#ifdef __WXWASM__
++            static_cast<int>(ceil(2*GetContentScaleFactor())) / 2;   // (z61) the scale FromPhys undoes
++#else
+             static_cast<int>(ceil(2*GetDPIScaleFactor())) / 2;
++#endif
+         sizeNeeded = FromPhys(m_requestedBitmapSize*scaleFactorRoundedDown);
+     }
+     else // Determine the best size to use from the bitmaps we have.
 diff --git a/src/common/utilscmn.cpp b/src/common/utilscmn.cpp
 index db679cf136..e6c28ec93c 100644
 --- a/src/common/utilscmn.cpp
@@ -15835,10 +16100,10 @@ index 8a944cd626..03d3a4c7b8 100644
  {
 diff --git a/src/wasm/app.cpp b/src/wasm/app.cpp
 new file mode 100644
-index 0000000000..0752afacc2
+index 0000000000..1bc12531ce
 --- /dev/null
 +++ b/src/wasm/app.cpp
-@@ -0,0 +1,1090 @@
+@@ -0,0 +1,1171 @@
 +/////////////////////////////////////////////////////////////////////////////
 +// Name:        src/wasm/app.cpp
 +// Purpose      wxApp implementation
@@ -15860,6 +16125,9 @@ index 0000000000..0752afacc2
 +#include "wx/dnd.h"
 +#include "wx/nonownedwnd.h"
 +#include "wx/toplevel.h"
++#include "wx/frame.h"   // (z56)
++#include "wx/menu.h"
++#include "wx/accel.h"
 +#include "wx/window.h"
 +#include "wx/modalhook.h"
 +#include "wx/settings.h"
@@ -16069,6 +16337,70 @@ index 0000000000..0752afacc2
 +    m_mouseState.SetRawControlDown(event.RawControlDown());
 +}
 +
++// Menu accelerators (z56): see the edit's header. One key at a time: the char hook starts a key, so a nested key (a
++// modal dialog's loop run by a handler) starts over and its own key down / char decide for it.
++static bool s_accelWaits = false;   // the current key's key down went unhandled: its char (or its end) may be an accelerator
++static wxKeyEvent s_accelKey;       // that key down (accelerators match key code + Ctrl/Shift/Alt, never a char code)
++
++static bool wxWasmMenuAccel(const wxKeyEvent& key)
++{
++    wxWindow *start = wxWindow::FindFocus();
++    if (!start && wxTheApp) start = wxTheApp->GetTopWindow();
++    for (wxWindow *win = start; win; win = win->GetParent())
++    {
++        if (!win->IsEnabled()) return false;   // under a modal dialog: GTK leaves an insensitive window's accelerators alone
++        wxAcceleratorTable *table = win->GetAcceleratorTable();
++        const int command = table && table->IsOk() ? table->GetCommand(key) : -1;
++        if (command != -1)
++        {
++            wxCommandEvent ev(wxEVT_MENU, command);
++            ev.SetEventObject(win);
++            if (win->GetEventHandler()->ProcessEvent(ev)) return true;
++        }
++        if (win->IsTopLevel())
++        {
++#if wxUSE_MENUS
++            wxFrame *frame = wxDynamicCast(win, wxFrame);
++            wxMenuBar *bar = frame ? frame->GetMenuBar() : NULL;
++            return bar && bar->ProcessAccelEvent(key);
++#else
++            return false;
++#endif
++        }
++    }
++    return false;
++}
++
++// every key event the port sends ends here with what the program did with it; returns whether the key is now used
++static bool wxWasmKeyAccel(const wxKeyEvent& event, bool handled)
++{
++    const wxEventType t = event.GetEventType();
++    if (t == wxEVT_CHAR_HOOK)
++        s_accelWaits = false;   // a new key
++    else if (t == wxEVT_KEY_DOWN)
++    {
++        s_accelWaits = !handled;
++        if (!handled) s_accelKey = event;
++    }
++    else if (t == wxEVT_CHAR && s_accelWaits)
++    {
++        s_accelWaits = false;
++        if (!handled) return wxWasmMenuAccel(s_accelKey);
++    }
++    return handled;
++}
++
++// the end of a key's dispatch: a key whose key down nobody took and that made no char is tried now (F keys, Delete, a
++// Cmd shortcut on a Mac); a text key's char comes later with its text (wxWasmSendChars)
++static void wxWasmKeyEnded(int keyFlags)
++{
++    if (s_accelWaits && !(keyFlags & 16))   // 16 = wxWASM_KEY_TEXT
++    {
++        s_accelWaits = false;
++        wxWasmMenuAccel(s_accelKey);
++    }
++}
++
 +bool wxApp::HandleKeyEvent(wxKeyEvent *event)
 +{
 +    //printf("HandleKeyEvent: %d\n", event->GetEventType());
@@ -16101,11 +16433,11 @@ index 0000000000..0752afacc2
 +            SetKeyPressed(event->GetKeyCode(), false);
 +        }
 +
-+        return window->HandleWindowEvent(*event);
++        return wxWasmKeyAccel(*event, window->HandleWindowEvent(*event));   // (z56)
 +    }
 +    else
 +    {
-+        return false;
++        return wxWasmKeyAccel(*event, false);
 +    }
 +}
 +
@@ -16241,7 +16573,13 @@ index 0000000000..0752afacc2
 +    //printf("HandleSizeEvent: %d %d\n", newSize.GetWidth(), newSize.GetHeight());
 +
 +    GetDisplay()->SetScreenSize(newSize);
++    const double oldScale = GetDisplay()->GetDeviceScaleFactor();   // (z59)
 +    GetDisplay()->UpdateScaleFactor();
++    // (z59) a new devicePixelRatio (browser zoom, another screen): the page remade every window canvas at the new
++    // scale, so every top-level window (dialogs too) paints again, not just the main frame
++    if ( GetDisplay()->GetDeviceScaleFactor() != oldScale )
++        for ( wxWindowList::compatibility_iterator n = wxTopLevelWindows.GetFirst(); n; n = n->GetNext() )
++            n->GetData()->Refresh();
 +
 +    wxWindow *mainFrame = wxNonOwnedWindow::GetMainFrame();
 +    if (mainFrame != NULL)
@@ -16492,6 +16830,9 @@ index 0000000000..0752afacc2
 +            app->HandleKeyEvent(&event);
 +        }
 +    }
++
++    if (event.GetEventType() == wxEVT_KEY_DOWN)
++        wxWasmKeyEnded(keyFlags);   // (z56)
 +
 +    return preventDefault;
 +}
@@ -16776,6 +17117,9 @@ index 0000000000..0752afacc2
 +static wxApp* wxWasmApp() { return static_cast<wxApp*>(wxApp::GetInstance()); }
 +static char s_keyBuf[64];
 +
++// the page's header height above #main-window (z55b): wx positions start under it
++static int wxWasmPageTop() { return EM_ASM_INT({ return wxPageMainTop | 0; }); }
++
 +static void FillMouse(EmscriptenMouseEvent& m, double ts, int sx, int sy, int cx, int cy, int mx, int my, int button, int buttons, int mods)
 +{
 +    memset(&m, 0, sizeof m);
@@ -16786,6 +17130,7 @@ index 0000000000..0752afacc2
 +    m.movementX = mx; m.movementY = my;
 +    m.targetX = cx; m.targetY = cy;   // the document was the target: targetX == clientX
 +    m.canvasX = cx; m.canvasY = cy;
++    { const int top = wxWasmPageTop(); m.targetY -= top; m.canvasY -= top; }   // (z55b) inside #main-window, under the page's header
 +}
 +
 +extern "C" {
@@ -16898,6 +17243,7 @@ index 0000000000..0752afacc2
 +    p.screenX = sx; p.screenY = sy; p.clientX = cx; p.clientY = cy;
 +    p.pageX = cx; p.pageY = cy;
 +    p.targetX = cx; p.targetY = cy; p.canvasX = cx; p.canvasY = cy;   // the document was the target: targetX == clientX
++    { const int top = wxWasmPageTop(); p.targetY -= top; p.canvasY -= top; }   // (z55b) inside #main-window, under the page's header
 +    p.isChanged = changed; p.onTarget = 1;
 +}
 +
@@ -17840,10 +18186,10 @@ index 0000000000..643f365283
 +}
 diff --git a/src/wasm/bitmap.cpp b/src/wasm/bitmap.cpp
 new file mode 100644
-index 0000000000..e7c7482214
+index 0000000000..2ce5ca8384
 --- /dev/null
 +++ b/src/wasm/bitmap.cpp
-@@ -0,0 +1,898 @@
+@@ -0,0 +1,900 @@
 +/////////////////////////////////////////////////////////////////////////////
 +// Name:        wx/wasm/bitmap.cpp
 +// Purpose:     wxBitmap implementation
@@ -18148,8 +18494,10 @@ index 0000000000..e7c7482214
 +{
 +    bitmap.SyncToCpp();
 +
-+    int width = bitmap.GetScaledWidth();
-+    int height = bitmap.GetScaledHeight();
++    // (z61) pixels: the bitmap data's own count (GetScaledWidth is the logical size)
++    const wxBitmapRefData* const bdata = static_cast<const wxBitmapRefData*>(bitmap.GetRefData());
++    int width = bdata->GetScaledWidth();
++    int height = bdata->GetScaledHeight();
 +
 +    m_dataSize = width * height;
 +    m_data = new uint32_t[m_dataSize];
@@ -18494,12 +18842,12 @@ index 0000000000..e7c7482214
 +
 +double wxBitmap::GetScaledWidth() const
 +{
-+    return M_BITMAPDATA->GetScaledWidth();
++    return M_BITMAPDATA->m_width;    // (z61) logical, as wx means it (GTK3/OSX: GetWidth() / GetScaleFactor())
 +}
 +
 +double wxBitmap::GetScaledHeight() const
 +{
-+    return M_BITMAPDATA->GetScaledHeight();
++    return M_BITMAPDATA->m_height;
 +}
 +
 +wxMask *wxBitmap::GetMask() const
@@ -18515,7 +18863,7 @@ index 0000000000..e7c7482214
 +    delete M_BITMAPDATA->m_mask;
 +    M_BITMAPDATA->m_mask = NULL;
 +
-+    if (mask->GetDataSize() != GetScaledWidth() * GetScaledHeight())
++    if (mask->GetDataSize() != M_BITMAPDATA->GetScaledWidth() * M_BITMAPDATA->GetScaledHeight())
 +    {
 +        wxFAIL_MSG("bitmap and mask dimensions must match");
 +        delete mask;
@@ -18605,8 +18953,8 @@ index 0000000000..e7c7482214
 +    wxCHECK_MSG(IsOk(), NULL, wxT("invalid bitmap"));
 +    wxCHECK_MSG(bpp == GetDepth(), NULL, wxT("wrong depth"));
 +
-+    data.m_width = GetScaledWidth();
-+    data.m_height = GetScaledHeight();
++    data.m_width = M_BITMAPDATA->GetScaledWidth();    // pixels
++    data.m_height = M_BITMAPDATA->GetScaledHeight();
 +    data.m_stride = GetBytesPerRow();
 +
 +    return BeginRawAccess();
@@ -21377,10 +21725,10 @@ index 0000000000..e39ab3a5cc
 +}
 diff --git a/src/wasm/display.cpp b/src/wasm/display.cpp
 new file mode 100644
-index 0000000000..59d473fd90
+index 0000000000..1c25af61d2
 --- /dev/null
 +++ b/src/wasm/display.cpp
-@@ -0,0 +1,110 @@
+@@ -0,0 +1,119 @@
 +/////////////////////////////////////////////////////////////////////////////
 +// Name:        src/wasm/private.cpp
 +// Purpose      wxWasm private classes
@@ -21425,17 +21773,24 @@ index 0000000000..59d473fd90
 +// wxWasmDisplay
 +// ===========================================================================
 +
++// (z61) bitmaps, double buffers and memory DCs hold 2x pixels at any scale above 1 and the page draws them down
++// (GTK3 renders a fractional scale the same way). Layout keeps the rounded rule: window.cpp GetDPIScaleFactor.
++static double wxWasmContentScaleFor(double dpr)
++{
++    return dpr > 1.0 ? 2.0 : 1.0;
++}
++
 +wxWasmDisplay::wxWasmDisplay()
 +    : m_screenSize(GetScreenWidth(), GetScreenHeight()),
 +      m_deviceScaleFactor(GetDevicePixelRatio()),
-+      m_contentScaleFactor(m_deviceScaleFactor >= 1.5 ? 2.0 : 1.0)
++      m_contentScaleFactor(wxWasmContentScaleFor(m_deviceScaleFactor))
 +{
 +}
 +
 +void wxWasmDisplay::UpdateScaleFactor()
 +{
 +    m_deviceScaleFactor = GetDevicePixelRatio();
-+    m_contentScaleFactor = m_deviceScaleFactor >= 1.5 ? 2.0 : 1.0;
++    m_contentScaleFactor = wxWasmContentScaleFor(m_deviceScaleFactor);
 +}
 +
 +const int DEFAULT_DEPTH = 32;
@@ -21474,6 +21829,8 @@ index 0000000000..59d473fd90
 +
 +double wxContentScaleFactor()
 +{
++    if ( !wxTheApp || !wxTheApp->GetDisplay() )   // (z61) asked before the app has its display
++        return wxWasmContentScaleFor(GetDevicePixelRatio());
 +    return wxTheApp->GetDisplay()->GetContentScaleFactor();
 +}
 +
@@ -22927,12 +23284,69 @@ index 0000000000..f30848e914
 +    wxFAIL_MSG(wxT("wxTestFontEncoding is not implemented"));
 +    return false;
 +}
+diff --git a/src/wasm/fswatcher.cpp b/src/wasm/fswatcher.cpp
+new file mode 100644
+index 0000000000..14da42792d
+--- /dev/null
++++ b/src/wasm/fswatcher.cpp
+@@ -0,0 +1,51 @@
++/////////////////////////////////////////////////////////////////////////////
++// Name:        src/wasm/fswatcher.cpp
++// Purpose:     wxWasmFileSystemWatcher: files live in the page's memory and only
++//              the program changes them, so there is nothing to report
++// Licence:     wxWindows licence
++/////////////////////////////////////////////////////////////////////////////
++
++#include "wx/wxprec.h"
++
++#if wxUSE_FSWATCHER
++
++#include "wx/fswatcher.h"
++#include "wx/private/fswatcher.h"
++
++class wxFSWatcherImplWasm : public wxFSWatcherImpl
++{
++public:
++    explicit wxFSWatcherImplWasm(wxFileSystemWatcherBase* watcher) :
++        wxFSWatcherImpl(watcher)
++    {
++    }
++
++    bool Init() override { return true; }
++
++protected:
++    bool DoAdd(wxSharedPtr<wxFSWatchEntry> WXUNUSED(watch)) override { return true; }
++    bool DoRemove(wxSharedPtr<wxFSWatchEntry> WXUNUSED(watch)) override { return true; }
++};
++
++wxWasmFileSystemWatcher::wxWasmFileSystemWatcher()
++{
++    Init();
++}
++
++wxWasmFileSystemWatcher::wxWasmFileSystemWatcher(const wxFileName& path, int events)
++{
++    if ( Init() )
++        Add(path, events);
++}
++
++wxWasmFileSystemWatcher::~wxWasmFileSystemWatcher()
++{
++}
++
++bool wxWasmFileSystemWatcher::Init()
++{
++    m_service = new wxFSWatcherImplWasm(this);
++    return m_service->Init();
++}
++
++#endif // wxUSE_FSWATCHER
 diff --git a/src/wasm/glcanvas.cpp b/src/wasm/glcanvas.cpp
 new file mode 100644
-index 0000000000..767c0caffa
+index 0000000000..785d68442a
 --- /dev/null
 +++ b/src/wasm/glcanvas.cpp
-@@ -0,0 +1,352 @@
+@@ -0,0 +1,375 @@
 +/////////////////////////////////////////////////////////////////////////////
 +// Name:        src/wasm/glcanvas.cpp
 +// Purpose:     wxGLCanvas for the WebAssembly port (WebGL2)
@@ -22944,10 +23358,11 @@ index 0000000000..767c0caffa
 +#if wxUSE_GLCANVAS
 +
 +#include "wx/glcanvas.h"
-+#include <cstdio>   // z47
 +#include "wx/toplevel.h"
 +
 +#include <emscripten.h>
++#include <cstdio>
++#include <cstdlib>
 +#include <map>
 +#include <string>
 +
@@ -23010,7 +23425,11 @@ index 0000000000..767c0caffa
 +wxGLContextAttrs& wxGLContextAttrs::LoseOnReset() { return *this; }
 +wxGLContextAttrs& wxGLContextAttrs::ResetIsolation() { return *this; }
 +wxGLContextAttrs& wxGLContextAttrs::ReleaseFlush(int) { return *this; }
++#if wxCHECK_VERSION(3, 3, 0)
++wxGLContextAttrs& wxGLContextAttrs::PlatformDefaults() { return *this; }   // 3.3: the X11 fields exist only with GLX
++#else
 +wxGLContextAttrs& wxGLContextAttrs::PlatformDefaults() { renderTypeRGBA = true; x11Direct = true; return *this; }
++#endif
 +void wxGLContextAttrs::EndList() { AddAttribute(0); SetNeedsARB(false); }
 +
 +wxGLAttributes& wxGLAttributes::RGBA() { return *this; }
@@ -23023,13 +23442,16 @@ index 0000000000..767c0caffa
 +wxGLAttributes& wxGLAttributes::Depth(int) { return *this; }
 +wxGLAttributes& wxGLAttributes::Stencil(int) { return *this; }
 +wxGLAttributes& wxGLAttributes::MinAcumRGBA(int, int, int, int) { return *this; }
-+wxGLAttributes& wxGLAttributes::SampleBuffers(int) { return *this; }
-+wxGLAttributes& wxGLAttributes::Samplers(int) { return *this; }
++// The only attributes WebGL can take at context creation are kept in the list: multisampling (antialias)
++wxGLAttributes& wxGLAttributes::SampleBuffers(int val) { AddAttribute(WX_GL_SAMPLE_BUFFERS); AddAttribute(val); return *this; }
++wxGLAttributes& wxGLAttributes::Samplers(int val) { AddAttribute(WX_GL_SAMPLES); AddAttribute(val); return *this; }
 +wxGLAttributes& wxGLAttributes::FrameBuffersRGB() { return *this; }
 +void wxGLAttributes::EndList() { AddAttribute(0); }
 +wxGLAttributes& wxGLAttributes::PlatformDefaults() { return *this; }
++#if !wxCHECK_VERSION(3, 3, 0)   // 3.3 defines Defaults() in wx/glcanvas.h for every port and has no pre-3.1 defaults
 +wxGLAttributes& wxGLAttributes::Defaults() { RGBA().DoubleBuffer().Depth(16).SampleBuffers(1).Samplers(4); return *this; }
 +void wxGLAttributes::AddDefaultsForWXBefore31() { }
++#endif
 +
 +bool wxGLCanvasBase::IsDisplaySupported(const wxGLAttributes&) { return true; }
 +bool wxGLCanvasBase::IsDisplaySupported(const int *) { return true; }
@@ -23080,8 +23502,12 @@ index 0000000000..767c0caffa
 +    attrs.alpha = false;
 +    attrs.depth = true;
 +    attrs.stencil = true;
-+    attrs.antialias = true;
-+    attrs.preserveDrawingBuffer = true;
++    // As the desktop honours the canvas's attribute list: antialias only when it asked for multisampling (KiCad's 3D
++    // view: its anti-aliasing preference; the slicers ask for 4 samples). Resolving a 3840x1984 MSAA buffer costs an
++    // Intel laptop chip ~10 ms a frame (kicad-play-11, 10-26). preserveDrawingBuffer stays off: a double-buffered
++    // desktop canvas keeps nothing after SwapBuffers either, and every program here redraws its whole frame.
++    attrs.antialias = win->GetSamples() > 0;
++    attrs.preserveDrawingBuffer = false;
 +    attrs.enableExtensionsByDefault = true;
 +
 +    m_handle = emscripten_webgl_create_context(selector.c_str(), &attrs);
@@ -23168,6 +23594,7 @@ index 0000000000..767c0caffa
 +
 +void wxGLCanvas::Init()
 +{
++    m_samples = 0;
 +}
 +
 +wxGLCanvas::wxGLCanvas(wxWindow *parent,
@@ -23207,7 +23634,7 @@ index 0000000000..767c0caffa
 +}
 +
 +bool wxGLCanvas::Create(wxWindow *parent,
-+                        const wxGLAttributes& WXUNUSED(dispAttrs),
++                        const wxGLAttributes& dispAttrs,
 +                        wxWindowID id,
 +                        const wxPoint& pos,
 +                        const wxSize& size,
@@ -23217,6 +23644,16 @@ index 0000000000..767c0caffa
 +{
 +    if (!wxWindow::Create(parent, id, pos, size, style | wxFULL_REPAINT_ON_RESIZE, name))
 +        return false;
++
++    // the list holds only what SampleBuffers/Samplers put there (token, value pairs) and EndList's 0
++    const int *v = dispAttrs.GetGLAttrs();
++    for (int i = 0; v && i + 1 < dispAttrs.GetSize() && v[i] != 0; i += 2)
++    {
++        if (v[i] == WX_GL_SAMPLES)
++            m_samples = v[i + 1];
++        else if (v[i] == WX_GL_SAMPLE_BUFFERS && v[i + 1] <= 0)
++            m_samples = 0;
++    }
 +
 +    wxCHECK_MSG(TopLevelId(*this), false, "wxGLCanvas needs a top-level parent");
 +    return true;
@@ -25196,10 +25633,10 @@ index 0000000000..1d4e728de9
 +}
 diff --git a/src/wasm/pen.cpp b/src/wasm/pen.cpp
 new file mode 100644
-index 0000000000..8e86b77867
+index 0000000000..47bf19b93a
 --- /dev/null
 +++ b/src/wasm/pen.cpp
-@@ -0,0 +1,306 @@
+@@ -0,0 +1,315 @@
 +/////////////////////////////////////////////////////////////////////////////
 +// Name:        wx/wasm/pen.cpp
 +// Purpose:     wxPen implementation
@@ -25319,6 +25756,15 @@ index 0000000000..8e86b77867
 +    SetColour(colour);
 +    SetWidth(width);
 +    SetStyle(style);
++}
++
++// (z64) the deprecated int-style form, as wxGTK has it (src/gtk/pen.cpp)
++wxPen::wxPen(const wxColour& colour, int width, int style)
++{
++    m_refData = new wxPenRefData();
++    SetColour(colour);
++    SetWidth(width);
++    SetStyle((wxPenStyle)style);
 +}
 +
 +wxPen::wxPen(const wxBitmap& stipple, int width)
@@ -26566,10 +27012,10 @@ index 0000000000..2e230b87ba
 +
 diff --git a/src/wasm/utils_wasm.cpp b/src/wasm/utils_wasm.cpp
 new file mode 100644
-index 0000000000..00425d4b4a
+index 0000000000..70a05477c0
 --- /dev/null
 +++ b/src/wasm/utils_wasm.cpp
-@@ -0,0 +1,33 @@
+@@ -0,0 +1,35 @@
 +/////////////////////////////////////////////////////////////////////////////
 +// Name:        src/wasm/utils_wasm.cpp
 +// Purpose:     wasm port: the window under the pointer, opening a document, media backends
@@ -26585,12 +27031,14 @@ index 0000000000..00425d4b4a
 +
 +#include "wx/link.h"
 +
-+// The window under the pointer, as the desktop ports find it.
++// The window under the pointer, as the desktop ports find it (wx 3.3 has it in common/wincmn.cpp).
++#if !wxCHECK_VERSION(3, 3, 0)
 +wxWindow* wxFindWindowAtPointer(wxPoint& pt)
 +{
 +    pt = wxGetMousePosition();
 +    return wxFindWindowAtPoint(pt);
 +}
++#endif
 +
 +// A browser tab cannot hand a file of its own file system to another program.
 +bool wxLaunchDefaultApplication(const wxString& WXUNUSED(document), int WXUNUSED(flags))
@@ -26605,10 +27053,10 @@ index 0000000000..00425d4b4a
 +#endif
 diff --git a/src/wasm/webview_wasm.cpp b/src/wasm/webview_wasm.cpp
 new file mode 100644
-index 0000000000..05b5411058
+index 0000000000..aadae7bc0f
 --- /dev/null
 +++ b/src/wasm/webview_wasm.cpp
-@@ -0,0 +1,310 @@
+@@ -0,0 +1,367 @@
 +/////////////////////////////////////////////////////////////////////////////
 +// Name:        src/wasm/webview_wasm.cpp
 +// Purpose:     wxWebView backend for the wasm port (see wx/wasm/webview_wasm.h)
@@ -26625,6 +27073,8 @@ index 0000000000..05b5411058
 +#include <emscripten.h>
 +#include <cstdlib>
 +#include <map>
++#include <algorithm>
++#include <vector>
 +#include <functional>
 +
 +void wxWasmQueueInput(std::function<void()> handler);
@@ -26714,6 +27164,14 @@ index 0000000000..05b5411058
 +// wxWebViewWasm
 +// ----------------------------------------------------------------------------
 +
++// (z58) what the program set before Create (no frame yet): sent when the frame is made
++struct wxWebViewWasmEarly
++{
++    wxString userAgent;
++    std::vector<wxString> handlers, scripts;
++};
++static std::map<const wxWebViewWasm *, wxWebViewWasmEarly> gs_early;
++
 +bool wxWebViewWasm::Create(wxWindow* parent, wxWindowID id, const wxString& url,
 +                           const wxPoint& pos, const wxSize& size, long style,
 +                           const wxString& name)
@@ -26729,6 +27187,18 @@ index 0000000000..05b5411058
 +    gs_views[m_elementId] = this;
 +    wxpage_wv_setup();
 +    wxpage_wv_create(m_elementId, tlw->GetCSSId());
++    // (z58) settings made before Create
++    auto early = gs_early.find(this);
++    if ( early != gs_early.end() )
++    {
++        if ( !early->second.userAgent.empty() )
++            wxpage_wv_user_agent(m_elementId, early->second.userAgent.utf8_str());
++        for ( const wxString& h : early->second.handlers )
++            wxpage_wv_handler(m_elementId, h.utf8_str(), 1);
++        for ( const wxString& js : early->second.scripts )
++            wxpage_wv_user_script(m_elementId, js.utf8_str());
++        gs_early.erase(early);
++    }
 +    SyncElement();
 +
 +    if ( !url.empty() && url != wxASCII_STR(wxWebViewDefaultURLStr) )
@@ -26738,6 +27208,7 @@ index 0000000000..05b5411058
 +
 +wxWebViewWasm::~wxWebViewWasm()
 +{
++    gs_early.erase(this);   // (z58)
 +    if (m_elementId)
 +    {
 +        gs_views.erase(m_elementId);
@@ -26800,6 +27271,8 @@ index 0000000000..05b5411058
 +    }
 +    m_url = url;
 +    m_busy = true;
++    if ( !m_elementId )   // (z58) no frame
++        return;
 +    wxpage_wv_load(m_elementId, url.utf8_str(), m_httpUser.utf8_str(), m_httpPassword.utf8_str());
 +}
 +
@@ -26841,17 +27314,23 @@ index 0000000000..05b5411058
 +void wxWebViewWasm::DoSetPage(const wxString& html, const wxString& WXUNUSED(baseUrl))
 +{
 +    m_busy = true;
++    if ( !m_elementId )   // (z58) no frame
++        return;
 +    wxpage_wv_set_html(m_elementId, html.utf8_str());
 +}
 +
 +void wxWebViewWasm::Reload(wxWebViewReloadFlags WXUNUSED(flags))
 +{
++    if ( !m_elementId )   // (z58) no frame
++        return;
 +    m_busy = true;
 +    wxpage_wv_reload(m_elementId);
 +}
 +
 +bool wxWebViewWasm::RunScript(const wxString& javascript, wxString* output) const
 +{
++    if ( !m_elementId )   // (z58) no frame, no page
++        return false;
 +    char *result = wxpage_wv_run(m_elementId, javascript.utf8_str());
 +    if (!result)
 +        return false;
@@ -26863,30 +27342,56 @@ index 0000000000..05b5411058
 +
 +bool wxWebViewWasm::AddScriptMessageHandler(const wxString& name)
 +{
++    if ( !m_elementId )   // (z58) no frame yet
++    {
++        gs_early[this].handlers.push_back(name);
++        return true;
++    }
 +    wxpage_wv_handler(m_elementId, name.utf8_str(), 1);
 +    return true;
 +}
 +
 +bool wxWebViewWasm::RemoveScriptMessageHandler(const wxString& name)
 +{
++    if ( !m_elementId )   // (z58) no frame yet
++    {
++        std::vector<wxString>& h = gs_early[this].handlers;
++        h.erase(std::remove(h.begin(), h.end(), name), h.end());
++        return true;
++    }
 +    wxpage_wv_handler(m_elementId, name.utf8_str(), 0);
 +    return true;
 +}
 +
 +bool wxWebViewWasm::SetUserAgent(const wxString& userAgent)
 +{
++    if ( !m_elementId )   // (z58) no frame yet
++    {
++        gs_early[this].userAgent = userAgent;
++        return true;
++    }
 +    wxpage_wv_user_agent(m_elementId, userAgent.utf8_str());
 +    return true;
 +}
 +
 +bool wxWebViewWasm::AddUserScript(const wxString& javascript, wxWebViewUserScriptInjectionTime WXUNUSED(injectionTime))
 +{
++    if ( !m_elementId )   // (z58) no frame yet
++    {
++        gs_early[this].scripts.push_back(javascript);
++        return true;
++    }
 +    wxpage_wv_user_script(m_elementId, javascript.utf8_str());
 +    return true;
 +}
 +
 +void wxWebViewWasm::RemoveAllUserScripts()
 +{
++    if ( !m_elementId )   // (z58) no frame yet
++    {
++        gs_early[this].scripts.clear();
++        return;
++    }
 +    wxpage_wv_user_script(m_elementId, NULL);
 +}
 +
@@ -26921,10 +27426,10 @@ index 0000000000..05b5411058
 +#endif // wxUSE_WEBVIEW && __WXWASM__
 diff --git a/src/wasm/window.cpp b/src/wasm/window.cpp
 new file mode 100644
-index 0000000000..ca11caec2f
+index 0000000000..496980e982
 --- /dev/null
 +++ b/src/wasm/window.cpp
-@@ -0,0 +1,849 @@
+@@ -0,0 +1,852 @@
 +/////////////////////////////////////////////////////////////////////////////
 +// Name:        wx/wasm/window.cpp
 +// Purpose:     wxWasmWindow implementation
@@ -27407,8 +27912,9 @@ index 0000000000..ca11caec2f
 +
 +double wxWindowWasm::GetDPIScaleFactor() const
 +{
-+
-+    return GetContentScaleFactor();
++    // (z61) the layout scale (sizer borders, toolbar sizes) keeps the rounded rule, so nothing moves at 1.25;
++    // GetContentScaleFactor (pixels of bitmaps and buffers) is 2 at any scale above 1
++    return wxDisplayScaleFactor() >= 1.5 ? 2.0 : 1.0;
 +}
 +
 +void wxWindowWasm::DoGetTextExtent(const wxString& string,
@@ -27708,12 +28214,14 @@ index 0000000000..ca11caec2f
 +    wxTheApp->GetMousePosition(x, y);
 +}
 +
++#if !wxCHECK_VERSION(3, 3, 0) // wincmn.cpp has it in 3.3
 +wxPoint wxGetMousePosition()
 +{
 +    wxPoint point;
 +    wxGetMousePosition(&point.x, &point.y);
 +    return point;
 +}
++#endif
 +
 +wxMouseState wxGetMouseState()
 +{

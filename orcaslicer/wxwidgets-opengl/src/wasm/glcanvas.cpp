@@ -12,6 +12,8 @@
 #include "wx/toplevel.h"
 
 #include <emscripten.h>
+#include <cstdio>
+#include <cstdlib>
 #include <map>
 #include <string>
 
@@ -74,7 +76,11 @@ wxGLContextAttrs& wxGLContextAttrs::NoResetNotify() { return *this; }
 wxGLContextAttrs& wxGLContextAttrs::LoseOnReset() { return *this; }
 wxGLContextAttrs& wxGLContextAttrs::ResetIsolation() { return *this; }
 wxGLContextAttrs& wxGLContextAttrs::ReleaseFlush(int) { return *this; }
+#if wxCHECK_VERSION(3, 3, 0)
+wxGLContextAttrs& wxGLContextAttrs::PlatformDefaults() { return *this; }   // 3.3: the X11 fields exist only with GLX
+#else
 wxGLContextAttrs& wxGLContextAttrs::PlatformDefaults() { renderTypeRGBA = true; x11Direct = true; return *this; }
+#endif
 void wxGLContextAttrs::EndList() { AddAttribute(0); SetNeedsARB(false); }
 
 wxGLAttributes& wxGLAttributes::RGBA() { return *this; }
@@ -87,13 +93,16 @@ wxGLAttributes& wxGLAttributes::MinRGBA(int, int, int, int) { return *this; }
 wxGLAttributes& wxGLAttributes::Depth(int) { return *this; }
 wxGLAttributes& wxGLAttributes::Stencil(int) { return *this; }
 wxGLAttributes& wxGLAttributes::MinAcumRGBA(int, int, int, int) { return *this; }
-wxGLAttributes& wxGLAttributes::SampleBuffers(int) { return *this; }
-wxGLAttributes& wxGLAttributes::Samplers(int) { return *this; }
+// The only attributes WebGL can take at context creation are kept in the list: multisampling (antialias)
+wxGLAttributes& wxGLAttributes::SampleBuffers(int val) { AddAttribute(WX_GL_SAMPLE_BUFFERS); AddAttribute(val); return *this; }
+wxGLAttributes& wxGLAttributes::Samplers(int val) { AddAttribute(WX_GL_SAMPLES); AddAttribute(val); return *this; }
 wxGLAttributes& wxGLAttributes::FrameBuffersRGB() { return *this; }
 void wxGLAttributes::EndList() { AddAttribute(0); }
 wxGLAttributes& wxGLAttributes::PlatformDefaults() { return *this; }
+#if !wxCHECK_VERSION(3, 3, 0)   // 3.3 defines Defaults() in wx/glcanvas.h for every port and has no pre-3.1 defaults
 wxGLAttributes& wxGLAttributes::Defaults() { RGBA().DoubleBuffer().Depth(16).SampleBuffers(1).Samplers(4); return *this; }
 void wxGLAttributes::AddDefaultsForWXBefore31() { }
+#endif
 
 bool wxGLCanvasBase::IsDisplaySupported(const wxGLAttributes&) { return true; }
 bool wxGLCanvasBase::IsDisplaySupported(const int *) { return true; }
@@ -144,8 +153,12 @@ wxGLContext::wxGLContext(wxGLCanvas *win,
     attrs.alpha = false;
     attrs.depth = true;
     attrs.stencil = true;
-    attrs.antialias = true;
-    attrs.preserveDrawingBuffer = true;
+    // As the desktop honours the canvas's attribute list: antialias only when it asked for multisampling (KiCad's 3D
+    // view: its anti-aliasing preference; the slicers ask for 4 samples). Resolving a 3840x1984 MSAA buffer costs an
+    // Intel laptop chip ~10 ms a frame (kicad-play-11, 10-26). preserveDrawingBuffer stays off: a double-buffered
+    // desktop canvas keeps nothing after SwapBuffers either, and every program here redraws its whole frame.
+    attrs.antialias = win->GetSamples() > 0;
+    attrs.preserveDrawingBuffer = false;
     attrs.enableExtensionsByDefault = true;
 
     m_handle = emscripten_webgl_create_context(selector.c_str(), &attrs);
@@ -230,6 +243,7 @@ wxIMPLEMENT_CLASS(wxGLCanvas, wxWindow);
 
 void wxGLCanvas::Init()
 {
+    m_samples = 0;
 }
 
 wxGLCanvas::wxGLCanvas(wxWindow *parent,
@@ -269,7 +283,7 @@ wxGLCanvas::~wxGLCanvas()
 }
 
 bool wxGLCanvas::Create(wxWindow *parent,
-                        const wxGLAttributes& WXUNUSED(dispAttrs),
+                        const wxGLAttributes& dispAttrs,
                         wxWindowID id,
                         const wxPoint& pos,
                         const wxSize& size,
@@ -279,6 +293,16 @@ bool wxGLCanvas::Create(wxWindow *parent,
 {
     if (!wxWindow::Create(parent, id, pos, size, style | wxFULL_REPAINT_ON_RESIZE, name))
         return false;
+
+    // the list holds only what SampleBuffers/Samplers put there (token, value pairs) and EndList's 0
+    const int *v = dispAttrs.GetGLAttrs();
+    for (int i = 0; v && i + 1 < dispAttrs.GetSize() && v[i] != 0; i += 2)
+    {
+        if (v[i] == WX_GL_SAMPLES)
+            m_samples = v[i + 1];
+        else if (v[i] == WX_GL_SAMPLE_BUFFERS && v[i + 1] <= 0)
+            m_samples = 0;
+    }
 
     wxCHECK_MSG(TopLevelId(*this), false, "wxGLCanvas needs a top-level parent");
     return true;

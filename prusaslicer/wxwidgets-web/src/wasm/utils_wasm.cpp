@@ -13,12 +13,14 @@
 
 #include "wx/link.h"
 
-// The window under the pointer, as the desktop ports find it.
+// The window under the pointer, as the desktop ports find it (wx 3.3 has it in common/wincmn.cpp).
+#if !wxCHECK_VERSION(3, 3, 0)
 wxWindow* wxFindWindowAtPointer(wxPoint& pt)
 {
     pt = wxGetMousePosition();
     return wxFindWindowAtPoint(pt);
 }
+#endif
 
 // A browser tab cannot hand a file of its own file system to another program.
 bool wxLaunchDefaultApplication(const wxString& WXUNUSED(document), int WXUNUSED(flags))
