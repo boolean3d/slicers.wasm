@@ -596,6 +596,7 @@ var b3dKeyring = (function () {
   // Read now: open-part-from-link.js, next on the page, rewrites the address; the program reads ?bridge= when it starts.
   keepBridge();
   link = readLink();
+  var homeBack, homeReady = new Promise(function (ok) { homeBack = ok; });
   Module.preRun = Module.preRun || [];
   Module.preRun.push(function () {
     Module.addRunDependency('b3d-home');
@@ -629,12 +630,16 @@ var b3dKeyring = (function () {
         keyringIn();
         watch();
         started = true;
+        homeBack();
         Module.removeRunDependency('b3d-home');
         queue(function () { return later ? later() : null; });
         queue(save);
       });
   });
   Module.b3dHome = {
+    // ready(): resolves once the home folder is put back (and levelled with the account, or the wait for it given up):
+    // project-folder.js reads the program's recent list then.
+    ready: function () { return homeReady; },
     save: save, kept: function () { return kept; }, base: function () { return base; },
     linked: function () { return !!link; }, idle: function () { return line; },
     ask: function (op, body) { return link ? ask(op, body || {}) : Promise.reject(new Error('not linked')); },
