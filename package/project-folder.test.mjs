@@ -91,8 +91,14 @@ function makeDoor() {
 }
 
 /** One tab: the script run on a stand-in page, its program started (preRun done). */
-async function tab({ door, search = '', storage = new Map(), opfs = new Map(), linked = true, app = '/bambu/2.08/' }) {
+async function tab({ door, search = '', storage = new Map(), opfs = new Map(), linked = true, app = '/bambu/2.08/', full = false, home = null, homeFiles = {}, homeLate = false }) {
+  // full: the browser's storage is full (every write to the private storage refused, QuotaExceededError).
+  // homeFiles: what home-folder-sync.js put back before the program starts (path -> text: the settings file with its
+  // recent list); homeLate: they reach the disk only when `home` (its start) ends.
   const files = new Map();   // path -> Uint8Array
+  const putHome = () => { for (const [p, text] of Object.entries(homeFiles)) files.set(p, enc(text)); };
+  if (homeLate) home = home.then(putHome); else putHome();
+  const listeners = {};      // window events the script listens to
   const notices = [];        // what the page said (no document here: the notice line logs it)
   // As the program's file system: a path through '..' is the file it names (an open stream knows the plain path).
   const n = (p) => p.split('/').reduce((o, s) => (s === '..' ? o.slice(0, -1) : s && s !== '.' ? [...o, s] : o), []).join('/').replace(/^/, '/');
@@ -106,7 +112,10 @@ async function tab({ door, search = '', storage = new Map(), opfs = new Map(), l
   };
   const Module = { FS, preRun: [], arguments: [], deps: 0, addRunDependency() { this.deps++; }, removeRunDependency() { this.deps--; } };
   Module.b3dHome = {
+    // home-folder-sync.js's start (the home folder put back and levelled with the account): `home` holds it back.
+    ready: () => home || Promise.resolve(),
     linked: () => linked,
+    kept: () => Object.fromEntries(Object.keys(homeFiles).map((p) => [p.replace('/home/web_user/', ''), {}])),
     ask: async (op, body) => {
       const a = door.answer(op, body);
       // door.lose = 'save': that call reaches the door, its answer never comes back (once).
@@ -119,7 +128,9 @@ async function tab({ door, search = '', storage = new Map(), opfs = new Map(), l
     async getFileHandle(name, o) {
       if (!opfs.has(name) && !(o && o.create)) throw new Error('NotFound');
       return { getFile: async () => new Blob([opfs.get(name)]),
-        createWritable: async () => ({ write: async (data) => { opfs.set(name, Uint8Array.from(data)); }, close: async () => {} }) };
+        createWritable: async () => ({ write: async (data) => {
+          if (full) { const e = new Error('The quota has been exceeded.'); e.name = 'QuotaExceededError'; throw e; }
+          opfs.set(name, Uint8Array.from(data)); }, close: async () => {} }) };
     } };
   const fetch = async (url, init) => {
     const [, kind, s] = /^http:\/\/store\/(get|put)\/(\w+)$/.exec(url);
@@ -128,11 +139,12 @@ async function tab({ door, search = '', storage = new Map(), opfs = new Map(), l
     return new Response('{}');
   };
   const ctx = {
-    Module, URLSearchParams, Response, Blob, TextEncoder, crypto: globalThis.crypto, CompressionStream, DecompressionStream,
+    Module, URLSearchParams, Response, Blob, TextEncoder, TextDecoder, crypto: globalThis.crypto, CompressionStream, DecompressionStream,
     setTimeout, clearTimeout, setInterval, clearInterval, console: { log() {}, warn(t) { notices.push(String(t)); }, error() {} }, fetch,
     location: { pathname: app, search },
     navigator: { storage: { getDirectory: async () => dir } },
     localStorage: { getItem: (k) => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v) },
+    addEventListener: (type, f) => { (listeners[type] ||= []).push(f); },
   };
   vm.runInNewContext(SRC, ctx);
   // The program copies Module.arguments as its script loads, before preRun: later changes count only in that array.
@@ -143,7 +155,11 @@ async function tab({ door, search = '', storage = new Map(), opfs = new Map(), l
   Module.calledRun = true;
   const write = (p, text) => FS.writeFile(p, enc(text));
   const settle = async () => { await wait(1100); await Module.b3dProjects.idle(); await wait(20); await Module.b3dProjects.idle(); };
-  return { Module, files, FS, write, settle, P: Module.b3dProjects, storage, opfs, notices };
+  // Leaving the page now: true when the page asks the person to stay (beforeunload), as a browser sees it.
+  const leave = () => { const e = { returnValue: undefined, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+    (listeners.beforeunload || []).forEach((f) => { const r = f(e); if (typeof r === 'string') e.returnValue = r; });
+    return e.defaultPrevented || !!e.returnValue; };
+  return { Module, files, FS, write, settle, leave, P: Module.b3dProjects, storage, opfs, notices };
 }
 const saves = (door) => door.calls.filter(([op]) => op === 'save').map(([, b]) => b);
 
@@ -566,4 +582,91 @@ test('Anycubic Slicer Next saves under its own name: the project page says "Open
   t.write(abs + '.tmp', 'two'); t.FS.rename(abs + '.tmp', abs);
   await t.settle();
   assert.equal(saves(door)[0]?.tool, 'anycubic');
+});
+
+// ── Data-loss audit (11-03): every way a save could be lost ───────────────────────────────────────────────────────
+
+test('storage full and no network: never says "Saved on this computer"; says the save is held by this tab only', async () => {
+  const door = makeDoor(), p = door.addProject('Lamp');
+  door.addFile(p, 'plate.3mf', enc('one'));
+  const t = await tab({ door, search: `?project=${p}`, full: true });
+  t.Module.b3dHome.ask = async () => { throw new TypeError('Failed to fetch'); };
+  t.write('/home/web_user/Projects/Lamp/plate.3mf', 'offline edit'); await t.settle();
+  assert.ok(!t.notices.some((n) => /Saved on this computer/.test(n)), 'nothing was kept on this computer: ' + t.notices.join(' | '));
+  assert.ok(t.notices.some((n) => /storage is full/.test(n) && /keep this tab open/i.test(n)), 'says what holds it: ' + t.notices.join(' | '));
+  assert.ok(t.leave(), 'leaving the page asks first while the only copy is this tab');
+});
+
+test('storage full: a reload brings back the project version, not nothing (no "File is missing")', async () => {
+  const door = makeDoor(), p = door.addProject('Lamp');
+  door.addFile(p, 'plate.3mf', enc('one'));
+  const storage = new Map(), opfs = new Map();
+  const t1 = await tab({ door, search: `?project=${p}`, storage, opfs });
+  await t1.settle();
+  const abs = '/home/web_user/Projects/Lamp/plate.3mf';
+  // A later edit while the storage is full and the account away: its bytes are nowhere but the tab.
+  const t1b = await tab({ door, storage, opfs, full: true });
+  t1b.Module.b3dHome.ask = async () => { throw new TypeError('Failed to fetch'); };
+  t1b.write(abs, 'unkept'); await t1b.settle();
+  const t2 = await tab({ door, storage, opfs });
+  assert.equal(dec(t2.files.get(abs) || enc('<missing>')), 'one', 'the file the program last had from the project is back');
+});
+
+test('two tabs of the same program: one tab\'s list of project files does not wipe the other\'s waiting save', async () => {
+  const door = makeDoor(), p = door.addProject('Lamp'), q = door.addProject('Desk');
+  door.addFile(p, 'plate.3mf', enc('one'));
+  door.addFile(q, 'desk.3mf', enc('desk one'));
+  const storage = new Map(), opfs = new Map();
+  const a = await tab({ door, search: `?project=${p}`, storage, opfs });
+  const b = await tab({ door, search: `?project=${q}`, storage, opfs });
+  b.Module.b3dHome.ask = async () => { throw new TypeError('Failed to fetch'); };   // tab B offline: its save waits here
+  b.write('/home/web_user/Projects/Desk/desk.3mf', 'desk edit'); await b.settle();
+  a.write('/home/web_user/Projects/Lamp/plate.3mf', 'two'); await a.settle();         // tab A saves after: writes its list
+  const c = await tab({ door, storage, opfs });                                           // B's tab reloaded, online
+  assert.equal(dec(c.files.get('/home/web_user/Projects/Desk/desk.3mf') || enc('<missing>')), 'desk edit', 'B\'s waiting edit is back');
+  await c.settle();
+  assert.ok(saves(door).some((s) => dec(zlib.gunzipSync(door.blobs[s.sha256])) === 'desk edit'), 'and goes up');
+});
+
+test('a reload in the moment after the program saved (before the save was kept): the page asks first', async () => {
+  const door = makeDoor(), p = door.addProject('Lamp');
+  door.addFile(p, 'plate.3mf', enc('one'));
+  const t = await tab({ door, search: `?project=${p}` });
+  assert.ok(!t.leave(), 'nothing waiting: leaving is free');
+  t.write('/home/web_user/Projects/Lamp/plate.3mf', 'two');
+  assert.ok(t.leave(), 'a save not yet kept anywhere: the page asks');
+  await t.settle();
+  assert.ok(!t.leave(), 'kept and up: leaving is free again');
+});
+
+test('not linked to an account: a save to a project file says it stays on this computer', async () => {
+  const door = makeDoor(), p = door.addProject('Lamp');
+  door.addFile(p, 'plate.3mf', enc('one'));
+  const t = await tab({ door, search: `?project=${p}` });
+  t.Module.b3dHome.linked = () => false;
+  t.write('/home/web_user/Projects/Lamp/plate.3mf', 'two'); await t.settle();
+  assert.ok(t.notices.some((n) => /plate\.3mf/.test(n) && /this computer/.test(n) && /sign/i.test(n)), 'said: ' + t.notices.join(' | '));
+});
+
+test('the recent list names a project file this browser never had (another computer): it is brought down before the program starts', async () => {
+  const door = makeDoor(), p = door.addProject('Lamp');
+  door.addFile(p, 'plate.3mf', enc('one'));
+  door.addFile(p, 'other.3mf', enc('not asked'));
+  const conf = '/home/web_user/.config/BambuStudio/BambuStudio.conf';
+  const t = await tab({ door, homeFiles: { [conf]: JSON.stringify({ recent_projects: { '001': '/home/web_user/Projects/Lamp/plate.3mf', '002': '/home/web_user/Projects/Gone/x.3mf' } }) } });
+  assert.equal(dec(t.files.get('/home/web_user/Projects/Lamp/plate.3mf') || enc('<missing>')), 'one', 'the recent file is on the disk');
+  assert.ok(!t.files.has('/home/web_user/Projects/Lamp/other.3mf'), 'only what the list names');
+  t.write('/home/web_user/Projects/Lamp/plate.3mf', 'two'); await t.settle();
+  assert.equal(saves(door).length, 1, 'and it is that project file: a save is its next version');
+  assert.equal(saves(door)[0].parent, Object.values(door.versions).find((v) => v.number === 1 && door.files[v.file].path === 'plate.3mf').id);
+});
+
+test('the recent list is read after the home folder is put back (home-folder-sync.js first)', async () => {
+  const door = makeDoor(), p = door.addProject('Lamp');
+  door.addFile(p, 'plate.3mf', enc('one'));
+  const conf = '/home/web_user/.config/BambuStudio/BambuStudio.conf';
+  // The settings file is on the disk only once the home folder is put back (homeLate: at `home`'s end).
+  const t = await tab({ door, home: wait(80), homeLate: true,
+    homeFiles: { [conf]: JSON.stringify({ recent_projects: { '001': '/home/web_user/Projects/Lamp/plate.3mf' } }) } });
+  assert.equal(dec(t.files.get('/home/web_user/Projects/Lamp/plate.3mf') || enc('<missing>')), 'one');
 });

@@ -122,9 +122,18 @@
   // ── Which file each path is ──────────────────────────────────────
   // path (absolute) -> {project, projectName, file, path (inside the project), version, sha (the account's bytes of
   //   that version), here (sha of the bytes on this disk), part, partVersion (a CAD part's 3MF: what it was opened at)}
-  var reg = {};
-  try { reg = JSON.parse(localStorage.getItem(REG) || '{}') || {}; } catch (e) { reg = {}; }
-  function keep() { try { localStorage.setItem(REG, JSON.stringify(reg)); } catch (e) { /* no storage: this tab only */ } }
+  // Two tabs of one program share this list: each writes back only the paths it changed (against `base`, what it last
+  // read or wrote of each), so one tab's list never wipes the other's (a save waiting there would be forgotten).
+  var reg = {}, base = {};
+  function stored() { try { return JSON.parse(localStorage.getItem(REG) || '{}') || {}; } catch (e) { return {}; } }
+  reg = stored();
+  Object.keys(reg).forEach(function (k) { base[k] = JSON.stringify(reg[k]); });
+  function keep() {
+    var all = stored();
+    Object.keys(reg).forEach(function (k) { var j = JSON.stringify(reg[k]); if (j !== base[k]) { all[k] = reg[k]; base[k] = j; } });
+    Object.keys(base).forEach(function (k) { if (!(k in reg)) { delete all[k]; delete base[k]; } });
+    try { localStorage.setItem(REG, JSON.stringify(all)); } catch (e) { /* no storage: this tab only */ }
+  }
 
   // ── Bytes by SHA-256 in the browser's private storage ────────────
   var blobsDir = null;
@@ -138,10 +147,11 @@
     return blobs().then(function (d) { return d.getFileHandle(sha); }).then(function (h) { return h.getFile(); })
       .then(function (f) { return f.arrayBuffer(); }).then(function (b) { return new Uint8Array(b); }, function () { return null; });
   }
+  /** -> true once the bytes are kept here; false when they could not be (the browser's storage full, or none). */
   function cache(sha, data) {
     return blobs().then(function (d) { return d.getFileHandle(sha, { create: true }); }).then(function (h) { return h.createWritable(); })
       .then(function (w) { return w.write(data).then(function () { return w.close(); }); })
-      .catch(function (e) { console.warn('b3d projects: could not keep ' + sha.slice(0, 12) + ' here: ' + e.message); });
+      .then(function () { return true; }, function (e) { console.warn('b3d projects: could not keep ' + sha.slice(0, 12) + ' here: ' + e.message); return false; });
   }
 
   /** The bytes of a version (its sha known): from this browser when kept, else from the account (checked, then kept). */
@@ -234,7 +244,8 @@
     var e = { project: p.project || null, projectName: p.projectName || null, file: null, path: name, version: null, sha: null, here: null,
       part: p.part, partVersion: p.version || null };
     if (!data) { track(abs, e); return Promise.resolve(e); }
-    return sha256(data).then(function (s) { e.sha = s; e.here = s; track(abs, e); return e; });
+    // Kept here too: closed before its first save went up, the part's file is put back on the next start and goes up then.
+    return sha256(data).then(function (s) { e.sha = s; e.here = s; return cache(s, data); }).then(function () { track(abs, e); return e; });
   }
 
   // ── Saves ────────────────────────────────────────────────────────
@@ -268,6 +279,7 @@
     if (!at) return;
     // The program wrote the file before reading the part's new version in: that version is not in it, and is offered again.
     if (pending[at]) { delete pending[at]; tell(null); }
+    held[abs] = true;
     clearTimeout(timers[abs]);
     timers[abs] = setTimeout(function () {
       delete timers[abs];
@@ -279,15 +291,19 @@
   function save(abs, at) {
     at = at || abs;
     var e = reg[at], data = read(abs);
-    if (!e || !data) return Promise.resolve(null);
-    var s, z;
+    if (!e || !data) { delete held[abs]; return Promise.resolve(null); }
+    var s, z, kept = false;
     return sha256(data).then(function (h) {
-      s = h; e.here = s; e.at = Date.now(); keep();
-      if (s === e.sha) return 'same';
-      // The working copy is kept here first: offline, or the account refusing, it goes up on the next start.
-      return cache(s, data).then(function () {
-        if (!linked()) throw new Error('the tab is not linked to an account');
-        if (!e.project) throw new Error('this file is in no project');
+      s = h; e.at = Date.now();
+      if (s === e.sha) { e.here = s; keep(); delete held[abs]; return 'same'; }
+      // The working copy is kept here first: offline, or the account refusing, it goes up on the next start. Only bytes
+      // that are kept here become the path's working copy (`here`): storage full, the copy before stays the one put back.
+      return cache(s, data).then(function (ok) {
+        kept = ok;
+        if (ok) { e.here = s; delete held[abs]; }
+        keep();
+        if (!linked()) throw failure('signed_out', 'this tab is not signed in to Boolean3d');
+        if (!e.project) throw failure('no_project', 'it is in no Boolean3d project');
         return gzip(data);
       }).then(function (g) {
         z = g;
@@ -304,7 +320,8 @@
         return ask('save', body);
       }).then(function (v) {
         var waited = e.waiting, tried = !!e.tries;
-        e.file = v.file; e.version = v.version; e.sha = s; e.number = v.number; delete e.waiting; delete e.waitAbs; delete e.tries; keep();
+        e.file = v.file; e.version = v.version; e.sha = s; e.here = s; e.number = v.number; delete e.waiting; delete e.waitAbs; delete e.tries; keep();
+        delete held[abs];
         console.log('b3d projects: ' + e.path + ' version ' + v.number + (v.same ? ' (same bytes)' : ''));
         var name = e.path.split('/').pop();
         // Somebody saved between this file's opening and this save: both kept, this one newest (as Fusion does).
@@ -333,24 +350,47 @@
       });
     }).catch(function (err) {
       console.error('b3d projects: ' + (e.path || abs) + ' did not go up: ' + err.message);
+      var name = (e.path || abs).split('/').pop();
+      // Where the save is now, in words: kept in this browser (it comes back on a reload), or only in this tab.
+      var here = kept ? 'Your copy stays in this browser.'
+        : 'This browser’s storage is full, so your copy is only in this tab: keep this tab open, or use Save As to keep it on your computer.';
       if (REFUSED[err.code]) {
-        notice('“' + (e.path || abs).split('/').pop() + '” was not saved to Boolean3d: ' + err.message + ' Your copy stays in this browser.', 'refused');
+        notice('“' + name + '” was not saved to Boolean3d: ' + err.message + ' ' + here, 'refused');
+        return;
+      }
+      if (err.code === 'signed_out' || err.code === 'no_project') {
+        // Signed out: it goes up at the next start of this program opened from Boolean3d signed in (the start sends
+        // every working copy the account has not got).
+        notice(name + ' was not saved to Boolean3d: ' + err.message + '. ' + (kept
+          ? 'It is kept on this computer' + (err.code === 'signed_out' ? ' and goes up the next time you open it from Boolean3d signed in.' : '.')
+          : here), 'refused');
         return;
       }
       if (!AGAIN[err.code]) {
-        if (err.code && err.code !== 'refused') notice((e.path || abs).split('/').pop() + ' was not saved to your project: ' + err.message, 'refused');
+        if (err.code && err.code !== 'refused') notice(name + ' was not saved to your project: ' + err.message + (kept ? '' : ' ' + here), 'refused');
         return;
       }
       // Kept here (this browser's storage); tried again on a growing wait, at once when the network is back, and on
       // the next start.
       e.tries = (e.tries || 0) + 1;
-      if (!e.waiting) {
-        e.waiting = true; e.waitAbs = abs; keep();
-        notice('Saved on this computer. ' + (e.path || abs).split('/').pop() + ' goes up to your project when the network is back.', 'info');
+      if (!e.waiting || e.waitKept !== kept) {
+        e.waiting = true; e.waitAbs = abs; e.waitKept = kept; keep();
+        notice(kept ? 'Saved on this computer. ' + name + ' goes up to your project when the network is back.'
+          : name + ' is not saved yet: this browser’s storage is full and Boolean3d cannot be reached. Keep this tab open: it goes up when the network is back.',
+        kept ? 'info' : 'refused');
       }
       later(abs, at, Math.min(2000 * Math.pow(2, e.tries - 1), 60000));
     });
   }
+  // Paths the program wrote whose bytes are in this tab only (not kept in this browser's storage, not in the account):
+  // leaving the page asks first.
+  var held = {};
+  if (typeof addEventListener === 'function') addEventListener('beforeunload', function (ev) {
+    if (!Object.keys(held).length) return;
+    ev.preventDefault();
+    ev.returnValue = 'Your last save is not kept yet.';
+    return ev.returnValue;
+  });
   // KiCad's 3D exports of a board: the board's entry they were written from, at its version now (the board as last saved
   // or opened), or null. The board of the same name beside it; else the only board in that folder.
   var EXPORT = /\.(step|stp|stpz|glb|wrl|vrml|brep|xao)$/i;
@@ -371,13 +411,15 @@
   function later(abs, at, ms) {
     clearTimeout(retry[abs]);
     retry[abs] = setTimeout(function () { delete retry[abs]; line = line.then(function () { return save(abs, at); }); }, ms);
+    if (retry[abs] && retry[abs].unref) retry[abs].unref();
   }
   // The network back: everything waiting goes up now.
   function pendingNow() {
     Object.keys(retry).forEach(function (abs) { clearTimeout(retry[abs]); delete retry[abs]; });
     Object.keys(reg).forEach(function (k) {
       var e = reg[k];
-      if (e.waiting && e.here && e.here !== e.sha) line = line.then(function () { return save(e.waitAbs || k, k); });
+      // (A save the storage could not keep is still waiting: its bytes are on the program's disk, not in `here`.)
+      if (e.waiting) line = line.then(function () { return save(e.waitAbs || k, k); });
     });
   }
   if (typeof addEventListener === 'function') addEventListener('online', function () { setTimeout(pendingNow, 500); });
@@ -479,6 +521,66 @@
     if (tick && tick.unref) tick.unref();
   }
 
+  // ── Project files the disk is missing ────────────────────────────
+  // The program's list of recent files follows the account (home-folder-sync.js keeps the settings file there), but the
+  // project folders are this file's: on another computer, or after this browser lost its copies, a recent file in
+  // Projects/ is not on the disk and the program says "File is missing". Before the program starts, every project
+  // file this browser knows of and every Projects/ path the program's settings name is brought down from the account
+  // (its newest version; KiCad: the whole project, a board needs its schematic and project file beside it).
+  var BRING_WAIT = 15000;
+  var SETTINGS = /(^|\/)[^/]+\.(conf|ini)$|(^|\/)kicad(_common)?\.json$/i;
+  function recentPaths() {
+    var kept = Module.b3dHome && Module.b3dHome.kept ? Module.b3dHome.kept() : {}, out = {};
+    Object.keys(kept).filter(function (r) { return SETTINGS.test(r); }).forEach(function (r) {
+      var d = read(HOME + '/' + r);
+      if (!d || d.length > 4e6) return;
+      (new TextDecoder().decode(d).match(/\/home\/web_user\/Projects\/[^"\r\n\\]+/g) || []).forEach(function (m) {
+        var abs = plain(m.trim());
+        if (!SKIP.test(abs) && abs.split('/').length > 5) out[abs] = 1;
+      });
+    });
+    return Object.keys(out);
+  }
+  function bringDown() {
+    var known = Object.keys(reg).filter(function (k) { var e = reg[k]; return k.indexOf(ROOT + '/') === 0 && e.file && e.version && e.sha && !read(k); });
+    var named = recentPaths().filter(function (abs) { return !reg[abs] && !read(abs); });
+    var fromKnown = known.reduce(function (p, k) {
+      var e = reg[k];
+      return p.then(function () { return versionBytes(e.version, e.sha); }).then(function (data) {
+        put(k, data); e.here = e.sha;
+        console.log('b3d projects: ' + e.path + ' brought down (version ' + (e.number || '?') + ')');
+      }).catch(function (err) { console.error('b3d projects: ' + e.path + ': ' + err.message); });
+    }, Promise.resolve());
+    if (!named.length) return fromKnown.then(keep);
+    // folder name -> the paths inside it the settings name
+    var folders = {};
+    named.forEach(function (abs) {
+      var rest = abs.slice(ROOT.length + 1), cut = rest.indexOf('/');
+      (folders[rest.slice(0, cut)] = folders[rest.slice(0, cut)] || []).push(rest.slice(cut + 1));
+    });
+    return fromKnown.then(list).then(function (projects) {
+      return (projects || []).filter(function (p) { return folders[folderName(p.name)]; }).reduce(function (q, p) {
+        var folder = folderName(p.name), want = folders[folder];
+        return q.then(function () {
+          if (TOOL === 'kicad') return open(p.id);
+          return ask('project', { project: p.id }).then(function (a) {
+            return a.files.filter(function (f) { return f.kind === 'file' && f.version && f.sha256 && want.indexOf(f.path) >= 0; }).reduce(function (r, f) {
+              var abs = ROOT + '/' + folder + '/' + f.path;
+              return r.then(function () {
+                if (read(abs)) return;
+                return versionBytes(f.version, f.sha256).then(function (data) {
+                  put(abs, data);
+                  reg[abs] = { project: p.id, projectName: p.name, file: f.id, path: f.path, version: f.version, number: f.number, sha: f.sha256, here: f.sha256 };
+                  console.log('b3d projects: ' + f.path + ' (a recent file) brought down, version ' + f.number);
+                });
+              });
+            }, Promise.resolve());
+          });
+        }).catch(function (err) { console.error('b3d projects: ' + folder + ': ' + err.message); });
+      }, Promise.resolve());
+    }).then(keep, function (err) { console.error('b3d projects: recent files: ' + err.message); keep(); });
+  }
+
   // ── Start ────────────────────────────────────────────────────────
   // Before the program starts: the project folders' working copies back from this browser's storage, then the project
   // in the address opened (its file as the program's argument). Saves that did not go up, go up after.
@@ -501,11 +603,27 @@
     var pending = Object.keys(reg).filter(function (k) { return k.indexOf(ROOT + '/') !== 0 && reg[k].here && reg[k].here !== reg[k].sha; });
     Object.keys(reg).filter(function (k) { return k.indexOf(ROOT + '/') === 0 && reg[k].here; }).reduce(function (p, k) {
       return p.then(function () { return cached(reg[k].here); }).then(function (data) {
-        if (!data) { delete reg[k]; return; }
-        put(k, data);
-        if (reg[k].here !== reg[k].sha) pending.push(k);
+        if (data) {
+          put(k, data);
+          if (reg[k].here !== reg[k].sha) pending.push(k);
+          return;
+        }
+        // Not kept here (the storage was full, or cleared): the project's version stands, from here or brought down
+        // from the account below. A path that never was the account's has nothing to stand in for it.
+        var e = reg[k];
+        if (!e.file || !e.version || !e.sha) { delete reg[k]; return; }
+        e.here = e.sha;
+        return cached(e.sha).then(function (d) { if (d) put(k, d); });
       });
     }, Promise.resolve()).then(function () {
+      // The home folder (the program's settings, with its list of recent files) is put back by home-folder-sync.js:
+      // the files that list names in project folders are brought down once it is.
+      var home = Module.b3dHome && Module.b3dHome.ready ? Module.b3dHome.ready() : Promise.resolve();
+      return home.then(function () {
+        if (!linked()) return;
+        return Promise.race([bringDown(), new Promise(function (ok) { setTimeout(ok, BRING_WAIT); })]);
+      });
+    }).then(function () {
       if (wantLink && shareAt) return openLink(wantLink, shareAt, wantOpen);
       if (!wantProject || !linked()) return;
       return Promise.all([open(wantProject), partBytes]).then(function (both) {
