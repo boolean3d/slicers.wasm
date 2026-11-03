@@ -27,7 +27,7 @@ import os from 'node:os';
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { licenceText, sourceText } from './program-sources.mjs';
+import { licenceText, noticesText, sourceText } from './program-sources.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // Our scripts on every program page, in the order the page loads them (before the program's own script): each is a file of
@@ -144,6 +144,7 @@ async function main() {
   if (!rev) try { rev = execFileSync('git', ['-C', HERE, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { rev = ''; }
   add('LICENSE.txt', stageFile('LICENSE.txt', licenceText(a.app)));
   add('SOURCE.txt', stageFile('SOURCE.txt', sourceText(a.app, a.version, rev)));
+  add('NOTICES.txt', stageFile('NOTICES.txt', noticesText(a.app)));
   const walk = (d, rel) => {
     for (const e of fs.readdirSync(d, { withFileTypes: true })) {
       const p = path.join(d, e.name), r = rel + '/' + e.name;
