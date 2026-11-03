@@ -102,6 +102,9 @@ async function main() {
   fs.writeFileSync(pageFile, '');
   add('index.html', pageFile, NEVER);
   for (const name of PAGE_SCRIPTS) add(name, path.join(HERE, name));
+  // The loading screen's backdrop (credit.js): a small blurred picture of this program's window, when there is one.
+  const backdrop = path.join(HERE, 'backdrops', a.app + '.webp');
+  if (fs.existsSync(backdrop)) add('backdrop.webp', backdrop);
   add(PROGRAM + '.wasm', path.join(src, PROGRAM + '.wasm'));
   // The web view's service worker must revalidate (a browser keeps an installed worker otherwise). It is served from
   // the app folder, not the version folder: the port registers it beside the page with scope "./", which in a version
@@ -223,7 +226,8 @@ async function main() {
     }
   }));
   const data = files.find(f => f.rel === PROGRAM + '.data');
-  const page = { app: a.app, program: PROGRAM, version: a.version, source: 'SOURCE.txt', dataRaw: data.raw, dataSent: data.stored };
+  const page = { app: a.app, program: PROGRAM, version: a.version, source: 'SOURCE.txt', dataRaw: data.raw, dataSent: data.stored,
+    ...(fs.existsSync(backdrop) ? { backdrop: 'backdrop.webp' } : {}) };
   if (fileList) {
     // The whole install, as unpacked and as sent: the install screen counts unpacked bytes and shows the sent size.
     const inst = files.filter(f => (!f.top || f.rel.startsWith('resources/')) && !['index.html', 'files.js'].includes(f.rel));
@@ -234,7 +238,9 @@ async function main() {
   // With an install (install-and-lazy-load.js) the page does not load the program's script itself: install-and-lazy-load.js does, once the program is in the browser.
   const pageHtml = fileList ? html.replace(tag + '</script>', inject) : html.replace(tag, inject + tag);
   if (pageHtml.split('</head>').length !== 2) throw new Error(PROGRAM + '.html: no single "</head>"');
-  fs.writeFileSync(pageFile, pageHtml.replace('</head>', ICON + '</head>'));
+  // The backdrop is asked for with the page's first bytes, ahead of the program's script and data, so it paints at once.
+  const PRELOAD = page.backdrop ? '<link rel=preload as=image href=backdrop.webp fetchpriority=high>' : '';
+  fs.writeFileSync(pageFile, pageHtml.replace('</head>', ICON + PRELOAD + '</head>'));
   for (const f of files) {
     if (f.stored !== undefined) continue;
     const to = f.to;
@@ -260,7 +266,7 @@ async function main() {
   fs.rmSync(stage, { recursive: true, force: true });
 
   const sum = (pick) => files.filter(pick).reduce((s, f) => s + f.stored, 0);
-  const first = sum(f => ['index.html', ...PAGE_SCRIPTS, 'files.js', 'install-and-lazy-load.js', PROGRAM + '.js', PROGRAM + '.wasm', PROGRAM + '.data',
+  const first = sum(f => ['index.html', ...PAGE_SCRIPTS, 'backdrop.webp', 'files.js', 'install-and-lazy-load.js', PROGRAM + '.js', PROGRAM + '.wasm', PROGRAM + '.data',
     'wxwebview-sw.js'].includes(f.rel));
   console.log(`${a.app} ${a.version}: ${files.length} files, ${(sum(() => true) / 1e6).toFixed(1)} MB stored, `
     + `first visit ${(first / 1e6).toFixed(1)} MB (raw ${(files.filter(f => !f.rel.startsWith('resources/')).reduce((s, f) => s + f.raw, 0) / 1e6).toFixed(1)} MB)`);

@@ -1,7 +1,9 @@
 // The loading screen of a slicer served in a browser tab: who made the program, its licence, that this browser
-// copy is not theirs, where its source is, and how far the download (the install, install-and-lazy-load.js) has got. Plain text on a neutral background,
-// no logo (neither the slicer maker's nor the host's). The package puts this script after the page's Module set-up
-// and before the program's script; it stays until the slicer's main window fills the page.
+// copy is not theirs, where its source is, and how far the download (the install, install-and-lazy-load.js) has got. A card
+// over a blurred, darkened picture of the program's own window (backdrop.webp beside this script, ~2 KB, preloaded by the
+// page, so it is on screen at once while the program's hundreds of MB come down), no logo (neither the slicer maker's nor
+// the host's). The package puts this script after the page's Module set-up and before the program's script; it stays until
+// the slicer's main window fills the page, then fades into it.
 (function () {
   var TEXT = {
     bambu: {
@@ -53,14 +55,17 @@
   if (!t) return;
   document.title = t.name;
 
+  // The picture is packaged only when there is one for this program (package.mjs, backdrops/<app>.webp).
+  var back = cfg.backdrop ? 'url(' + cfg.backdrop + ') center/cover no-repeat,' : '';
   var css = '#credit{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;'
-    + 'background:#26282b;color:#e8e8e8;font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;transition:opacity .3s}'
+    + 'background:' + back + '#1d1f22;color:#e8e8e8;font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;transition:opacity .4s}'
     + '#credit.gone{opacity:0;pointer-events:none}'
-    + '#credit .box{max-width:560px;padding:32px}'
+    + '#credit .box{max-width:560px;margin:16px;padding:32px;background:rgba(30,32,36,.95);border:1px solid #464a50;'
+    + 'border-radius:16px;box-shadow:0 16px 48px rgba(0,0,0,.5)}'
     + '#credit h1{font-size:28px;font-weight:600;margin:0 0 16px}'
     + '#credit p{margin:0 0 6px;color:#c4c4c4}'
     + '#credit .bar{height:4px;background:#3a3d41;border-radius:2px;margin:24px 0 8px;overflow:hidden}'
-    + '#credit .fill{height:100%;width:0;background:#9aa0a6;transition:width .2s}'
+    + '#credit .fill{height:100%;width:0;background:' + (t.accent || '#9aa0a6') + ';transition:width .2s}'
     + '#credit .state{font-size:13px;color:#9aa0a6;min-height:20px}'
     + '#credit .part{font-size:13px;color:#e8e8e8;min-height:20px}'
     + '#credit .links{margin-top:20px;font-size:13px}'
