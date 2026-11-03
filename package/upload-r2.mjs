@@ -53,7 +53,10 @@ async function send(method, key, headers = {}, body) {
   return fetch(url.origin + uri, { method, headers: lower, body });
 }
 
-async function one(key) {
+// What the store holds under a key: 'plan' (dry run), 'same' (these bytes), 'new' (nothing or other bytes it may replace),
+// 'clash' (other bytes under a key served as immutable: a browser that has the old bytes keeps them for a year, so
+// replacing them leaves returning visitors on old scripts with a new page; a new build needs a new --version folder).
+async function look(key) {
   const o = manifest.objects[key];
   const body = fs.readFileSync(path.join(dir, key));
   const sum = sha256(body);
@@ -61,33 +64,49 @@ async function one(key) {
   if (dry) return 'plan';
   const head = await send('HEAD', key);
   if (head.ok && head.headers.get('x-amz-meta-sha256') === sum) return 'same';
-  const headers = { 'content-type': o.type, 'cache-control': o.cache, 'x-amz-meta-sha256': sum };
+  if (head.ok && /\bimmutable\b/.test(o.cache || '')) return 'clash';
+  return 'new';
+}
+
+async function put(key) {
+  const o = manifest.objects[key];
+  const body = fs.readFileSync(path.join(dir, key));
+  const headers = { 'content-type': o.type, 'cache-control': o.cache, 'x-amz-meta-sha256': sha256(body) };
   if (o.encoding) headers['content-encoding'] = o.encoding;
   for (let attempt = 1; ; attempt++) {
     const r = await send('PUT', key, headers, body);
-    if (r.ok) return 'sent';
+    if (r.ok) return;
     const text = await r.text();
     if (attempt === 3 || r.status < 500) throw new Error(`${key}: ${r.status} ${text.slice(0, 300)}`);
   }
 }
 
-async function pool(list, n) {
-  const count = { plan: 0, same: 0, sent: 0 }; let bytes = 0, i = 0;
+async function pool(list, n, fn) {
+  const out = new Array(list.length); let i = 0;
   await Promise.all(Array.from({ length: n }, async () => {
-    while (i < list.length) {
-      const key = list[i++];
-      const what = await one(key);
-      count[what]++;
-      if (what !== 'same') bytes += manifest.objects[key].bytes;
-      if (what === 'sent' && manifest.objects[key].bytes > 1e6) console.log('sent', key, (manifest.objects[key].bytes / 1e6).toFixed(1), 'MB');
-    }
+    while (i < list.length) { const j = i++; out[j] = await fn(list[j]); }
   }));
-  return { count, bytes };
+  return out;
 }
 
+// Every object is looked at before any is sent: a clash stops the whole upload with nothing changed in the store.
+const seen = await pool(order, 8, look);
+const clashes = order.filter((k, j) => seen[j] === 'clash');
+if (clashes.length) {
+  console.error(`refused: ${clashes.length} file(s) already in the store with other bytes, served as immutable (cached a year):\n  `
+    + clashes.slice(0, 20).join('\n  ') + (clashes.length > 20 ? '\n  ...' : '')
+    + '\nnothing was sent. Package the build under a new --version (a new build = a new version folder).');
+  process.exit(1);
+}
+const count = { plan: 0, same: 0, sent: 0 }; let bytes = 0;
+const send1 = order.filter((k, j) => seen[j] === 'new');
+for (const what of seen) if (what !== 'new') count[what]++;
 // Versions first (in parallel), pointers after, one by one.
-const body = await pool(order.filter(k => !isPointer(k)), 8);
-const ptrs = await pool(order.filter(isPointer), 1);
-const c = k => body.count[k] + ptrs.count[k];
-console.log(dry ? `dry run: ${c('plan')} objects, ${((body.bytes + ptrs.bytes) / 1e6).toFixed(1)} MB, manifest checked against disk`
-  : `done: ${c('sent')} sent (${((body.bytes + ptrs.bytes) / 1e6).toFixed(1)} MB), ${c('same')} already there; current ${JSON.stringify(manifest.current)}`);
+await pool(send1.filter(k => !isPointer(k)), 8, async key => {
+  await put(key); count.sent++; bytes += manifest.objects[key].bytes;
+  if (manifest.objects[key].bytes > 1e6) console.log('sent', key, (manifest.objects[key].bytes / 1e6).toFixed(1), 'MB');
+});
+await pool(send1.filter(isPointer), 1, async key => { await put(key); count.sent++; bytes += manifest.objects[key].bytes; });
+if (dry) for (const k of order) bytes += manifest.objects[k].bytes;
+console.log(dry ? `dry run: ${count.plan} objects, ${(bytes / 1e6).toFixed(1)} MB, manifest checked against disk`
+  : `done: ${count.sent} sent (${(bytes / 1e6).toFixed(1)} MB), ${count.same} already there; current ${JSON.stringify(manifest.current)}`);
