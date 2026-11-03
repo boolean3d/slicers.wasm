@@ -65,3 +65,28 @@ for (const lazy of [false, true]) {
     }
   });
 }
+
+// AGPL-3.0 section 6: every packaged copy carries its licence and says where its Corresponding Source is, and the loading
+// screen's two links (credit.js: 'Source code of this browser copy', 'Licence') reach them. Live 11-03: 6 of 7 slicer pages
+// had no source link and 5 answered 404 for LICENSE.txt, because both were optional flags the stage scripts left out.
+for (const app of ['orca', 'anycubic']) test(`${app}: LICENSE.txt and SOURCE.txt in the version folder, the page links to both`, () => {
+  const { src } = build();
+  if (app !== 'orca') for (const f of ['html', 'js', 'data', 'wasm'])
+    fs.renameSync(path.join(src, 'orcaslicer.' + f), path.join(src, 'anycubicslicer.' + f));
+  if (app !== 'orca') fs.writeFileSync(path.join(src, 'anycubicslicer.html'),
+    fs.readFileSync(path.join(src, 'anycubicslicer.html'), 'utf8').replace('orcaslicer.js', 'anycubicslicer.js'));
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'pkg-out-'));
+  execFileSync(process.execPath, [PKG, '--app', app, '--src', src, '--version', '9.9-t', '--out', out, '--jobs', '1',
+    '--source-rev', 'abc1234'], { stdio: 'pipe' });
+  const m = JSON.parse(fs.readFileSync(path.join(out, 'manifest.json'), 'utf8')).objects;
+  const read = key => { const b = fs.readFileSync(path.join(out, key)); return String(m[key].encoding === 'br' ? zlib.brotliDecompressSync(b) : b); };
+  const lic = read(`${app}/9.9-t/LICENSE.txt`);
+  assert.match(lic, /GNU AFFERO GENERAL PUBLIC LICENSE/);
+  if (app === 'anycubic') assert.match(lic, /Mulan Permissive Software License/);
+  const srcTxt = read(`${app}/9.9-t/SOURCE.txt`);
+  assert.match(srcTxt, /browser build 9\.9-t/);
+  assert.match(srcTxt, /github\.com\/boolean3d\/slicers\.wasm\/tree\/abc1234\//);
+  assert.match(srcTxt, app === 'orca' ? /OrcaSlicer\/OrcaSlicer/ : /ANYCUBIC-3D\/AnycubicSlicerNext/);
+  const page = read(`${app}/9.9-t/index.html`);
+  assert.match(page, /"source":"SOURCE\.txt"/);
+});

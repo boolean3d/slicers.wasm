@@ -1,7 +1,7 @@
 // Makes the public package of one slicer build: the files a static host (an object store behind a CDN) serves, each
 // already compressed, with the headers it must be served with written in manifest.json.
 //
-//   node package.mjs --app bambu --src <build dir> --version 2.08.02.61-1 --out <dir> [--source <url>] [--licence <file>]
+//   node package.mjs --app bambu --src <build dir> --version 2.08.02.61-1 --out <dir> [--source-rev <commit of this repository>]
 //                    [--start bambu-start.txt]
 //
 // <build dir> holds what the build makes: <program>.html, <program>.js, <program>.wasm, <program>.data (program =
@@ -26,6 +26,8 @@ import crypto from 'node:crypto';
 import os from 'node:os';
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
+import { licenceText, sourceText } from './program-sources.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // Our scripts on every program page, in the order the page loads them (before the program's own script): each is a file of
@@ -135,7 +137,13 @@ async function main() {
     add(PROGRAM + '.data', path.join(src, PROGRAM + '.data'));
   }
   add('wxwebview-sw.js', sw, NEVER, true);
-  if (a.licence) add('LICENSE.txt', path.resolve(a.licence));
+  // AGPL-3.0 section 6: every copy carries its licence and says where its Corresponding Source is (program-sources.mjs), always,
+  // so no stage script can leave them out. The loading screen links to both. --source and --licence are no longer
+  // read: an upstream address alone left our changes out, and the licence is the program's, not a choice per package.
+  let rev = a['source-rev'];
+  if (!rev) try { rev = execFileSync('git', ['-C', HERE, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { rev = ''; }
+  add('LICENSE.txt', stageFile('LICENSE.txt', licenceText(a.app)));
+  add('SOURCE.txt', stageFile('SOURCE.txt', sourceText(a.app, a.version, rev)));
   const walk = (d, rel) => {
     for (const e of fs.readdirSync(d, { withFileTypes: true })) {
       const p = path.join(d, e.name), r = rel + '/' + e.name;
@@ -215,7 +223,7 @@ async function main() {
     }
   }));
   const data = files.find(f => f.rel === PROGRAM + '.data');
-  const page = { app: a.app, program: PROGRAM, version: a.version, source: a.source || '', dataRaw: data.raw, dataSent: data.stored };
+  const page = { app: a.app, program: PROGRAM, version: a.version, source: 'SOURCE.txt', dataRaw: data.raw, dataSent: data.stored };
   if (fileList) {
     // The whole install, as unpacked and as sent: the install screen counts unpacked bytes and shows the sent size.
     const inst = files.filter(f => (!f.top || f.rel.startsWith('resources/')) && !['index.html', 'files.js'].includes(f.rel));
