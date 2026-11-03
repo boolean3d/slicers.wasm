@@ -1,0 +1,4 @@
+libnoise 1.0: a portable, open-source, coherent noise-generating library for C++.
+Copyright (C) 2003, 2004 Jason Bevins.
+Licensed under the GNU Lesser General Public License, version 2.1 or (at your option) any later version.
+The LGPL-2.1 text is further down in this file.

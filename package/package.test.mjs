@@ -89,4 +89,21 @@ for (const app of ['orca', 'anycubic']) test(`${app}: LICENSE.txt and SOURCE.txt
   assert.match(srcTxt, app === 'orca' ? /OrcaSlicer\/OrcaSlicer/ : /ANYCUBIC-3D\/AnycubicSlicerNext/);
   const page = read(`${app}/9.9-t/index.html`);
   assert.match(page, /"source":"SOURCE\.txt"/);
+  // The libraries' own licences and copyright notices travel with the copy (BSD, MIT, Zlib, Apache and Boost ask for the
+  // notice itself in a binary copy); 11-03 every live copy named its libraries but carried none of their notices.
+  assert.match(srcTxt, /NOTICES\.txt beside this file/);
+  const notices = read(`${app}/9.9-t/NOTICES.txt`);
+  for (const must of [/wxWindows Library Licence, Version 3\.1/, /Boost Software License - Version 1\.0/, /Randolph Voorhies/,
+    /Jason Bevins/, /Copyright 2022 The Noto Project Authors/, /OPEN CASCADE EXCEPTION/i, /Mozilla Public License Version 2\.0/,
+    /GNU LESSER GENERAL PUBLIC LICENSE\s+Version 2\.1/, /Apache License\s+Version 2\.0/])
+    assert.match(notices, must);
+});
+
+// Every library a program names has its notice file, so NOTICES.txt never names a library it has no notice for.
+test('every program: NOTICES.txt carries a notice for every library SOURCE.txt names', async () => {
+  const { PROGRAMS, noticeFiles, noticesText } = await import('./program-sources.mjs');
+  for (const [app, p] of Object.entries(PROGRAMS)) {
+    for (const k of p.libs) for (const f of noticeFiles(k)) assert.ok(fs.existsSync(f), `${app}: ${k} has no notice (${f})`);
+    assert.ok(noticesText(app).length > 50000, app);
+  }
 });

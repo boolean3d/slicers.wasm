@@ -1,0 +1,2 @@
+libbgcode (Prusa Research), commit 6f4ad7ce: https://github.com/prusa3d/libbgcode
+Licensed under the GNU Affero General Public License 3.0: the text is in LICENSE.txt beside this file.
