@@ -1,0 +1,5 @@
+Name: webkit2gtk-4.1
+Description: the web view is the wasm wx port's (an iframe); nothing to link
+Version: 2.40.0
+Cflags:
+Libs:

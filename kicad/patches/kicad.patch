@@ -1,0 +1,4693 @@
+diff --git a/3d-viewer/3d_cache/3d_cache.cpp b/3d-viewer/3d_cache/3d_cache.cpp
+index 40f93b88..8e494a08 100644
+--- a/3d-viewer/3d_cache/3d_cache.cpp
++++ b/3d-viewer/3d_cache/3d_cache.cpp
+@@ -31,6 +31,7 @@
+ #include <wx/datetime.h>
+ #include <wx/dir.h>
+ #include <wx/log.h>
++#include <cstdio>   // kicad-play-5 3d-view
+ #include <wx/stdpaths.h>
+ 
+ #include "3d_cache.h"
+@@ -311,6 +312,12 @@ SCENEGRAPH* S3D_CACHE::checkCache( const wxString& aFileName, S3D_CACHE_ENTRY**
+ 
+     ep->sceneData = m_Plugins->Load3DModel( aFileName, ep->pluginInfo );
+ 
++#ifdef __EMSCRIPTEN__
++    // kicad-play-5 3d-view (kicad-play-7): the console gets each model file's load
++    printf( "kicad: 3D model %s: %s\n", aFileName.utf8_str().data(),
++            ep->sceneData ? ep->pluginInfo.c_str() : "not loaded (no loader for its type, or the file could not be read)" );
++#endif
++
+     if( !ADVANCED_CFG::GetCfg().m_Skip3DModelFileCache && nullptr != ep->sceneData )
+         saveCacheData( ep );
+ 
+diff --git a/3d-viewer/3d_cache/3d_plugin_manager.cpp b/3d-viewer/3d_cache/3d_plugin_manager.cpp
+index 2ee53d30..e847c356 100644
+--- a/3d-viewer/3d_cache/3d_plugin_manager.cpp
++++ b/3d-viewer/3d_cache/3d_plugin_manager.cpp
+@@ -30,6 +30,7 @@
+ #include <wx/dir.h>
+ #include <wx/dynlib.h>
+ #include <wx/log.h>
++#include <cstdio>   // kicad-play-5 3d-view
+ #include <wx/stdpaths.h>
+ #include <wx/string.h>
+ 
+@@ -210,6 +211,12 @@ void S3D_PLUGIN_MANAGER::loadPlugins( void )
+         ++sPL;
+     }
+ 
++#ifdef __EMSCRIPTEN__
++    // kicad-play-5 3d-view: the browser program has its model loaders linked in (plugins/ldr KIPLUGIN_BUILTIN_LIB)
++    pluginlist.push_back( wxT( "builtin:vrml" ) );
++    pluginlist.push_back( wxT( "builtin:oce" ) );
++#endif
++
+     if( pluginlist.empty() )
+         return;
+ 
+@@ -255,6 +262,10 @@ void S3D_PLUGIN_MANAGER::loadPlugins( void )
+         ++sPL;
+     }
+ 
++#ifdef __EMSCRIPTEN__
++    // kicad-play-5 3d-view (kicad-play-7): the console gets the loaders the program has
++    printf( "kicad: 3D model loaders: %d, file types: %d\n", (int) m_Plugins.size(), (int) m_ExtMap.size() );
++#endif
+     wxLogTrace( MASK_3D_PLUGINMGR, wxT( "%s:%s:%d * [DEBUG] plugins loaded" ),
+                 __FILE__, __FUNCTION__, __LINE__ );
+ }
+@@ -458,6 +469,12 @@ SCENEGRAPH* S3D_PLUGIN_MANAGER::Load3DModel( const wxString& aFileName, std::str
+     items = m_ExtMap.equal_range( ext_to_find );
+     std::multimap< const wxString, KICAD_PLUGIN_LDR_3D* >::iterator sL = items.first;
+ 
++#ifdef __EMSCRIPTEN__
++    // kicad-play-5 3d-view (kicad-play-7): the console gets the loader chosen for a file and what it said
++    if( sL == items.second )
++        printf( "kicad: 3D model type .%s: no loader\n", ext_to_find.utf8_str().data() );
++#endif
++
+     while( sL != items.second )
+     {
+         if( sL->second->CanRender() )
+@@ -469,7 +486,14 @@ SCENEGRAPH* S3D_PLUGIN_MANAGER::Load3DModel( const wxString& aFileName, std::str
+                 sL->second->GetPluginInfo( aPluginInfo );
+                 return sp;
+             }
++#ifdef __EMSCRIPTEN__
++            printf( "kicad: 3D model %s: the loader gave nothing (%s)\n", aFileName.utf8_str().data(), sL->second->GetLastError().c_str() );
++#endif
+         }
++#ifdef __EMSCRIPTEN__
++        else
++            printf( "kicad: 3D model %s: loader not usable (%s)\n", aFileName.utf8_str().data(), sL->second->GetLastError().c_str() );
++#endif
+ 
+         ++sL;
+     }
+diff --git a/3d-viewer/3d_cache/model_substitution_helpers.cpp b/3d-viewer/3d_cache/model_substitution_helpers.cpp
+index 145e9ac0..da8870e6 100644
+--- a/3d-viewer/3d_cache/model_substitution_helpers.cpp
++++ b/3d-viewer/3d_cache/model_substitution_helpers.cpp
+@@ -21,6 +21,7 @@
+  */
+ 
+ #include "model_substitution_helpers.h"
++#include <cstdio>   // kicad-play-5 3d-view
+ 
+ #include <list>
+ #include <unordered_set>
+@@ -198,10 +199,14 @@ void STEP_CATALOG::Build( const wxString& aProjectPath, const FILENAME_RESOLVER*
+ {
+     m_byStem.clear();
+ 
++    // kicad-play-5 3d-view (kicad-play-7): the browser build tells the console where it looked
+     for( const wxString& dir : gatherScanDirs( aProjectPath, aResolver ) )
+     {
+         wxArrayString files;
+         ::CollectFilesLoopSafe( dir, files, wxEmptyString, wxDIR_FILES | wxDIR_DIRS );
++#ifdef __EMSCRIPTEN__
++        printf( "kicad: 3D model folder %s: %d files\n", dir.utf8_str().data(), (int) files.size() );
++#endif
+ 
+         for( const wxString& file : files )
+         {
+diff --git a/3d-viewer/3d_cache/sg/CMakeLists.txt b/3d-viewer/3d_cache/sg/CMakeLists.txt
+index 0f111a7a..5d7070da 100644
+--- a/3d-viewer/3d_cache/sg/CMakeLists.txt
++++ b/3d-viewer/3d_cache/sg/CMakeLists.txt
+@@ -33,7 +33,12 @@ if( MINGW )
+     list( APPEND SG_FILES ${CMAKE_SOURCE_DIR}/common/streamwrapper.cpp )
+ endif( MINGW )
+ 
+-add_library( kicad_3dsg SHARED ${SG_FILES} )
++if( NOT KICAD_SHARED_LIB_TYPE )
++    set( KICAD_3DSG_LIB_TYPE SHARED )
++else()
++    set( KICAD_3DSG_LIB_TYPE ${KICAD_SHARED_LIB_TYPE} )
++endif()
++add_library( kicad_3dsg ${KICAD_3DSG_LIB_TYPE} ${SG_FILES} )
+ 
+ if( APPLE )
+     # puts library into the main kicad.app bundle in build tree
+diff --git a/3d-viewer/3d_canvas/eda_3d_canvas.cpp b/3d-viewer/3d_canvas/eda_3d_canvas.cpp
+index 5fb3ecd1..3f7787cd 100644
+--- a/3d-viewer/3d_canvas/eda_3d_canvas.cpp
++++ b/3d-viewer/3d_canvas/eda_3d_canvas.cpp
+@@ -243,6 +243,7 @@ bool  EDA_3D_CANVAS::initializeOpenGL()
+ 
+     SetOpenGLBackendInfo( GL_UTILS::DetectGLBackend( this ) );
+ 
++    // kicad-play-5 3d-view: in the browser build glad loads the WebGL2 stand-in, as for the board drawing
+     const int glVersion = gladLoaderLoadGL();
+ 
+     if( glVersion == 0 )
+@@ -309,6 +310,17 @@ bool  EDA_3D_CANVAS::initializeOpenGL()
+         }
+     }
+ 
++#ifdef __EMSCRIPTEN__
++    // kicad-play-5 3d-view: ray tracing shows its picture through mapped pixel buffers, which WebGL2 does not have
++    if( m_opengl_supports_raytracing && GetParent() )
++    {
++        wxCommandEvent evt( wxEVT_MENU, ID_DISABLE_RAY_TRACING );
++        GetParent()->ProcessWindowEvent( evt );
++    }
++
++    m_opengl_supports_raytracing = false;
++#endif
++
+ #if wxCHECK_VERSION( 3, 3, 3 )
+     wxGLCanvas::SetSwapInterval( -1 );
+ #else
+diff --git a/3d-viewer/3d_model_viewer/eda_3d_model_viewer.cpp b/3d-viewer/3d_model_viewer/eda_3d_model_viewer.cpp
+index 0ac707f6..e84ff987 100644
+--- a/3d-viewer/3d_model_viewer/eda_3d_model_viewer.cpp
++++ b/3d-viewer/3d_model_viewer/eda_3d_model_viewer.cpp
+@@ -197,6 +197,7 @@ void EDA_3D_MODEL_VIEWER::ogl_initialize()
+ {
+     SetOpenGLBackendInfo( GL_UTILS::DetectGLBackend( this ) );
+ 
++    // kicad-play-5 3d-view: in the browser build glad loads the WebGL2 stand-in, as for the board drawing
+     const int glVersion = gladLoaderLoadGL();
+ 
+     if( glVersion == 0 )
+diff --git a/3d-viewer/3d_rendering/opengl/create_scene.cpp b/3d-viewer/3d_rendering/opengl/create_scene.cpp
+index 9691be7a..cef2b071 100644
+--- a/3d-viewer/3d_rendering/opengl/create_scene.cpp
++++ b/3d-viewer/3d_rendering/opengl/create_scene.cpp
+@@ -1689,7 +1689,17 @@ void RENDER_3D_OPENGL::load3dModels( REPORTER* aStatusReporter )
+                         MODEL_3D*     model        = new MODEL_3D( *modelPtr, materialMode );
+ 
+                         m_3dModelMap[ fp_model.m_Filename ] = model;
++#ifdef __EMSCRIPTEN__
++                        // kicad-play-5 3d-view (kicad-play-7): the console gets what the 3D view received
++                        printf( "kicad: 3D view: %s: %u meshes, opaque %d, transparent %d\n",
++                                fp_model.m_Filename.utf8_str().data(), modelPtr->m_MeshesSize,
++                                (int) model->HasOpaqueMeshes(), (int) model->HasTransparentMeshes() );
++#endif
+                     }
++#ifdef __EMSCRIPTEN__
++                    else
++                        printf( "kicad: 3D view: %s: nothing to draw (not loaded)\n", fp_model.m_Filename.utf8_str().data() );
++#endif
+                 }
+             }
+         }
+diff --git a/3d-viewer/3d_viewer/eda_3d_viewer_frame.cpp b/3d-viewer/3d_viewer/eda_3d_viewer_frame.cpp
+index 28230d5d..e35aa3b9 100644
+--- a/3d-viewer/3d_viewer/eda_3d_viewer_frame.cpp
++++ b/3d-viewer/3d_viewer/eda_3d_viewer_frame.cpp
+@@ -198,7 +198,8 @@ EDA_3D_VIEWER_FRAME::EDA_3D_VIEWER_FRAME( KIWAY* aKiway, PCB_BASE_FRAME* aParent
+ 
+     try
+     {
+-#if defined(__linux__) || defined(__FreeBSD__)
++#if defined(__EMSCRIPTEN__)   // browser build: no 3D mouse in a tab
++#elif defined(__linux__) || defined(__FreeBSD__)
+         m_spaceMouse = std::make_unique<SPNAV_VIEWER_PLUGIN>( m_canvas );
+ #else
+         m_spaceMouse = std::make_unique<NL_3D_VIEWER_PLUGIN>( m_canvas );
+diff --git a/3d-viewer/dialogs/panel_preview_3d_model.cpp b/3d-viewer/dialogs/panel_preview_3d_model.cpp
+index 5003845f..d764ad96 100644
+--- a/3d-viewer/dialogs/panel_preview_3d_model.cpp
++++ b/3d-viewer/dialogs/panel_preview_3d_model.cpp
+@@ -209,12 +209,15 @@ PANEL_PREVIEW_3D_MODEL::PANEL_PREVIEW_3D_MODEL( wxWindow* aParent, PCB_BASE_FRAM
+ 
+     try
+     {
+-#if defined(__linux__) || defined(__FreeBSD__)
++#if defined(__EMSCRIPTEN__)   // browser build: no 3D mouse in a tab
++#elif defined(__linux__) || defined(__FreeBSD__)
+         m_spaceMouse = std::make_unique<SPNAV_VIEWER_PLUGIN>( m_previewPane );
+ #else
+         m_spaceMouse = std::make_unique<NL_FOOTPRINT_PROPERTIES_PLUGIN>( m_previewPane );
+ #endif
++#if !defined(__EMSCRIPTEN__)
+         m_spaceMouse->SetFocus( true );
++#endif
+     }
+     catch( const std::exception& e )
+     {
+@@ -675,10 +678,12 @@ void PANEL_PREVIEW_3D_MODEL::onUnitsChanged( wxCommandEvent& aEvent )
+ 
+ void PANEL_PREVIEW_3D_MODEL::onPanelShownEvent( wxCommandEvent& aEvent )
+ {
++#if !defined(__EMSCRIPTEN__)   // browser build: no 3D mouse in a tab (the call would reference the unbuilt navlib plugin)
+     if( m_spaceMouse )
+     {
+         m_spaceMouse->SetFocus( static_cast<bool>( aEvent.GetInt() ) );
+     }
++#endif
+ 
+     aEvent.Skip();
+ }
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 420f18bc..8834b9cc 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -64,7 +64,10 @@ set( CMAKE_EXPORT_COMPILE_COMMANDS ON )
+ 
+ # Path to KiCad's CMake modules.
+ set( KICAD_CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake" )
+-set( CMAKE_MODULE_PATH       "${KICAD_CMAKE_MODULE_PATH}" )
++if( NOT KICAD_SHARED_LIB_TYPE )
++    set( KICAD_SHARED_LIB_TYPE SHARED )
++endif()
++set( CMAKE_MODULE_PATH       ${KICAD_WASM_MODULE_PATH} "${KICAD_CMAKE_MODULE_PATH}" )   # browser build: its find modules first
+ 
+ include( ConfigurePlatform )
+ 
+@@ -1099,7 +1102,9 @@ find_package( wxWidgets ${wxWidgets_REQ_VERSION} COMPONENTS gl aui adv html core
+ include( ${wxWidgets_USE_FILE} )
+ 
+ # Detect wxWidgets port being used
+-if( wxWidgets_FIND_STYLE STREQUAL "win32" )
++if( KICAD_WX_PORT )
++    # given (browser build: wasm)
++elseif( wxWidgets_FIND_STYLE STREQUAL "win32" )
+     string(REGEX MATCH "(msw|qt|gtk)" KICAD_WX_PORT "${WX_CONFIGURATION}")
+ 
+     if( KICAD_WX_PORT STREQUAL "qt" )
+diff --git a/api/CMakeLists.txt b/api/CMakeLists.txt
+index c0abc74a..f713c52a 100644
+--- a/api/CMakeLists.txt
++++ b/api/CMakeLists.txt
+@@ -64,7 +64,7 @@ add_custom_command( COMMAND ${CMAKE_COMMAND} -E make_directory ${KIAPI_CPP_BASEP
+     )
+ 
+ # kiapi must be a shared DLL because the protobuf messages can only be initialized once
+-add_library( kiapi SHARED
++add_library( kiapi ${KICAD_SHARED_LIB_TYPE}
+     ${CMAKE_CURRENT_SOURCE_DIR}/../include/import_export.h
+     ${KIAPI_CPP_SRCS}
+     ${KIAPI_CPP_HEADERS}
+diff --git a/common/CMakeLists.txt b/common/CMakeLists.txt
+index eb808f63..90b2fcdf 100644
+--- a/common/CMakeLists.txt
++++ b/common/CMakeLists.txt
+@@ -351,7 +351,7 @@ if( KICAD_IPC_API )
+     )
+ endif()
+ 
+-add_library( kicommon SHARED
++add_library( kicommon ${KICAD_SHARED_LIB_TYPE}
+     ${KICOMMON_SRCS}
+     )
+ 
+diff --git a/common/design_block_tree_model_adapter.cpp b/common/design_block_tree_model_adapter.cpp
+index 1866e051..2ba1795d 100644
+--- a/common/design_block_tree_model_adapter.cpp
++++ b/common/design_block_tree_model_adapter.cpp
+@@ -47,7 +47,8 @@ DESIGN_BLOCK_TREE_MODEL_ADAPTER::DESIGN_BLOCK_TREE_MODEL_ADAPTER( EDA_BASE_FRAME
+                                                                   APP_SETTINGS_BASE::LIB_TREE& aSettings,
+                                                                   TOOL_INTERACTIVE* aContextMenuTool ) :
+         LIB_TREE_MODEL_ADAPTER( aParent, wxT( "pinned_design_block_libs" ),
+-                                Kiface().KifaceSettings()->m_DesignBlockChooserPanel.tree ),
++                                ( FrameKiface( aParent ) ? *FrameKiface( aParent ) : Kiface() )
++                                        .KifaceSettings()->m_DesignBlockChooserPanel.tree ),
+         m_libs( aLibs ),
+         m_frame( aParent ),
+         m_contextMenuTool( aContextMenuTool )
+diff --git a/common/dialogs/dialog_color_picker.cpp b/common/dialogs/dialog_color_picker.cpp
+index 5a917419..06df8b43 100644
+--- a/common/dialogs/dialog_color_picker.cpp
++++ b/common/dialogs/dialog_color_picker.cpp
+@@ -23,6 +23,21 @@
+ #include <cmath>
+ #include <algorithm>
+ #include <kiface_base.h>
++
++
++// The settings of the editor this dialog serves; none when the project manager's preferences open it (in the browser
++// build every editor is linked into one program and the manager has no face of its own: Kiface() is not its).
++static APP_SETTINGS_BASE* pickerSettings( const wxWindow* aDialog )
++{
++    if( KIFACE_BASE* kiface = FrameKiface( aDialog ) )
++        return kiface->KifaceSettings();
++
++#ifdef __EMSCRIPTEN__
++    return nullptr;
++#else
++    return Kiface().KifaceSettings();
++#endif
++}
+ #include <settings/app_settings.h>
+ #include <widgets/color_swatch.h>
+ #include <wx/bitmap.h>
+@@ -83,10 +98,10 @@ DIALOG_COLOR_PICKER::DIALOG_COLOR_PICKER( wxWindow* aParent, const COLOR4D& aCur
+     if( aCurrentColor == COLOR4D::UNSPECIFIED )
+         m_val = 1.0;
+ 
+-    APP_SETTINGS_BASE* cfg = Kiface().KifaceSettings();
+-    wxASSERT( cfg );
++    APP_SETTINGS_BASE* cfg = pickerSettings( this );
+ 
+-    m_notebook->SetSelection( cfg->m_ColorPicker.default_tab );
++    if( cfg )
++        m_notebook->SetSelection( cfg->m_ColorPicker.default_tab );
+ 
+     // Build the defined colors panel:
+     initDefinedColors( aUserColors );
+@@ -107,8 +122,7 @@ DIALOG_COLOR_PICKER::DIALOG_COLOR_PICKER( wxWindow* aParent, const COLOR4D& aCur
+ 
+ DIALOG_COLOR_PICKER::~DIALOG_COLOR_PICKER()
+ {
+-    APP_SETTINGS_BASE* cfg = Kiface().KifaceSettings();
+-    wxASSERT( cfg );
++    APP_SETTINGS_BASE* cfg = pickerSettings( this );
+ 
+     if( cfg )
+         cfg->m_ColorPicker.default_tab = m_notebook->GetSelection();
+diff --git a/common/dialogs/dialog_rc_job.cpp b/common/dialogs/dialog_rc_job.cpp
+index 2c014f8e..f4ed1468 100644
+--- a/common/dialogs/dialog_rc_job.cpp
++++ b/common/dialogs/dialog_rc_job.cpp
+@@ -19,6 +19,7 @@
+  */
+ 
+ #include <dialogs/dialog_rc_job.h>
++#include <wx/filename.h>
+ #include <map>
+ #include <i18n_utility.h>
+ #include <wildcards_and_files_ext.h>
+diff --git a/common/draw_panel_gal.cpp b/common/draw_panel_gal.cpp
+index 5c1423fd..30e719ad 100644
+--- a/common/draw_panel_gal.cpp
++++ b/common/draw_panel_gal.cpp
+@@ -25,6 +25,7 @@
+  * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA
+  */
+ #include <eda_draw_frame.h>
++#include <kc_tool_thread.h>
+ #include <kiface_base.h>
+ #include <macros.h>
+ #include <scoped_set_reset.h>
+@@ -277,6 +278,10 @@ bool EDA_DRAW_PANEL_GAL::recoverFromGalError( const std::exception& aError )
+     // A predicted GPU out-of-memory cannot be cured by reinitializing OpenGL; it would just
+     // hit the same VRAM ceiling. Skip straight to the software fallback.
+     const bool gpuOutOfMemory = dynamic_cast<const KIGFX::GPU_OOM_ERROR*>( &aError ) != nullptr;
++#ifdef __EMSCRIPTEN__
++    // kicad-play-4 gl-fallback: in a browser tab a second WebGL context fails the same way: straight to the software drawing
++    m_glRecoveryAttempted = true;
++#endif
+ 
+     try
+     {
+@@ -300,8 +305,12 @@ bool EDA_DRAW_PANEL_GAL::recoverFromGalError( const std::exception& aError )
+             m_glRecoveryAttempted = false;
+             SwitchBackend( GAL_FALLBACK );
+ 
++#ifdef __EMSCRIPTEN__
++            printf( "kicad: OpenGL stopped (%s), drawing in software\n", aError.what() );
++#else
+             DisplayInfoMessage( m_parent, _( "Could not use OpenGL, falling back to software rendering" ),
+                                 wxString( aError.what() ) );
++#endif
+ 
+             StartDrawing();
+             return true;
+@@ -329,6 +338,8 @@ static constexpr int MAX_CONTEXT_BIND_RETRIES = 2;
+ 
+ bool EDA_DRAW_PANEL_GAL::DoRePaint( bool aAllowSkip )
+ {
++    KC_ON_MAIN_THREAD_R( bool, DoRePaint( aAllowSkip ) );
++
+     if( !m_refreshMutex.try_lock() )
+     {
+         tracePaintState( PAINT_MUTEX_HELD );
+@@ -562,6 +573,8 @@ void EDA_DRAW_PANEL_GAL::onSize( wxSizeEvent& aEvent )
+ 
+ void EDA_DRAW_PANEL_GAL::ResizeGal( bool aForce )
+ {
++    KC_ON_MAIN_THREAD( ResizeGal( aForce ) );
++
+     // If we get a second wx update call before the first finishes, don't crash
+     if( m_gal->IsContextLocked() )
+         return;
+@@ -695,6 +708,8 @@ void EDA_DRAW_PANEL_GAL::ForceRefresh()
+ 
+ bool EDA_DRAW_PANEL_GAL::GetScreenshot( wxImage& aDstImage )
+ {
++    KC_ON_MAIN_THREAD_R( bool, GetScreenshot( aDstImage ) );
++
+     if( m_backend != GAL_TYPE_OPENGL || !m_gal )
+         return false;
+ 
+@@ -756,6 +771,8 @@ void EDA_DRAW_PANEL_GAL::SetTopLayer( int aLayer )
+ 
+ bool EDA_DRAW_PANEL_GAL::SwitchBackend( GAL_TYPE aGalType )
+ {
++    KC_ON_MAIN_THREAD_R( bool, SwitchBackend( aGalType ) );
++
+     // Do not do anything if the currently used GAL is correct
+     if( aGalType == m_backend && m_gal != nullptr )
+         return true;
+@@ -789,10 +806,14 @@ bool EDA_DRAW_PANEL_GAL::SwitchBackend( GAL_TYPE aGalType )
+                 if( GAL_FALLBACK != aGalType )
+                 {
+                     aGalType = GAL_FALLBACK;
++#ifdef __EMSCRIPTEN__
++                    printf( "kicad: OpenGL not usable (%s), drawing in software\n", errormsg.utf8_str().data() );
++#else
+                     DisplayInfoMessage(
+                             m_parent,
+                             _( "Could not use OpenGL, falling back to software rendering" ),
+                             errormsg );
++#endif
+                     new_gal = new KIGFX::CAIRO_GAL( m_options, this, this, this );
+                 }
+                 else
+@@ -823,11 +844,23 @@ bool EDA_DRAW_PANEL_GAL::SwitchBackend( GAL_TYPE aGalType )
+     }
+     catch( std::runtime_error& err )
+     {
++#ifdef __EMSCRIPTEN__
++        // The OpenGL canvas failed to come up: the software drawing, never a dummy canvas or a box
++        if( aGalType == GAL_TYPE_OPENGL )
++        {
++            printf( "kicad: OpenGL failed to start (%s), drawing in software\n", err.what() );
++            new_gal = new KIGFX::CAIRO_GAL( m_options, this, this, this );
++            aGalType = GAL_FALLBACK;
++        }
++        else
++#endif
++        {
+         // Create a dummy GAL
+         new_gal = new KIGFX::GAL( m_options );
+         aGalType = GAL_TYPE_NONE;
+         DisplayErrorMessage( m_parent, _( "Error switching GAL backend" ), wxString( err.what() ) );
+         result = false;
++        }
+     }
+ 
+     // trigger update of the gal options in case they differ from the defaults
+diff --git a/common/eda_base_frame.cpp b/common/eda_base_frame.cpp
+index 91ea9ea9..1fd657a7 100644
+--- a/common/eda_base_frame.cpp
++++ b/common/eda_base_frame.cpp
+@@ -1328,21 +1328,49 @@ WINDOW_SETTINGS* EDA_BASE_FRAME::GetWindowSettings( APP_SETTINGS_BASE* aCfg )
+ }
+ 
+ 
++KIFACE_BASE* FrameKiface( const wxWindow* aWindow )
++{
++    for( const wxWindow* window = aWindow; window; window = window->GetParent() )
++    {
++        if( const EDA_BASE_FRAME* frame = dynamic_cast<const EDA_BASE_FRAME*>( window ) )
++        {
++            KIWAY::FACE_T face = KIWAY::KifaceType( frame->GetFrameType() );
++
++            if( face == KIWAY::FACE_T( -1 ) || !frame->HasKiway() )
++                return nullptr;
++
++            return static_cast<KIFACE_BASE*>( frame->Kiway().KiFACE( face, false ) );
++        }
++    }
++
++    return nullptr;
++}
++
++
+ APP_SETTINGS_BASE* EDA_BASE_FRAME::config() const
+ {
+     // KICAD_MANAGER_FRAME overrides this
++    if( KIFACE_BASE* kiface = FrameKiface( this ) )
++        return kiface->KifaceSettings();
++
+     return Kiface().KifaceSettings();
+ }
+ 
+ 
+ const SEARCH_STACK& EDA_BASE_FRAME::sys_search()
+ {
++    if( KIFACE_BASE* kiface = FrameKiface( this ) )
++        return kiface->KifaceSearch();
++
+     return Kiface().KifaceSearch();
+ }
+ 
+ 
+ wxString EDA_BASE_FRAME::help_name()
+ {
++    if( KIFACE_BASE* kiface = FrameKiface( this ) )
++        return kiface->GetHelpFileName();
++
+     return Kiface().GetHelpFileName();
+ }
+ 
+diff --git a/common/gal/CMakeLists.txt b/common/gal/CMakeLists.txt
+index 19537f46..5c4d9186 100644
+--- a/common/gal/CMakeLists.txt
++++ b/common/gal/CMakeLists.txt
+@@ -53,7 +53,7 @@ set( GAL_SRCS
+     cairo/cairo_print.cpp
+     )
+ 
+-add_library( gal SHARED ${GAL_SRCS} )
++add_library( gal ${KICAD_SHARED_LIB_TYPE} ${GAL_SRCS} )
+ 
+ if( KICAD_USE_PCH )
+     target_precompile_headers( gal
+diff --git a/common/gal/opengl/opengl_gal.cpp b/common/gal/opengl/opengl_gal.cpp
+index 78ce1b9b..26edae5d 100644
+--- a/common/gal/opengl/opengl_gal.cpp
++++ b/common/gal/opengl/opengl_gal.cpp
+@@ -30,6 +30,7 @@
+ #include <kicad_gl/gl_utils.h>
+ 
+ #include <advanced_config.h>
++#include <kc_tool_thread.h>
+ #include <build_version.h>
+ #include <gal/opengl/opengl_gal.h>
+ #include <gal/opengl/utils.h>
+@@ -69,6 +70,38 @@ using namespace KIGFX;
+ #include "gl_resources.h"
+ #include <glsl_kicad_frag.h>
+ #include <glsl_kicad_vert.h>
++
++#ifdef __EMSCRIPTEN__
++// kicad-play-4 gl-fallback: WebGL2 probe, lost-context check, smoothing on scaled screens
++#include <emscripten.h>
++#include <emscripten/html5.h>
++
++// Can this thread make a WebGL2 context at all (the GL canvases live on OffscreenCanvases in this worker)?
++EM_JS( int, kigl_webgl2_available, (), {
++    try {
++        if( typeof OffscreenCanvas === "undefined" ) return 0;
++        var gl = new OffscreenCanvas( 1, 1 ).getContext( "webgl2" );
++        if( !gl ) return 0;
++        var lose = gl.getExtension( "WEBGL_lose_context" );
++        if( lose ) lose.loseContext();
++        return 1;
++    } catch( e ) { return 0; }
++} );
++#endif
++
++namespace
++{
++// The smoothing the compositor really uses: on a browser screen scaled 1.5x or more, supersampling is skipped
++KIGFX::GAL_ANTIALIASING_MODE compositorAAMode( KIGFX::GAL_ANTIALIASING_MODE aMode, double aScale )
++{
++#ifdef __EMSCRIPTEN__
++    if( aMode == KIGFX::GAL_ANTIALIASING_MODE::AA_HIGHQUALITY && aScale >= 1.5 )
++        return KIGFX::GAL_ANTIALIASING_MODE::AA_NONE;
++#endif
++    (void) aScale;
++    return aMode;
++}
++}
+ using namespace KIGFX::BUILTIN_FONT;
+ 
+ static void InitTesselatorCallbacks( GLUtesselator* aTesselator );
+@@ -99,8 +132,10 @@ static wxGLAttributes getGLAttribs()
+ 
+ wxGLContext* OPENGL_GAL::m_glMainContext = nullptr;
+ int          OPENGL_GAL::m_instanceCounter = 0;
++#ifndef __EMSCRIPTEN__
+ GLuint       OPENGL_GAL::g_fontTexture = 0;
+ bool         OPENGL_GAL::m_isBitmapFontLoaded = false;
++#endif
+ 
+ namespace KIGFX
+ {
+@@ -414,11 +449,15 @@ OPENGL_GAL::OPENGL_GAL( const KIGFX::VC_SETTINGS& aVcSettings, GAL_DISPLAY_OPTIO
+     m_bitmapCache = std::make_unique<GL_BITMAP_CACHE>();
+ 
+     m_compositor = new OPENGL_COMPOSITOR;
+-    m_compositor->SetAntialiasingMode( m_options.antialiasing_mode );
++    m_compositor->SetAntialiasingMode( compositorAAMode( m_options.antialiasing_mode, GetScaleFactor() ) );
+ 
+     // Initialize the flags
+     m_isFramebufferInitialized = false;
+     m_isBitmapFontInitialized = false;
++#ifdef __EMSCRIPTEN__
++    g_fontTexture = 0;
++    m_isBitmapFontLoaded = false;
++#endif
+     m_isInitialized = false;
+     m_isGrouping = false;
+     m_groupCounter = 0;
+@@ -526,6 +565,14 @@ OPENGL_GAL::~OPENGL_GAL()
+         if( m_isContextValid )
+             ClearCache();
+ 
++#ifdef __EMSCRIPTEN__
++        // The font texture lives in this canvas's own WebGL context: delete it while that context is current
++        if( m_isContextValid && m_isBitmapFontLoaded )
++            glDeleteTextures( 1, &g_fontTexture );
++
++        m_isBitmapFontLoaded = false;
++#endif
++
+         delete m_compositor;
+ 
+         if( m_isInitialized )
+@@ -575,6 +622,15 @@ wxString OPENGL_GAL::CheckFeatures( GAL_DISPLAY_OPTIONS& aOptions )
+ 
+     wxString retVal = wxEmptyString;
+ 
++#ifdef __EMSCRIPTEN__
++    // No WebGL2 here (graphics card blocked by the browser, no OffscreenCanvas): decided before a GL canvas is made
++    if( !kigl_webgl2_available() )
++    {
++        cached = wxString( wxS( "WebGL2 is not available in this browser tab" ) );
++        return *cached;
++    }
++#endif
++
+     wxFrame* testFrame = new wxFrame( nullptr, wxID_ANY, wxT( "" ), wxDefaultPosition,
+                                       wxSize( 1, 1 ), wxFRAME_TOOL_WINDOW | wxNO_BORDER );
+ 
+@@ -622,15 +678,18 @@ void OPENGL_GAL::PostPaint( wxPaintEvent& aEvent )
+ 
+ bool OPENGL_GAL::updatedGalDisplayOptions( const GAL_DISPLAY_OPTIONS& aOptions )
+ {
++    KC_ON_MAIN_THREAD_R( bool, updatedGalDisplayOptions( aOptions ) );
++
+     GAL_CONTEXT_LOCKER lock( this );
+ 
+     bool refresh = false;
+ 
+     // Options arrive before the canvas is realized, so the context is not current yet.  Only
+     // the compositor needs it; BeginDrawing reconciles the mode once we can bind
+-    if( m_isContextValid && m_options.antialiasing_mode != m_compositor->GetAntialiasingMode() )
++    if( m_isContextValid
++        && compositorAAMode( m_options.antialiasing_mode, GetScaleFactor() ) != m_compositor->GetAntialiasingMode() )
+     {
+-        m_compositor->SetAntialiasingMode( m_options.antialiasing_mode );
++        m_compositor->SetAntialiasingMode( compositorAAMode( m_options.antialiasing_mode, GetScaleFactor() ) );
+         m_isFramebufferInitialized = false;
+         refresh = true;
+     }
+@@ -673,6 +732,12 @@ void OPENGL_GAL::BeginDrawing()
+                                "Other drawing routines will expect everything to be initialized "
+                                "which will not be the case." );
+ 
++#ifdef __EMSCRIPTEN__
++    // A lost WebGL context draws nothing and reports nothing: make it an error KiCad's recovery catches
++    if( emscripten_is_webgl_context_lost( emscripten_webgl_get_current_context() ) )
++        throw std::runtime_error( "The browser lost the WebGL context" );
++#endif
++
+     if( !m_isInitialized )
+         init();
+ 
+@@ -685,9 +750,9 @@ void OPENGL_GAL::BeginDrawing()
+              -m_depthRange.x, -m_depthRange.y );
+ 
+     // An antialiasing change that arrived without a current context never reached the compositor
+-    if( m_options.antialiasing_mode != m_compositor->GetAntialiasingMode() )
++    if( compositorAAMode( m_options.antialiasing_mode, GetScaleFactor() ) != m_compositor->GetAntialiasingMode() )
+     {
+-        m_compositor->SetAntialiasingMode( m_options.antialiasing_mode );
++        m_compositor->SetAntialiasingMode( compositorAAMode( m_options.antialiasing_mode, GetScaleFactor() ) );
+         m_isFramebufferInitialized = false;
+     }
+ 
+@@ -903,6 +968,8 @@ void OPENGL_GAL::EndDrawing()
+ 
+ bool OPENGL_GAL::GetScreenshot( wxImage& aDstImage )
+ {
++    KC_ON_MAIN_THREAD_R( bool, GetScreenshot( aDstImage ) );
++
+     if( !IsInitialized() || !m_compositor )
+         return false;
+ 
+@@ -960,6 +1027,10 @@ bool OPENGL_GAL::GetScreenshot( wxImage& aDstImage )
+ 
+ void OPENGL_GAL::LockContext( int aClientCookie )
+ {
++#ifdef __EMSCRIPTEN__
++    if( kc_on_tool_thread() )
++        emscripten_log( EM_LOG_CONSOLE | EM_LOG_ERROR, "kicad: OpenGL asked for on a tool thread (not handed to the main thread): drawing will fail" );
++#endif
+     wxASSERT_MSG( !m_isContextLocked, "Context already locked." );
+     m_isContextLocked = true;
+     m_lockClientCookie = aClientCookie;
+diff --git a/common/gal/opengl/utils.cpp b/common/gal/opengl/utils.cpp
+index b9621fbc..44a01a50 100644
+--- a/common/gal/opengl/utils.cpp
++++ b/common/gal/opengl/utils.cpp
+@@ -33,6 +33,9 @@
+ #include <algorithm>
+ #include <stdexcept>
+ #include <wx/log.h> // wxLogTrace
++#ifdef __EMSCRIPTEN__
++#include <emscripten/html5.h>
++#endif
+ 
+ 
+ /**
+@@ -50,6 +53,15 @@ int checkGlError( const std::string& aInfo, const char* aFile, int aLine, bool a
+     int      result = glGetError();
+     wxString errorMsg;
+ 
++#ifdef __EMSCRIPTEN__
++    // kicad-play-4 gl-fallback (kicad-play-7): once the browser has lost the WebGL context every call is a no-op and
++    // glGetError answers CONTEXT_LOST_WEBGL: nothing the caller did went wrong, and the teardown that follows the loss
++    // (the compositor's destructor, the canvas going away) must run through without a box
++    if( result == 0x9242 /* CONTEXT_LOST_WEBGL */
++        || emscripten_is_webgl_context_lost( emscripten_webgl_get_current_context() ) )
++        return GL_NO_ERROR;
++#endif
++
+     switch( result )
+     {
+     case GL_NO_ERROR:
+diff --git a/common/gal/opengl/vertex_container.cpp b/common/gal/opengl/vertex_container.cpp
+index a8d1059a..84c43000 100644
+--- a/common/gal/opengl/vertex_container.cpp
++++ b/common/gal/opengl/vertex_container.cpp
+@@ -43,6 +43,10 @@ VERTEX_CONTAINER* VERTEX_CONTAINER::MakeContainer( bool aCached )
+ {
+     if( aCached )
+     {
++#ifdef __EMSCRIPTEN__
++        // WebGL cannot map a buffer: the vertex data stays in RAM and is uploaded whole
++        return new CACHED_CONTAINER_RAM;
++#endif
+         const char* vendor = (const char*) glGetString( GL_VENDOR );
+ 
+         // Open source drivers do not cope well with GPU memory mapping,
+diff --git a/common/gal/shaders/kicad_frag.glsl b/common/gal/shaders/kicad_frag.glsl
+index 7252060e..b9dab65e 100644
+--- a/common/gal/shaders/kicad_frag.glsl
++++ b/common/gal/shaders/kicad_frag.glsl
+@@ -135,7 +135,7 @@ void main()
+ 
+         // Unless we're stretching chars it is okay to consider
+         // one derivative for filtering
+-        float derivative   = length( dFdx( tex ) ) * u_fontTextureWidth / 4;
++        float derivative   = length( dFdx( tex ) ) * float( u_fontTextureWidth ) / 4.0;
+ 
+ #ifdef USE_MSDF
+         float dist         = median( texture2D( u_fontTexture, tex ).rgb );
+diff --git a/common/gal/shaders/kicad_vert.glsl b/common/gal/shaders/kicad_vert.glsl
+index 2c806ec4..b0a6dbd1 100644
+--- a/common/gal/shaders/kicad_vert.glsl
++++ b/common/gal/shaders/kicad_vert.glsl
+@@ -143,7 +143,7 @@ void computeCircleCoords( float mode, float vertexIndex, float radius, float lin
+     else if( vertexIndex == 3.0 )
+     {
+         v_circleCoords = vec2( 0.0, 2.0 );
+-        delta = vec4( 0, 2 * pixelR, 0, 0 );
++        delta = vec4( 0, 2.0 * pixelR, 0, 0 );
+     }
+     else if( vertexIndex == 4.0 )
+     {
+@@ -194,7 +194,7 @@ void computeHoleWallCoords( float vertexIndex, float radius, float lineWidth )
+     else if( vertexIndex == 3.0 )
+     {
+         v_circleCoords = vec2( 0.0, 2.0 );
+-        delta = vec4( 0, 2 * pixelR, 0, 0 );
++        delta = vec4( 0, 2.0 * pixelR, 0, 0 );
+     }
+     else if( vertexIndex == 4.0 )
+     {
+diff --git a/common/gestfich.cpp b/common/gestfich.cpp
+index 85a500ec..8491422e 100644
+--- a/common/gestfich.cpp
++++ b/common/gestfich.cpp
+@@ -31,6 +31,10 @@
+ #include <wx/mimetype.h>
+ #include <wx/dir.h>
+ #include <wx/stdpaths.h>
++#include <wx/utils.h>
++#ifdef __EMSCRIPTEN__
++#include <emscripten/em_asm.h>
++#endif
+ 
+ #include <pgm_base.h>
+ #include <confirm.h>
+@@ -168,6 +172,44 @@ int ExecuteFile( const wxString& aEditorName, const wxString& aFileName, wxProce
+     wxString              fullEditorName;
+     std::vector<wxString> params;
+ 
++#ifdef __EMSCRIPTEN__
++    // browser build: each KiCad program is its own page next to this one (/kicad/<version>/<program>/); "running" one
++    // opens that page in a new tab with the file as its argument (index.html?arg=<path>, read by kicad-pre.js). Both
++    // tabs share the home folder (home-sync), so the other program finds the file. Nothing else can be started.
++    if( aFileForKicad )
++    {
++        const wxString prog = wxFileName( aEditorName ).GetName();
++
++        if( prog == wxS( "kicad" ) || prog == wxS( "eeschema" ) || prog == wxS( "pcbnew" ) )
++        {
++            wxString url = wxS( "../" ) + prog + wxS( "/" );
++
++            if( !aFileName.IsEmpty() )
++            {
++                url += wxS( "?arg=" );
++
++                for( unsigned char c : aFileName.utf8_string() )
++                {
++                    if( isalnum( c ) || strchr( "-_.~/", c ) )
++                        url += wxUniChar( c );
++                    else
++                        url += wxString::Format( wxS( "%%%02X" ), c );
++                }
++            }
++
++            // wx takes a link without a scheme for a host name ("http://../pcbnew/"): resolve it against the page's
++            // address first (on the page thread, where location is the page)
++            char abs[4096] = {};
++            MAIN_THREAD_EM_ASM( { stringToUTF8( new URL( UTF8ToString( $0 ), location.href ).href, $1, $2 ); },
++                                (const char*) url.utf8_str(), abs, (int) sizeof( abs ) );
++
++            return wxLaunchDefaultBrowser( wxString::FromUTF8( abs ) ) ? 0 : -1;
++        }
++    }
++
++    return -1;
++#endif
++
+ #ifdef __UNIX__
+     wxString param;
+     bool     inSingleQuotes = false;
+diff --git a/common/kicad_gl/gl_utils.cpp b/common/kicad_gl/gl_utils.cpp
+index e0c54cc8..5484292e 100644
+--- a/common/kicad_gl/gl_utils.cpp
++++ b/common/kicad_gl/gl_utils.cpp
+@@ -24,7 +24,7 @@
+ #include <wx/platform.h>
+ #include <wx/version.h>
+ 
+-#if ( defined( __unix__ ) and not defined( __APPLE__ ) )
++#if ( defined( __unix__ ) and not defined( __APPLE__ ) and not defined( __EMSCRIPTEN__ ) )
+     #if wxHAS_EGL or wxHAS_GLX
+         #if wxHAS_EGL
+             #include <glad/egl.h>
+diff --git a/common/kiway.cpp b/common/kiway.cpp
+index a1aa93e4..128b5eb0 100644
+--- a/common/kiway.cpp
++++ b/common/kiway.cpp
+@@ -41,6 +41,13 @@
+ #include <local_history.h>
+ 
+ #include <wx/dynlib.h>
++#ifdef __EMSCRIPTEN__
++// browser build: the editors linked into this program, each getter under its editor's name (programs.cmake)
++extern "C" {
++KIFACE* KIFACE_1_sch( int* aKIFACEversion, int aKIWAYversion, PGM_BASE* aProgram ) __attribute__(( weak ));
++KIFACE* KIFACE_1_pcb( int* aKIFACEversion, int aKIWAYversion, PGM_BASE* aProgram ) __attribute__(( weak ));
++}
++#endif
+ #include <wx/stdpaths.h>
+ #include <wx/debug.h>
+ #include <wx/utils.h>
+@@ -227,6 +234,53 @@ KIFACE* KIWAY::KiFACE( FACE_T aFaceId, bool doLoad )
+     // DSO with KIFACE has not been loaded yet, does caller want to load it?
+     if( doLoad )
+     {
++#ifdef __EMSCRIPTEN__
++        // browser build: no dlopen; the schematic and board editors are linked into this program and their getters
++        // come from a table, then start as a loaded face starts below. A face that is not linked (calculator, Gerber
++        // viewer, drawing sheet editor...) gets a stand-in so the project manager can still load a project.
++        KIFACE_GETTER_FUNC* linked = nullptr;
++
++        if( aFaceId == FACE_SCH )
++            linked = &KIFACE_1_sch;
++        else if( aFaceId == FACE_PCB )
++            linked = &KIFACE_1_pcb;
++
++        if( linked )
++        {
++            APP_MONITOR::AddNavigationBreadcrumb( wxString::Format( "Loading kiface %d", aFaceId ), "kiway.kiface" );
++
++            KIFACE* kiface = linked( &m_kiface_version[aFaceId], KIFACE_VERSION, &Pgm() );
++            bool    startSuccess = false;
++
++            try
++            {
++                startSuccess = kiface->OnKifaceStart( &Pgm(), m_ctl, this );
++            }
++            catch( ... )
++            {
++                Pgm().HandleException( std::current_exception() );
++            }
++
++            return startSuccess ? ( m_kiface[aFaceId] = kiface ) : nullptr;
++        }
++
++        struct KIFACE_STANDIN : public KIFACE
++        {
++            bool OnKifaceStart( PGM_BASE*, int, KIWAY* ) override { return true; }
++            void OnKifaceEnd() override {}
++            void Reset() override {}
++            wxWindow* CreateKiWindow( wxWindow*, int aClassId, KIWAY*, int ) override
++            {
++                wxLogWarning( wxS( "browser build: no editor window for frame type %d from this program" ), aClassId );
++                return nullptr;
++            }
++            void* IfaceOrAddress( int ) override { return nullptr; }
++            void GetActions( std::vector<TOOL_ACTION*>& ) const override {}
++        };
++        m_kiface[aFaceId] = new KIFACE_STANDIN();
++        m_kiface_version[aFaceId] = KIFACE_VERSION;
++        return m_kiface[aFaceId];
++#endif
+         wxString dname = dso_search_path( aFaceId );
+ 
+         // Insert DLL search path for kicad_3dsg from build dir
+diff --git a/common/launch_ext.cpp b/common/launch_ext.cpp
+index b8d86371..80479ced 100644
+--- a/common/launch_ext.cpp
++++ b/common/launch_ext.cpp
+@@ -20,11 +20,74 @@
+ 
+ #include <launch_ext.h>
+ #include <wx/utils.h>
++#ifdef __EMSCRIPTEN__
++#include <emscripten.h>   // browser build: LaunchExternal = a download
++#include <emscripten/threading.h>
++
++// browser build: hand the file, or the folder as a zip, to the person as a download. Runs on the page thread, where the
++// file system and the document are (EM_JS: a code block with commas cannot go through the EM_ASM macros).
++EM_JS( int, b3d_hand_to_browser, ( const char* aPath ), {
++        var path = UTF8ToString( aPath );
++        try {
++            var st = FS.stat( path ), isDir = FS.isDir( st.mode );
++            var base = path.replace( /[/]+$/, "" ).split( "/" ).pop() || "files";
++            var parts = [], name = base, type = "application/octet-stream";
++            if( !isDir ) { parts = [ FS.readFile( path ) ]; }
++            else {
++                var T = new Uint32Array( 256 );
++                for( var n = 0; n < 256; n++ ) { var c = n; for( var k = 0; k < 8; k++ ) c = c & 1 ? 0xEDB88320 ^ ( c >>> 1 ) : c >>> 1; T[n] = c >>> 0; }
++                var crc = function( b ) { var c = 0xFFFFFFFF; for( var i = 0; i < b.length; i++ ) c = T[( c ^ b[i] ) & 255] ^ ( c >>> 8 ); return ( c ^ 0xFFFFFFFF ) >>> 0; };
++                var files = [];
++                var walk = function( d, rel ) {
++                    FS.readdir( d ).sort().forEach( function( e ) {
++                        if( e === "." || e === ".." ) return;
++                        var f = d + "/" + e, s = FS.stat( f );
++                        if( FS.isDir( s.mode ) ) walk( f, rel + e + "/" ); else files.push( [ rel + e, FS.readFile( f ), s.mtime ] );
++                    } );
++                };
++                walk( path.replace( /[/]+$/, "" ), "" );
++                var central = [], off = 0, enc = new TextEncoder();
++                files.forEach( function( f ) {
++                    var nm = enc.encode( f[0] ), data = f[1], c = crc( data ), t = new Date( f[2] );
++                    var dt = ( ( t.getHours() << 11 ) | ( t.getMinutes() << 5 ) | ( t.getSeconds() >> 1 ) ) & 0xFFFF;
++                    var dd = ( ( Math.max( t.getFullYear() - 1980, 0 ) << 9 ) | ( ( t.getMonth() + 1 ) << 5 ) | t.getDate() ) & 0xFFFF;
++                    var h = new DataView( new ArrayBuffer( 30 ) );
++                    h.setUint32( 0, 0x04034b50, true ); h.setUint16( 4, 20, true ); h.setUint16( 6, 0x0800, true ); h.setUint16( 8, 0, true );
++                    h.setUint16( 10, dt, true ); h.setUint16( 12, dd, true ); h.setUint32( 14, c, true );
++                    h.setUint32( 18, data.length, true ); h.setUint32( 22, data.length, true ); h.setUint16( 26, nm.length, true );
++                    parts.push( h.buffer, nm, data );
++                    var g = new DataView( new ArrayBuffer( 46 ) );
++                    g.setUint32( 0, 0x02014b50, true ); g.setUint16( 4, 20, true ); g.setUint16( 6, 20, true ); g.setUint16( 8, 0x0800, true );
++                    g.setUint16( 12, dt, true ); g.setUint16( 14, dd, true ); g.setUint32( 16, c, true );
++                    g.setUint32( 20, data.length, true ); g.setUint32( 24, data.length, true ); g.setUint16( 28, nm.length, true );
++                    g.setUint32( 42, off, true );
++                    central.push( g.buffer, nm );
++                    off += 30 + nm.length + data.length;
++                } );
++                var size = 0; central.forEach( function( b ) { size += b.byteLength; } );
++                var e = new DataView( new ArrayBuffer( 22 ) );
++                e.setUint32( 0, 0x06054b50, true ); e.setUint16( 8, files.length, true ); e.setUint16( 10, files.length, true );
++                e.setUint32( 12, size, true ); e.setUint32( 16, off, true );
++                parts = parts.concat( central, [ e.buffer ] );
++                name = base + ".zip"; type = "application/zip";
++            }
++            var url = URL.createObjectURL( new Blob( parts, { type: type } ) ), a = document.createElement( "a" );
++            a.href = url; a.download = name; a.style.display = "none"; document.body.appendChild( a ); a.click(); a.remove();
++            setTimeout( function() { URL.revokeObjectURL( url ); }, 60000 );
++            console.log( "kicad: handed " + path + " to the browser as " + name );
++            return 1;
++        } catch( err ) { console.error( "kicad: could not hand " + path + " to the browser: " + err ); return 0; }
++} );
++#endif
+ 
+ 
+ bool LaunchExternal( const wxString& aPath )
+ {
+-#ifdef __WXMAC__
++#if defined( __EMSCRIPTEN__ )
++    return emscripten_sync_run_in_main_runtime_thread( EM_FUNC_SIG_II, b3d_hand_to_browser,
++                                                       aPath.utf8_string().c_str() ) != 0;
++
++#elif defined( __WXMAC__ )
+ 
+     const wchar_t* args[] = { L"open", aPath.wc_str(), nullptr };
+     return wxExecute( const_cast<wchar_t**>( args ) ) != -1;
+diff --git a/common/single_top.cpp b/common/single_top.cpp
+index 47e07280..a904fca9 100644
+--- a/common/single_top.cpp
++++ b/common/single_top.cpp
+@@ -64,6 +64,7 @@
+ 
+ #include <libraries/library_manager.h>
+ #include <startwizard/startwizard.h>
++#include <settings/settings_manager.h>   // kicad-play-7 settings-save
+ 
+ #ifdef KICAD_USE_SENTRY
+ #include <sentry.h>
+@@ -396,6 +397,28 @@ bool PGM_SINGLE_TOP::OnPgmInit()
+     // Trick the KIWAY into thinking it loaded a KIFACE, by recording the KIFACE
+     // in the KIWAY.  It needs to be there for KIWAY::OnKiwayEnd() anyways.
+     Kiway.set_kiface( KIWAY::KifaceType( TOP_FRAME ), kiface );
++
++#ifdef __EMSCRIPTEN__
++    // browser build: the editor face is linked in and KIWAY::KiFACE() never loads it, so nothing would start it
++    // (its settings, its tools); start it here as KIWAY::KiFACE() starts a loaded face
++    bool kifaceStarted = false;
++
++    try
++    {
++        kifaceStarted = kiface->OnKifaceStart( this, KFCTL_STANDALONE, &Kiway );
++    }
++    catch( ... )
++    {
++        HandleException( std::current_exception() );
++    }
++
++    if( !kifaceStarted )
++    {
++        wxLogError( _( "Error loading editor." ) );
++        OnPgmExit();
++        return false;
++    }
++#endif
+ #endif
+ 
+     // Tell the settings manager about the current Kiway
+@@ -433,6 +456,10 @@ bool PGM_SINGLE_TOP::OnPgmInit()
+ 
+     STARTWIZARD startWizard;
+     startWizard.CheckAndRun( frame );
++#ifdef __EMSCRIPTEN__
++    // kicad-play-7 settings-save: a tab never exits, so the settings are written now, not at exit
++    Pgm().GetSettingsManager().Save();
++#endif
+ 
+     // Load library tables after startup wizard
+     GetLibraryManager().LoadGlobalTables();
+diff --git a/common/singleton.cpp b/common/singleton.cpp
+index df61f3ca..53eec8e2 100644
+--- a/common/singleton.cpp
++++ b/common/singleton.cpp
+@@ -62,9 +62,11 @@ void KICAD_SINGLETON::Init()
+     m_ThreadPool = new BS::priority_thread_pool( num_threads,
+                                                  []
+                                                  {
++#ifdef BS_THREAD_POOL_NATIVE_EXTENSIONS
+                                                      // Reduce worker threadpriority to reduce lag in main (UI) thread
+                                                      BS::this_thread::set_os_thread_priority(
+                                                              BS::os_thread_priority::below_normal );
++#endif
+                                                  } );
+ 
+     m_GLContextManager = new GL_CONTEXT_MANAGER();
+diff --git a/common/spacenav/libspnav_driver.h b/common/spacenav/libspnav_driver.h
+index 0edd897e..7a2a6f90 100644
+--- a/common/spacenav/libspnav_driver.h
++++ b/common/spacenav/libspnav_driver.h
+@@ -24,7 +24,7 @@
+ #ifndef KICAD_LIBSPNAV_DRIVER_H
+ #define KICAD_LIBSPNAV_DRIVER_H
+ 
+-#if defined(__linux__) || defined(__FreeBSD__)
++#if defined(__linux__) || defined(__FreeBSD__) || defined(__EMSCRIPTEN__)
+ #include <spnav.h>
+ #endif
+ 
+diff --git a/common/view/view.cpp b/common/view/view.cpp
+index f1ab54b2..0972fd66 100644
+--- a/common/view/view.cpp
++++ b/common/view/view.cpp
+@@ -31,6 +31,7 @@
+ #include <wx/log.h>
+ 
+ #include <view/view.h>
++#include <kc_tool_thread.h>
+ #include <view/view_group.h>
+ #include <view/view_item.h>
+ #include <view/view_rtree.h>
+@@ -790,6 +791,8 @@ struct VIEW::UPDATE_COLOR_VISITOR
+ 
+ void VIEW::UpdateLayerColor( int aLayer )
+ {
++    KC_ON_MAIN_THREAD( UpdateLayerColor( aLayer ) );
++
+     // There is no point in updating non-cached layers
+     if( !IsCached( aLayer ) )
+         return;
+@@ -811,6 +814,8 @@ void VIEW::UpdateLayerColor( int aLayer )
+ 
+ void VIEW::UpdateAllLayersColor()
+ {
++    KC_ON_MAIN_THREAD( UpdateAllLayersColor() );
++
+     if( m_gal->IsVisible() )
+     {
+         GAL_UPDATE_CONTEXT ctx( m_gal );
+@@ -941,6 +946,8 @@ void VIEW::ClearTopLayers()
+ 
+ void VIEW::UpdateAllLayersOrder()
+ {
++    KC_ON_MAIN_THREAD( UpdateAllLayersOrder() );
++
+     SortOrderedLayers();
+ 
+     if( m_gal->IsVisible() )
+@@ -1517,6 +1524,8 @@ void VIEW::RecacheAllItems()
+ 
+ void VIEW::UpdateItems()
+ {
++    KC_ON_MAIN_THREAD( UpdateItems() );
++
+     if( !m_gal->IsVisible() || !m_gal->IsInitialized() )
+         return;
+ 
+diff --git a/common/widgets/grid_checkbox.cpp b/common/widgets/grid_checkbox.cpp
+index 9478e2db..35274da9 100644
+--- a/common/widgets/grid_checkbox.cpp
++++ b/common/widgets/grid_checkbox.cpp
+@@ -36,7 +36,7 @@
+ // the space between the cell edge and the checkbox mark
+ const int GRID_CELL_CHECKBOX_MARGIN = 2;
+ 
+-wxRect
++static wxRect
+ wxGetContentRect(wxSize contentSize,
+                  const wxRect& cellRect,
+                  int hAlign,
+diff --git a/eeschema/dialogs/dialog_sim_command.cpp b/eeschema/dialogs/dialog_sim_command.cpp
+index ce2c19a0..af9a8776 100644
+--- a/eeschema/dialogs/dialog_sim_command.cpp
++++ b/eeschema/dialogs/dialog_sim_command.cpp
+@@ -570,7 +570,7 @@ void DIALOG_SIM_COMMAND::updateDCSources( wxChar aType, wxChoice* aSource )
+ {
+     wxString prevSelection;
+ 
+-    if( !aSource->IsEmpty() && aSource->GetSelection() >= 0 )
++    if( aSource->GetCount() > 0 && aSource->GetSelection() >= 0 )
+         prevSelection = aSource->GetString( aSource->GetSelection() );
+ 
+     std::set<wxString> sourcesList;
+diff --git a/eeschema/sch_base_frame.cpp b/eeschema/sch_base_frame.cpp
+index 6d3a023d..d231f22a 100644
+--- a/eeschema/sch_base_frame.cpp
++++ b/eeschema/sch_base_frame.cpp
+@@ -349,7 +349,8 @@ void SCH_BASE_FRAME::ActivateGalCanvas()
+     {
+         if( !m_spaceMouse )
+         {
+-#if defined(__linux__) || defined(__FreeBSD__)
++#if defined(__EMSCRIPTEN__)   // browser build: no 3D mouse in a tab
++#elif defined(__linux__) || defined(__FreeBSD__)
+             m_spaceMouse = std::make_unique<SPNAV_2D_PLUGIN>( GetCanvas() );
+             m_spaceMouse->SetScale( schIUScale.IU_PER_MILS / pcbIUScale.IU_PER_MILS );
+ #else
+diff --git a/eeschema/sch_io/database/sch_io_database.cpp b/eeschema/sch_io/database/sch_io_database.cpp
+index 4af8f06a..46befef8 100644
+--- a/eeschema/sch_io/database/sch_io_database.cpp
++++ b/eeschema/sch_io/database/sch_io_database.cpp
+@@ -424,7 +424,9 @@ void SCH_IO_DATABASE::stopBackgroundRefresh()
+ 
+ void SCH_IO_DATABASE::backgroundRefreshWorker()
+ {
++#ifdef BS_THREAD_POOL_NATIVE_EXTENSIONS
+     BS::this_thread::set_os_thread_name( "dblib bg" );
++#endif
+ 
+     while( m_refreshRunning.load() )
+     {
+diff --git a/eeschema/sch_io/http_lib/sch_io_http_lib.cpp b/eeschema/sch_io/http_lib/sch_io_http_lib.cpp
+index d99dad34..a636113c 100644
+--- a/eeschema/sch_io/http_lib/sch_io_http_lib.cpp
++++ b/eeschema/sch_io/http_lib/sch_io_http_lib.cpp
+@@ -96,7 +96,9 @@ void SCH_IO_HTTP_LIB::startBackgroundRefresh()
+ 
+ void SCH_IO_HTTP_LIB::backgroundRefreshWorker()
+ {
++#ifdef BS_THREAD_POOL_NATIVE_EXTENSIONS
+     BS::this_thread::set_os_thread_name( "httplib bg" );
++#endif
+ 
+     while( m_refreshRunning.load() )
+     {
+diff --git a/gerbview/gerbview_frame.cpp b/gerbview/gerbview_frame.cpp
+index 1ade9588..4c53927e 100644
+--- a/gerbview/gerbview_frame.cpp
++++ b/gerbview/gerbview_frame.cpp
+@@ -1064,7 +1064,8 @@ void GERBVIEW_FRAME::ActivateGalCanvas()
+     {
+         if( !m_spaceMouse )
+         {
+-#if defined(__linux__) || defined(__FreeBSD__)
++#if defined(__EMSCRIPTEN__)   // browser build: no 3D mouse in a tab
++#elif defined(__linux__) || defined(__FreeBSD__)
+             m_spaceMouse = std::make_unique<SPNAV_2D_PLUGIN>( galCanvas );
+             m_spaceMouse->SetScale( gerbIUScale.IU_PER_MILS / pcbIUScale.IU_PER_MILS );
+ #else
+diff --git a/include/dialogs/dialog_book_reporter.h b/include/dialogs/dialog_book_reporter.h
+index a334f35d..1fbc2ad4 100644
+--- a/include/dialogs/dialog_book_reporter.h
++++ b/include/dialogs/dialog_book_reporter.h
+@@ -24,6 +24,7 @@
+ #pragma once
+ 
+ #include <kiid.h>
++#include <wx/panel.h>
+ #include <dialogs/dialog_book_reporter_base.h>
+ 
+ class KIWAY_PLAYER;
+diff --git a/include/gal/opengl/opengl_gal.h b/include/gal/opengl/opengl_gal.h
+index 78b51656..44dff88e 100644
+--- a/include/gal/opengl/opengl_gal.h
++++ b/include/gal/opengl/opengl_gal.h
+@@ -353,7 +353,12 @@ private:
+     wxEvtHandler*           m_mouseListener;
+     wxEvtHandler*           m_paintListener;
+ 
++#ifdef __EMSCRIPTEN__
++    // Every browser canvas has its own WebGL context and WebGL contexts share no objects: each GAL owns its font texture
++    GLuint                  g_fontTexture;      ///< Bitmap font texture handle (this canvas's context)
++#else
+     static GLuint           g_fontTexture;      ///< Bitmap font texture handle (shared)
++#endif
+ 
+     // Vertex buffer objects related fields
+     typedef std::unordered_map< unsigned int, std::shared_ptr<VERTEX_ITEM> > GROUPS_MAP;
+@@ -382,7 +387,11 @@ private:
+ 
+     // Internal flags
+     bool                    m_isFramebufferInitialized; ///< Are the framebuffers initialized?
++#ifdef __EMSCRIPTEN__
++    bool                    m_isBitmapFontLoaded;       ///< Is the bitmap font texture loaded (this context)?
++#else
+     static bool             m_isBitmapFontLoaded;       ///< Is the bitmap font texture loaded?
++#endif
+     bool                    m_isBitmapFontInitialized;  ///< Is the shader set to use bitmap fonts?
+     bool                    m_isInitialized;            ///< Basic initialization flag, has to be
+                                                         ///< done when the window is visible
+diff --git a/include/kc_tool_thread.h b/include/kc_tool_thread.h
+new file mode 100644
+index 00000000..a9f5429b
+--- /dev/null
++++ b/include/kc_tool_thread.h
+@@ -0,0 +1,38 @@
++/*
++ * Browser build only (__EMSCRIPTEN__). KiCad's tools are coroutines; in the browser each one is a thread of its own
++ * (the spike's stubs/libcontext_threads.cpp), while the WebGL context and the wx port's JavaScript state exist only on
++ * the program's main thread. Work that touches them and is asked for by a tool (a repaint after Ctrl+A, a rotate, a
++ * delete; a layer colour change; a resize) is carried out on the main thread while the tool waits, the way the wx
++ * port's EM_ASM calls already are. On the main thread, and in every other build, these do nothing.
++ */
++#pragma once
++
++#ifdef __EMSCRIPTEN__
++#include <type_traits>
++
++extern "C" bool kc_on_tool_thread();
++extern "C" void kc_run_on_host( void ( *aFn )( void* ), void* aArg );
++
++/// Run aWork on the main thread when called from a tool thread. Returns true when it ran there (the caller returns).
++template <typename F>
++inline bool KcRunOnMainThread( F&& aWork )
++{
++    if( !kc_on_tool_thread() )
++        return false;
++
++    using W = std::remove_reference_t<F>;
++    kc_run_on_host( []( void* aPtr ) { ( *static_cast<W*>( aPtr ) )(); }, (void*) &aWork );
++    return true;
++}
++
++#define KC_ON_MAIN_THREAD( call ) if( KcRunOnMainThread( [&]() { call; } ) ) return
++#define KC_ON_MAIN_THREAD_R( type, call )                                                                              \
++    {                                                                                                                  \
++        type kc_r{};                                                                                                   \
++        if( KcRunOnMainThread( [&]() { kc_r = call; } ) )                                                              \
++            return kc_r;                                                                                               \
++    }
++#else
++#define KC_ON_MAIN_THREAD( call )
++#define KC_ON_MAIN_THREAD_R( type, call )
++#endif
+diff --git a/include/kiface_base.h b/include/kiface_base.h
+index c0131b64..2ac37abe 100644
+--- a/include/kiface_base.h
++++ b/include/kiface_base.h
+@@ -133,4 +133,13 @@ private:
+ /// Global KIFACE_BASE "get" accessor.
+ KIFACE_BASE& Kiface();
+ 
++class wxWindow;
++
++/**
++ * The face of the editor whose frame holds \a aWindow (the window itself or a parent), or nullptr when that frame
++ * is no editor's (the project manager). Common code asks this instead of Kiface(): in the browser build every editor
++ * is linked into one program and Kiface() is each editor's own name for its face.
++ */
++KIFACE_BASE* FrameKiface( const wxWindow* aWindow );
++
+ #endif // KIFACE_BASE_H
+diff --git a/include/kiway.h b/include/kiway.h
+index 1fd67a10..f1c54722 100644
+--- a/include/kiway.h
++++ b/include/kiway.h
+@@ -115,7 +115,7 @@
+ #define KIFACE_INSTANCE_NAME_AND_VERSION   "KIFACE_1"
+ 
+ #ifndef SWIG
+-#if defined(__linux__) || defined(__FreeBSD__)
++#if defined(__linux__) || defined(__FreeBSD__) || defined(__EMSCRIPTEN__)
+  #define LIB_ENV_VAR    wxT( "LD_LIBRARY_PATH" )
+ #elif defined(__WXMAC__)
+  #define LIB_ENV_VAR    wxT( "DYLD_LIBRARY_PATH" )
+diff --git a/include/plugins/3d/3d_plugin.h b/include/plugins/3d/3d_plugin.h
+index 4197d4b9..8e0f90c3 100644
+--- a/include/plugins/3d/3d_plugin.h
++++ b/include/plugins/3d/3d_plugin.h
+@@ -1,3 +1,4 @@
++// kicad-play-5 3d-view: exported names through KIPLUGIN_FN (plugins/kicad_plugin.h)
+ /*
+  * This program source code file is part of KiCad, a free EDA CAD application.
+  *
+@@ -43,13 +44,13 @@
+ #include "plugins/kicad_plugin.h"
+ 
+ 
+-KICAD_PLUGIN_EXPORT char const* GetKicadPluginClass( void )
++KICAD_PLUGIN_EXPORT char const* KIPLUGIN_FN( GetKicadPluginClass )( void )
+ {
+     return KICAD_PLUGIN_CLASS;
+ }
+ 
+ 
+-KICAD_PLUGIN_EXPORT void GetClassVersion( unsigned char* Major, unsigned char* Minor,
++KICAD_PLUGIN_EXPORT void KIPLUGIN_FN( GetClassVersion )( unsigned char* Major, unsigned char* Minor,
+                                           unsigned char* Patch, unsigned char* Revision )
+ {
+     if( Major )
+@@ -67,7 +68,7 @@ KICAD_PLUGIN_EXPORT void GetClassVersion( unsigned char* Major, unsigned char* M
+     return;
+ }
+ 
+-KICAD_PLUGIN_EXPORT bool CheckClassVersion( unsigned char Major, unsigned char Minor,
++KICAD_PLUGIN_EXPORT bool KIPLUGIN_FN( CheckClassVersion )( unsigned char Major, unsigned char Minor,
+                                             unsigned char Patch, unsigned char Revision )
+ {
+     if( Major != MAJOR )
+@@ -83,28 +84,28 @@ class SCENEGRAPH;
+ /**
+  * @return the number of extensions supported by the plugin.
+  */
+-KICAD_PLUGIN_EXPORT int GetNExtensions( void );
++KICAD_PLUGIN_EXPORT int KIPLUGIN_FN( GetNExtensions )( void );
+ 
+ /**
+  * @param aIndex is the extension to return; valid values are 0 to GetNExtensions() - 1.
+  * @return the requested extension or a null string if aIndex was invalid.
+  */
+-KICAD_PLUGIN_EXPORT char const* GetModelExtension( int aIndex );
++KICAD_PLUGIN_EXPORT char const* KIPLUGIN_FN( GetModelExtension )( int aIndex );
+ 
+ /**
+  * @returns the number of file filters.
+  */
+-KICAD_PLUGIN_EXPORT int GetNFilters( void );
++KICAD_PLUGIN_EXPORT int KIPLUGIN_FN( GetNFilters )( void );
+ 
+ /**
+  * @return the file filter string for the given index.
+  */
+-KICAD_PLUGIN_EXPORT char const* GetFileFilter( int aIndex );
++KICAD_PLUGIN_EXPORT char const* KIPLUGIN_FN( GetFileFilter )( int aIndex );
+ 
+ /**
+  * @return true if the plugin can render a model, that is the Load() function is implemented.
+  */
+-KICAD_PLUGIN_EXPORT bool CanRender( void );
++KICAD_PLUGIN_EXPORT bool KIPLUGIN_FN( CanRender )( void );
+ 
+ /**
+  * Read a model file and creates a generic display structure.
+@@ -114,6 +115,6 @@ KICAD_PLUGIN_EXPORT bool CanRender( void );
+  *         and NULL if there is no rendering support for the model or there were problems reading
+  *         the model.
+  */
+-KICAD_PLUGIN_EXPORT SCENEGRAPH* Load( char const* aFileName );
++KICAD_PLUGIN_EXPORT SCENEGRAPH* KIPLUGIN_FN( Load )( char const* aFileName );
+ 
+ #endif  // PLUGIN_3D_H
+diff --git a/include/plugins/kicad_plugin.h b/include/plugins/kicad_plugin.h
+index acff0ded..ba3e42d9 100644
+--- a/include/plugins/kicad_plugin.h
++++ b/include/plugins/kicad_plugin.h
+@@ -1,3 +1,4 @@
++// kicad-play-5 3d-view: exported names through KIPLUGIN_FN (plugins/kicad_plugin.h)
+ /*
+  * This program source code file is part of KiCad, a free EDA CAD application.
+  *
+@@ -42,6 +43,19 @@
+     #endif
+ #endif
+ 
++// kicad-play-5 3d-view: a plugin linked into the program (the browser build: no shared libraries) is built with
++// KICAD_PLUGIN_BUILTIN=<prefix>_, so the exported names of several plugins do not collide; plugins/ldr finds them
++// in its table of built-in plugins. Everywhere else the names are as they were.
++#ifndef KIPLUGIN_FN
++#ifdef KICAD_PLUGIN_BUILTIN
++#define KIPLUGIN_CAT2( a, b ) a##b
++#define KIPLUGIN_CAT( a, b ) KIPLUGIN_CAT2( a, b )
++#define KIPLUGIN_FN( n ) KIPLUGIN_CAT( KICAD_PLUGIN_BUILTIN, n )
++#else
++#define KIPLUGIN_FN( n ) n
++#endif
++#endif
++
+ /**
+  * Return the name of the implemented plugin class, for example 3DPLUGIN.
+  *
+@@ -50,7 +64,7 @@
+  *
+  * @return is the NULL-terminated UTF-8 string representing the plugin class.
+  */
+-KICAD_PLUGIN_EXPORT char const* GetKicadPluginClass( void );
++KICAD_PLUGIN_EXPORT char const* KIPLUGIN_FN( GetKicadPluginClass )( void );
+ 
+ /**
+  * Retrieve the version of the Plugin Class.
+@@ -64,7 +78,7 @@ KICAD_PLUGIN_EXPORT char const* GetKicadPluginClass( void );
+  * @param Revision will hold the Plugin Class Revision.
+  * @param Patch will hold the Plugin Class Patch level.
+  */
+-KICAD_PLUGIN_EXPORT void GetClassVersion( unsigned char* Major, unsigned char* Minor,
++KICAD_PLUGIN_EXPORT void KIPLUGIN_FN( GetClassVersion )( unsigned char* Major, unsigned char* Minor,
+                                           unsigned char* Patch, unsigned char* Revision );
+ 
+ /**
+@@ -76,7 +90,7 @@ KICAD_PLUGIN_EXPORT void GetClassVersion( unsigned char* Major, unsigned char* M
+  * Plugin Loader shall reject any Plugin with a different Major number regardless of the return
+  * value of this function.
+  */
+-KICAD_PLUGIN_EXPORT bool CheckClassVersion( unsigned char Major, unsigned char Minor,
++KICAD_PLUGIN_EXPORT bool KIPLUGIN_FN( CheckClassVersion )( unsigned char Major, unsigned char Minor,
+                                             unsigned char Patch, unsigned char Revision );
+ 
+ /**
+@@ -87,7 +101,7 @@ KICAD_PLUGIN_EXPORT bool CheckClassVersion( unsigned char Major, unsigned char M
+  *
+  * @return is the NULL-terminated UTF-8 string representing the plugin name.
+  */
+-KICAD_PLUGIN_EXPORT const char* GetKicadPluginName( void );
++KICAD_PLUGIN_EXPORT const char* KIPLUGIN_FN( GetKicadPluginName )( void );
+ 
+ 
+ /**
+@@ -100,7 +114,7 @@ KICAD_PLUGIN_EXPORT const char* GetKicadPluginName( void );
+  * @param Patch will hold the Plugin Patch level.
+  * @param Revision will hold the Plugin Revision.
+  */
+-KICAD_PLUGIN_EXPORT void GetPluginVersion( unsigned char* Major, unsigned char* Minor,
++KICAD_PLUGIN_EXPORT void KIPLUGIN_FN( GetPluginVersion )( unsigned char* Major, unsigned char* Minor,
+                                            unsigned char* Patch, unsigned char* Revision );
+ 
+ #endif  // KICAD_PLUGIN_H
+diff --git a/include/view/view_controls.h b/include/view/view_controls.h
+index cda852ca..cc1d2abe 100644
+--- a/include/view/view_controls.h
++++ b/include/view/view_controls.h
+@@ -359,7 +359,15 @@ public:
+      */
+     bool IsCursorWarpingEnabled() const
+     {
++#ifdef __EMSCRIPTEN__
++        // A browser page cannot move the pointer (KIPLATFORM::UI::WarpPointer fails), so "center and warp
++        // cursor on zoom" cannot keep the zoomed point under it: zoom about the cursor instead, as with the
++        // setting off. With it on, every wheel notch moved the point under the cursor to the view centre while
++        // the cursor stayed put: the view drifted toward the top-left (kicad-gerbers kg7-14 -> kg7-16).
++        return false;
++#else
+         return m_settings.m_warpCursor;
++#endif
+     }
+ 
+     /**
+diff --git a/kicad/kicad.cpp b/kicad/kicad.cpp
+index 7a1a5baa..5c83800e 100644
+--- a/kicad/kicad.cpp
++++ b/kicad/kicad.cpp
+@@ -144,7 +144,21 @@ bool PGM_KICAD::OnPgmInit()
+ 
+     wxString frameName;
+ 
+-    if( parser.Found( "frame", &frameName ) )
++#ifdef __EMSCRIPTEN__
++    // browser build: a board or schematic given alone opens in its editor, as the desktop's file association starts
++    // pcbnew or eeschema with it (here they are this program's --frame pcb / --frame sch)
++    if( !parser.Found( "frame" ) && parser.GetParamCount() == 1 )
++    {
++        wxString ext = wxFileName( parser.GetParam( 0 ) ).GetExt();
++
++        if( ext == FILEEXT::KiCadPcbFileExtension )
++            frameName = wxT( "pcb" );
++        else if( ext == FILEEXT::KiCadSchematicFileExtension )
++            frameName = wxT( "sch" );
++    }
++#endif
++
++    if( parser.Found( "frame", &frameName ) || !frameName.IsEmpty() )
+     {
+         appType = FRAME_T_COUNT;
+ 
+@@ -265,6 +279,10 @@ bool PGM_KICAD::OnPgmInit()
+ 
+         STARTWIZARD startWizard;
+         startWizard.CheckAndRun( frame );
++#ifdef __EMSCRIPTEN__
++        // kicad-play-7 settings-save: a tab never exits, so the settings are written now, not at exit
++        Pgm().GetSettingsManager().Save();
++#endif
+     }
+     else
+     {
+diff --git a/kicad/project_tree_item.cpp b/kicad/project_tree_item.cpp
+index d8488f38..e2558ec3 100644
+--- a/kicad/project_tree_item.cpp
++++ b/kicad/project_tree_item.cpp
+@@ -27,6 +27,7 @@
+  */
+ 
+ 
++#include <launch_ext.h>
+ #include <wx/regex.h>
+ #include <wx/textfile.h>
+ #include <wx/filename.h>
+@@ -358,7 +359,7 @@ void PROJECT_TREE_ITEM::Activate( PROJECT_TREE_PANE* aTreePrjFrame )
+         break;
+ 
+     default:
+-        wxLaunchDefaultApplication( fullFileName );
++        LaunchExternal( fullFileName );   // browser build: a download
+         break;
+     }
+ }
+diff --git a/libs/kiplatform/CMakeLists.txt b/libs/kiplatform/CMakeLists.txt
+index 5d8dd529..b5337870 100644
+--- a/libs/kiplatform/CMakeLists.txt
++++ b/libs/kiplatform/CMakeLists.txt
+@@ -11,6 +11,11 @@ elseif( KICAD_WX_PORT STREQUAL msw )
+         port/wxmsw/ui.cpp
+         port/wxmsw/webview.cpp
+         )
++elseif( KICAD_WX_PORT STREQUAL wasm )
++    set( PLATFORM_SRCS
++        ${KICAD_WASM_PLATFORM_DIR}/ui.cpp
++        ${KICAD_WASM_PLATFORM_DIR}/webview.cpp
++        )
+ elseif( KICAD_WX_PORT STREQUAL gtk )
+     set( PLATFORM_SRCS
+         port/wxgtk/ui.cpp
+@@ -72,6 +77,17 @@ elseif( WIN32 )
+         "imm32"
+         "windowsapp"
+         )
++elseif( KICAD_WX_PORT STREQUAL wasm )
++    list( APPEND PLATFORM_SRCS
++        ${KICAD_WASM_PLATFORM_DIR}/app.cpp
++        os/unix/drivers.cpp
++        ${KICAD_WASM_PLATFORM_DIR}/environment.cpp
++        os/unix/io.cpp
++        os/unix/policy.cpp
++        ${KICAD_WASM_PLATFORM_DIR}/secrets.cpp
++        os/unix/sysinfo.cpp
++        ${KICAD_WASM_PLATFORM_DIR}/printing.cpp
++        )
+ elseif( UNIX )
+     list( APPEND PLATFORM_SRCS
+         os/unix/app.cpp
+diff --git a/pagelayout_editor/pl_editor_frame.cpp b/pagelayout_editor/pl_editor_frame.cpp
+index 351eec1c..3d79ae44 100644
+--- a/pagelayout_editor/pl_editor_frame.cpp
++++ b/pagelayout_editor/pl_editor_frame.cpp
+@@ -243,7 +243,8 @@ PL_EDITOR_FRAME::PL_EDITOR_FRAME( KIWAY* aKiway, wxWindow* aParent ) :
+     {
+         if( !m_spaceMouse )
+         {
+-#if defined(__linux__) || defined(__FreeBSD__)
++#if defined(__EMSCRIPTEN__)   // browser build: no 3D mouse in a tab
++#elif defined(__linux__) || defined(__FreeBSD__)
+             m_spaceMouse = std::make_unique<SPNAV_2D_PLUGIN>( GetCanvas() );
+             m_spaceMouse->SetScale( drawSheetIUScale.IU_PER_MILS / pcbIUScale.IU_PER_MILS );
+ #else
+diff --git a/pcbnew/dialogs/dialog_board_stats_job.cpp b/pcbnew/dialogs/dialog_board_stats_job.cpp
+index 54926a1b..90d71eca 100644
+--- a/pcbnew/dialogs/dialog_board_stats_job.cpp
++++ b/pcbnew/dialogs/dialog_board_stats_job.cpp
+@@ -23,6 +23,7 @@
+ #include <map>
+ #include <i18n_utility.h>
+ #include <wildcards_and_files_ext.h>
++#include <wx/filename.h>
+ 
+ static std::map<JOB_EXPORT_PCB_STATS::OUTPUT_FORMAT, wxString> outputFormatMap = {
+     { JOB_EXPORT_PCB_STATS::OUTPUT_FORMAT::REPORT, _HKI( "Report" ) },
+diff --git a/pcbnew/dialogs/dialog_export_step.cpp b/pcbnew/dialogs/dialog_export_step.cpp
+index fc34f8a8..ed4dd95b 100644
+--- a/pcbnew/dialogs/dialog_export_step.cpp
++++ b/pcbnew/dialogs/dialog_export_step.cpp
+@@ -55,6 +55,8 @@
+ #include <core/map_helpers.h>
+ #include <settings/settings_manager.h>
+ #include <jobs/job_export_pcb_3d.h>
++#include <exporters/step/exporter_step.h>
++#include <wx/utils.h>
+ 
+ #include <wx/filefn.h>
+ 
+@@ -587,6 +589,11 @@ void DIALOG_EXPORT_STEP::onExportButton( wxCommandEvent& aEvent )
+ 
+         m_editFrame->SetLastPath( LAST_PATH_STEP, fn.GetFullPath() );
+ 
++#ifdef __EMSCRIPTEN__
++        exportInProcess( fn.GetFullPath(), tolerance );
++        return;
++#endif
++
+         wxFileName appK2S( wxStandardPaths::Get().GetExecutablePath() );
+     #ifdef __WXMAC__
+         // On macOS, we have standalone applications inside the main bundle, so we handle that here:
+@@ -757,82 +764,123 @@ void DIALOG_EXPORT_STEP::onExportButton( wxCommandEvent& aEvent )
+     }
+     else
+     {
+-        m_job->SetConfiguredOutputPath( path );
+-        m_job->m_variant = getSelectedVariant();
+-        m_job->m_3dparams.m_NetFilter = m_txtNetFilter->GetValue();
+-        m_job->m_3dparams.m_ComponentFilter = getComponentFilter();
+-        m_job->m_3dparams.m_ExportBoardBody = m_cbExportBody->GetValue();
+-        m_job->m_3dparams.m_ExportComponents = m_cbExportComponents->GetValue();
+-        m_job->m_3dparams.m_ExportTracksVias = m_cbExportTracks->GetValue();
+-        m_job->m_3dparams.m_ExportPads = m_cbExportPads->GetValue();
+-        m_job->m_3dparams.m_ExportZones = m_cbExportZones->GetValue();
+-        m_job->m_3dparams.m_ExportInnerCopper = m_cbExportInnerCopper->GetValue();
+-        m_job->m_3dparams.m_ExportSilkscreen = m_cbExportSilkscreen->GetValue();
+-        m_job->m_3dparams.m_ExportSoldermask = m_cbExportSoldermask->GetValue();
+-        m_job->m_3dparams.m_FuseShapes = m_cbFuseShapes->GetValue();
+-        m_job->m_3dparams.m_CutViasInBody = m_cbCutViasInBody->GetValue();
+-        m_job->m_3dparams.m_FillAllVias = m_cbFillAllVias->GetValue();
+-        m_job->m_3dparams.m_OptimizeStep = m_cbOptimizeStep->GetValue();
+-        m_job->m_3dparams.m_Overwrite = m_cbOverwriteFile->GetValue();
+-        m_job->m_3dparams.m_IncludeUnspecified = !m_cbRemoveUnspecified->GetValue();
+-        m_job->m_3dparams.m_IncludeDNP = !m_cbRemoveDNP->GetValue();
+-        m_job->m_3dparams.m_SubstModels = m_cbSubstModels->GetValue();
+-        m_job->m_3dparams.m_BoardOutlinesChainingEpsilon = tolerance;
+-
+-        if( auto formatChoice = get_opt( c_formatJobCommand, m_choiceFormat->GetSelection() ) )
+-        {
+-            m_job->SetStepFormat( *formatChoice );
+-        }
+-        else
+-        {
+-            wxASSERT_MSG(false, wxString::Format( "Unknown format value %d", m_choiceFormat->GetSelection() ) );
+-        }
++        fillJob( m_job, path, tolerance );
++        EndModal( wxID_OK );
++    }
++}
+ 
+ 
+-        // ensure the main format on the job is populated
+-        switch( m_job->m_3dparams.m_Format )
+-        {
+-        case EXPORTER_STEP_PARAMS::FORMAT::STEP:  m_job->m_format = JOB_EXPORT_PCB_3D::FORMAT::STEP;  break;
+-        case EXPORTER_STEP_PARAMS::FORMAT::STEPZ: m_job->m_format = JOB_EXPORT_PCB_3D::FORMAT::STEPZ; break;
+-        case EXPORTER_STEP_PARAMS::FORMAT::GLB:   m_job->m_format = JOB_EXPORT_PCB_3D::FORMAT::GLB;   break;
+-        case EXPORTER_STEP_PARAMS::FORMAT::XAO:   m_job->m_format = JOB_EXPORT_PCB_3D::FORMAT::XAO;   break;
+-        case EXPORTER_STEP_PARAMS::FORMAT::BREP:  m_job->m_format = JOB_EXPORT_PCB_3D::FORMAT::BREP;  break;
+-        case EXPORTER_STEP_PARAMS::FORMAT::PLY:   m_job->m_format = JOB_EXPORT_PCB_3D::FORMAT::PLY;   break;
+-        case EXPORTER_STEP_PARAMS::FORMAT::STL:   m_job->m_format = JOB_EXPORT_PCB_3D::FORMAT::STL;   break;
+-        case EXPORTER_STEP_PARAMS::FORMAT::U3D:   m_job->m_format = JOB_EXPORT_PCB_3D::FORMAT::U3D;   break;
+-        case EXPORTER_STEP_PARAMS::FORMAT::PDF:   m_job->m_format = JOB_EXPORT_PCB_3D::FORMAT::PDF;   break;
+-        }
++void DIALOG_EXPORT_STEP::fillJob( JOB_EXPORT_PCB_3D* aJob, const wxString& aPath, double aTolerance )
++{
++    aJob->SetConfiguredOutputPath( aPath );
++    aJob->m_variant = getSelectedVariant();
++    aJob->m_3dparams.m_NetFilter = m_txtNetFilter->GetValue();
++    aJob->m_3dparams.m_ComponentFilter = getComponentFilter();
++    aJob->m_3dparams.m_ExportBoardBody = m_cbExportBody->GetValue();
++    aJob->m_3dparams.m_ExportComponents = m_cbExportComponents->GetValue();
++    aJob->m_3dparams.m_ExportTracksVias = m_cbExportTracks->GetValue();
++    aJob->m_3dparams.m_ExportPads = m_cbExportPads->GetValue();
++    aJob->m_3dparams.m_ExportZones = m_cbExportZones->GetValue();
++    aJob->m_3dparams.m_ExportInnerCopper = m_cbExportInnerCopper->GetValue();
++    aJob->m_3dparams.m_ExportSilkscreen = m_cbExportSilkscreen->GetValue();
++    aJob->m_3dparams.m_ExportSoldermask = m_cbExportSoldermask->GetValue();
++    aJob->m_3dparams.m_FuseShapes = m_cbFuseShapes->GetValue();
++    aJob->m_3dparams.m_CutViasInBody = m_cbCutViasInBody->GetValue();
++    aJob->m_3dparams.m_FillAllVias = m_cbFillAllVias->GetValue();
++    aJob->m_3dparams.m_OptimizeStep = m_cbOptimizeStep->GetValue();
++    aJob->m_3dparams.m_Overwrite = m_cbOverwriteFile->GetValue();
++    aJob->m_3dparams.m_IncludeUnspecified = !m_cbRemoveUnspecified->GetValue();
++    aJob->m_3dparams.m_IncludeDNP = !m_cbRemoveDNP->GetValue();
++    aJob->m_3dparams.m_SubstModels = m_cbSubstModels->GetValue();
++    aJob->m_3dparams.m_BoardOutlinesChainingEpsilon = aTolerance;
++
++    if( auto formatChoice = get_opt( c_formatJobCommand, m_choiceFormat->GetSelection() ) )
++    {
++        aJob->SetStepFormat( *formatChoice );
++    }
++    else
++    {
++        wxASSERT_MSG(false, wxString::Format( "Unknown format value %d", m_choiceFormat->GetSelection() ) );
++    }
+ 
+-        m_job->m_3dparams.m_UseDrillOrigin = false;
+-        m_job->m_3dparams.m_UseGridOrigin = false;
+-        m_job->m_3dparams.m_UseDefinedOrigin = false;
+-        m_job->m_3dparams.m_UsePcbCenterOrigin = false;
+ 
+-        // VRML export reads m_Origin only when this is set, and otherwise takes the live board
+-        // center, which is what the board center mode wants
+-        m_job->m_hasUserOrigin = m_rbUserDefinedOrigin->GetValue();
++    // ensure the main format on the job is populated
++    switch( aJob->m_3dparams.m_Format )
++    {
++    case EXPORTER_STEP_PARAMS::FORMAT::STEP:  aJob->m_format = JOB_EXPORT_PCB_3D::FORMAT::STEP;  break;
++    case EXPORTER_STEP_PARAMS::FORMAT::STEPZ: aJob->m_format = JOB_EXPORT_PCB_3D::FORMAT::STEPZ; break;
++    case EXPORTER_STEP_PARAMS::FORMAT::GLB:   aJob->m_format = JOB_EXPORT_PCB_3D::FORMAT::GLB;   break;
++    case EXPORTER_STEP_PARAMS::FORMAT::XAO:   aJob->m_format = JOB_EXPORT_PCB_3D::FORMAT::XAO;   break;
++    case EXPORTER_STEP_PARAMS::FORMAT::BREP:  aJob->m_format = JOB_EXPORT_PCB_3D::FORMAT::BREP;  break;
++    case EXPORTER_STEP_PARAMS::FORMAT::PLY:   aJob->m_format = JOB_EXPORT_PCB_3D::FORMAT::PLY;   break;
++    case EXPORTER_STEP_PARAMS::FORMAT::STL:   aJob->m_format = JOB_EXPORT_PCB_3D::FORMAT::STL;   break;
++    case EXPORTER_STEP_PARAMS::FORMAT::U3D:   aJob->m_format = JOB_EXPORT_PCB_3D::FORMAT::U3D;   break;
++    case EXPORTER_STEP_PARAMS::FORMAT::PDF:   aJob->m_format = JOB_EXPORT_PCB_3D::FORMAT::PDF;   break;
++    }
+ 
+-        if( m_rbDrillAndPlotOrigin->GetValue() )
+-        {
+-            m_job->m_3dparams.m_UseDrillOrigin = true;
+-        }
+-        else if( m_rbGridOrigin->GetValue() )
+-        {
+-            m_job->m_3dparams.m_UseGridOrigin = true;
+-        }
+-        else if( m_rbUserDefinedOrigin->GetValue() )
+-        {
+-            m_job->m_3dparams.m_UseDefinedOrigin = true;
+-            m_job->m_3dparams.m_Origin = VECTOR2D( m_originX.GetIntValue(), m_originY.GetIntValue() );
+-        }
+-        else if( m_rbBoardCenterOrigin->GetValue() )
+-        {
+-            BOX2I bbox = m_editFrame->GetBoard()->ComputeBoundingBox( true, true );
++    aJob->m_3dparams.m_UseDrillOrigin = false;
++    aJob->m_3dparams.m_UseGridOrigin = false;
++    aJob->m_3dparams.m_UseDefinedOrigin = false;
++    aJob->m_3dparams.m_UsePcbCenterOrigin = false;
+ 
+-            m_job->m_3dparams.m_UsePcbCenterOrigin = true;
+-            m_job->m_3dparams.m_Origin = VECTOR2D( bbox.GetCenter() );
+-        }
++    // VRML export reads m_Origin only when this is set, and otherwise takes the live board
++    // center, which is what the board center mode wants
++    aJob->m_hasUserOrigin = m_rbUserDefinedOrigin->GetValue();
+ 
+-        EndModal( wxID_OK );
++    if( m_rbDrillAndPlotOrigin->GetValue() )
++    {
++        aJob->m_3dparams.m_UseDrillOrigin = true;
++    }
++    else if( m_rbGridOrigin->GetValue() )
++    {
++        aJob->m_3dparams.m_UseGridOrigin = true;
++    }
++    else if( m_rbUserDefinedOrigin->GetValue() )
++    {
++        aJob->m_3dparams.m_UseDefinedOrigin = true;
++        aJob->m_3dparams.m_Origin = VECTOR2D( m_originX.GetIntValue(), m_originY.GetIntValue() );
++    }
++    else if( m_rbBoardCenterOrigin->GetValue() )
++    {
++        BOX2I bbox = m_editFrame->GetBoard()->ComputeBoundingBox( true, true );
++
++        aJob->m_3dparams.m_UsePcbCenterOrigin = true;
++        aJob->m_3dparams.m_Origin = VECTOR2D( bbox.GetCenter() );
+     }
+ }
++
++
++#ifdef __EMSCRIPTEN__
++void DIALOG_EXPORT_STEP::exportInProcess( const wxString& aPath, double aTolerance )
++{
++    // A browser tab runs no second program, so kicad-cli is not there: the open board is
++    // exported here, with the parameters a job of this dialog would hand to kicad-cli
++    // (PCBNEW_JOBS_HANDLER::JobExportStep)
++    JOB_EXPORT_PCB_3D job;
++    fillJob( &job, aPath, aTolerance );
++
++    BOARD*   board = m_editFrame->GetBoard();
++    wxString previousVariant = board->GetCurrentVariant();
++
++    if( !job.m_variant.IsEmpty() )
++        board->SetCurrentVariant( job.m_variant );
++
++    WX_STRING_REPORTER reporter;
++    bool               success;
++
++    {
++        wxBusyCursor  busy;
++        EXPORTER_STEP exporter( board, job.m_3dparams, &reporter );
++        exporter.m_outputFile = aPath;
++        success = exporter.Export();
++    }
++
++    if( !job.m_variant.IsEmpty() )
++        board->SetCurrentVariant( previousVariant );
++
++    if( success )
++        DisplayInfoMessage( this, wxString::Format( _( "Exported '%s'." ), aPath ), reporter.GetMessages() );
++    else
++        DisplayErrorMessage( this, _( "Export failed." ), reporter.GetMessages() );
++}
++#endif
+diff --git a/pcbnew/dialogs/dialog_export_step.h b/pcbnew/dialogs/dialog_export_step.h
+index 19f20aa3..6976782e 100644
+--- a/pcbnew/dialogs/dialog_export_step.h
++++ b/pcbnew/dialogs/dialog_export_step.h
+@@ -88,6 +88,17 @@ protected:
+      */
+     wxString getComponentFilter() const;
+ 
++    /**
++     * Fill \a aJob from the dialog's controls, the output going to \a aPath and board outlines
++     * chained within \a aTolerance mm.
++     */
++    void fillJob( JOB_EXPORT_PCB_3D* aJob, const wxString& aPath, double aTolerance );
++
++#ifdef __EMSCRIPTEN__
++    /// Export the open board to \a aPath in this program (no kicad-cli in a browser tab).
++    void exportInProcess( const wxString& aPath, double aTolerance );
++#endif
++
+ private:
+     PCB_EDIT_FRAME*    m_editFrame;
+     JOB_EXPORT_PCB_3D* m_job;
+diff --git a/pcbnew/dialogs/dialog_export_step_base.cpp b/pcbnew/dialogs/dialog_export_step_base.cpp
+index e23dc293..2f96e656 100644
+--- a/pcbnew/dialogs/dialog_export_step_base.cpp
++++ b/pcbnew/dialogs/dialog_export_step_base.cpp
+@@ -177,7 +177,6 @@ DIALOG_EXPORT_STEP_BASE::DIALOG_EXPORT_STEP_BASE( wxWindow* parent, wxWindowID i
+ 	sbCoordinates = new wxStaticBoxSizer( new wxStaticBox( this, wxID_ANY, _("Coordinates") ), wxVERTICAL );
+ 
+ 	m_rbDrillAndPlotOrigin = new wxRadioButton( sbCoordinates->GetStaticBox(), wxID_ANY, _("Drill/place file origin"), wxDefaultPosition, wxDefaultSize, wxRB_GROUP );
+-	m_rbDrillAndPlotOrigin->SetValue( true );
+ 	sbCoordinates->Add( m_rbDrillAndPlotOrigin, 0, wxTOP|wxRIGHT|wxLEFT, 5 );
+ 
+ 	m_rbGridOrigin = new wxRadioButton( sbCoordinates->GetStaticBox(), wxID_ANY, _("Grid origin"), wxDefaultPosition, wxDefaultSize, 0 );
+@@ -187,6 +186,7 @@ DIALOG_EXPORT_STEP_BASE::DIALOG_EXPORT_STEP_BASE( wxWindow* parent, wxWindowID i
+ 	sbCoordinates->Add( m_rbUserDefinedOrigin, 0, wxTOP|wxRIGHT|wxLEFT, 5 );
+ 
+ 	m_rbBoardCenterOrigin = new wxRadioButton( sbCoordinates->GetStaticBox(), wxID_ANY, _("Board center origin"), wxDefaultPosition, wxDefaultSize, 0 );
++	m_rbBoardCenterOrigin->SetValue( true );
+ 	sbCoordinates->Add( m_rbBoardCenterOrigin, 0, wxALL, 5 );
+ 
+ 
+diff --git a/pcbnew/dialogs/dialog_export_step_base.fbp b/pcbnew/dialogs/dialog_export_step_base.fbp
+index 2877344a..a08a314e 100644
+--- a/pcbnew/dialogs/dialog_export_step_base.fbp
++++ b/pcbnew/dialogs/dialog_export_step_base.fbp
+@@ -1907,7 +1907,7 @@
+                         <property name="validator_style">wxFILTER_NONE</property>
+                         <property name="validator_type">wxDefaultValidator</property>
+                         <property name="validator_variable"></property>
+-                        <property name="value">1</property>
++                        <property name="value">0</property>
+                         <property name="window_extra_style"></property>
+                         <property name="window_name"></property>
+                         <property name="window_style"></property>
+@@ -2102,7 +2102,7 @@
+                         <property name="validator_style">wxFILTER_NONE</property>
+                         <property name="validator_type">wxDefaultValidator</property>
+                         <property name="validator_variable"></property>
+-                        <property name="value">0</property>
++                        <property name="value">1</property>
+                         <property name="window_extra_style"></property>
+                         <property name="window_name"></property>
+                         <property name="window_style"></property>
+diff --git a/pcbnew/dialogs/dialog_plot.cpp b/pcbnew/dialogs/dialog_plot.cpp
+index b1dc1e17..de2bd02c 100644
+--- a/pcbnew/dialogs/dialog_plot.cpp
++++ b/pcbnew/dialogs/dialog_plot.cpp
+@@ -58,6 +58,7 @@
+ #include <jobs/job_export_pcb_svg.h>
+ #include <plotters/plotters_pslike.h>
+ #include <pcb_plotter.h>
++#include <launch_ext.h>
+ 
+ 
+ LSEQ DIALOG_PLOT::s_lastAllLayersOrder;
+@@ -1360,7 +1361,7 @@ void DIALOG_PLOT::onOpenOutputDirectory( wxCommandEvent& event )
+         return;
+     }
+ 
+-    wxLaunchDefaultApplication( path );
++    LaunchExternal( path );   // browser build: the folder downloads as a zip
+ }
+ 
+ 
+diff --git a/pcbnew/pcb_base_frame.cpp b/pcbnew/pcb_base_frame.cpp
+index 193c54d6..304e5e92 100644
+--- a/pcbnew/pcb_base_frame.cpp
++++ b/pcbnew/pcb_base_frame.cpp
+@@ -1045,7 +1045,8 @@ void PCB_BASE_FRAME::ActivateGalCanvas()
+     {
+         if( !m_spaceMouse )
+         {
+-#if defined(__linux__) || defined(__FreeBSD__)
++#if defined(__EMSCRIPTEN__)   // browser build: no 3D mouse in a tab
++#elif defined(__linux__) || defined(__FreeBSD__)
+             m_spaceMouse = std::make_unique<SPNAV_2D_PLUGIN>( GetCanvas() );
+             m_spaceMouse->SetScale( 0.01 );
+ #else
+diff --git a/pcbnew/pcb_edit_frame.cpp b/pcbnew/pcb_edit_frame.cpp
+index 37b2b643..db7aab3f 100644
+--- a/pcbnew/pcb_edit_frame.cpp
++++ b/pcbnew/pcb_edit_frame.cpp
+@@ -41,6 +41,9 @@
+ #include <settings/color_settings.h>
+ #include <pgm_base.h>
+ #include <pcb_edit_frame.h>
++#include <env_vars.h>   // kicad-play-5 3d-view
++#include <common.h>
++#include <cstdio>
+ #include <3d_viewer/eda_3d_viewer_frame.h>
+ #include <api/api_plugin_manager.h>
+ #include <geometry/geometry_utils.h>
+@@ -1928,6 +1931,13 @@ void PCB_EDIT_FRAME::OnBoardLoaded()
+ 
+         if( unresolved > 0 )
+         {
++#ifdef __EMSCRIPTEN__
++            // kicad-play-5 3d-view (kicad-play-7): the console gets the count and where the stock models are expected
++            printf( "kicad: %d of the board's 3D model files were not found (%s = %s)\n", unresolved,
++                    ENV_VAR::GetVersionedEnvVarName( wxS( "3DMODEL_DIR" ) ).utf8_str().data(),
++                    ExpandEnvVarSubstitutions( wxString::Format( wxS( "${%s}" ),
++                            ENV_VAR::GetVersionedEnvVarName( wxS( "3DMODEL_DIR" ) ) ), &Prj() ).utf8_str().data() );
++#endif
+             wxString msg = wxString::Format( wxPLURAL( "%d WRL 3D model could not be matched "
+                                                        "to an equivalent STEP model.",
+                                                        "%d WRL 3D models could not be matched "
+diff --git a/pcbnew/pcbnew.cpp b/pcbnew/pcbnew.cpp
+index 81ad2eec..e0860a70 100644
+--- a/pcbnew/pcbnew.cpp
++++ b/pcbnew/pcbnew.cpp
+@@ -546,7 +546,12 @@ static struct IFACE : public KIFACE_BASE, public UNITS_PROVIDER
+         }
+ 
+         case KIFACE_SCRIPTING_LEGACY:
++#ifdef __EMSCRIPTEN__
++            // browser build: the SWIG module _pcbnew is not built yet; no address, so the scripting tool stays off
++            return nullptr;
++#else
+             return reinterpret_cast<void*>( PyInit__pcbnew );
++#endif
+ 
+         default:
+             return nullptr;
+diff --git a/pcbnew/python/scripting/pcb_scripting_tool.cpp b/pcbnew/python/scripting/pcb_scripting_tool.cpp
+index ab0d2acf..81186231 100644
+--- a/pcbnew/python/scripting/pcb_scripting_tool.cpp
++++ b/pcbnew/python/scripting/pcb_scripting_tool.cpp
+@@ -86,6 +86,10 @@ static PyObject* module_legacy_init( PyModuleDef* def )
+ }
+ 
+ 
++// browser build: set when the kiface has no Python module (then plugins are never loaded)
++static bool s_noPythonModule = false;
++
++
+ bool SCRIPTING_TOOL::Init()
+ {
+     PyLOCK    lock;
+@@ -96,6 +100,16 @@ bool SCRIPTING_TOOL::Init()
+         KIFACE* kiface = frame()->Kiway().KiFACE( KIWAY::FACE_PCB );
+         initfunc pcbnew_init = reinterpret_cast<initfunc>( kiface->IfaceOrAddress( KIFACE_SCRIPTING_LEGACY ) );
+ 
++        if( !pcbnew_init )
++        {
++            // no Python module in this build (browser build): the tool stays registered (a tool whose Init() fails is
++            // deleted but kept in the tool order, and setupTools() casts it) and loads no plugins
++            // a note for the console, not a message box at every start (the tab shows the program, not this choice)
++            fprintf( stderr, "Python module %s is not available in this build; plugins are not loaded\n", pymodule.c_str() );
++            s_noPythonModule = true;
++            return true;
++        }
++
+         // swig-4.4.0 implements PEP-489 multi-phase initialization.
+         // Handle both old single-phase and new multi-phase initialization.
+         // Modules that use multi-phase initialization will return a PyModuleDef, so then we force a legacy single-phase initialization.
+@@ -192,6 +206,9 @@ int SCRIPTING_TOOL::reloadPlugins( const TOOL_EVENT& aEvent )
+ 
+ void SCRIPTING_TOOL::callLoadPlugins()
+ {
++    if( s_noPythonModule )
++        return;
++
+     // Load pcbnew inside Python and load all the user plugins and package-based plugins
+     using namespace pybind11::literals;
+ 
+diff --git a/plugins/3d/oce/loadmodel.cpp b/plugins/3d/oce/loadmodel.cpp
+index 1e2435ce..7bb0ef07 100644
+--- a/plugins/3d/oce/loadmodel.cpp
++++ b/plugins/3d/oce/loadmodel.cpp
+@@ -35,6 +35,7 @@
+ #include <vector>
+ #include <wx/filename.h>
+ #include <wx/log.h>
++#include <cstdio>   // kicad-play-5 3d-view
+ #include <wx/stdpaths.h>
+ #include <wx/string.h>
+ #include <wx/utils.h>
+@@ -279,7 +280,8 @@ enum FormatType
+ };
+ 
+ 
+-FormatType fileType( const char* aFileName )
++// kicad-play-5 3d-view: file-local (the exporters have helpers of these names)
++static FormatType fileType( const char* aFileName )
+ {
+     wxFileName fname( wxString::FromUTF8Unchecked( aFileName ) );
+     wxFFileInputStream ifile( fname.GetFullPath() );
+@@ -389,7 +391,7 @@ static wxString getLabelName( const TDF_Label& aLabel )
+  *
+  * @param aShape enum value to convert
+  */
+-std::string getShapeName( TopAbs_ShapeEnum aShape )
++static std::string getShapeName( TopAbs_ShapeEnum aShape )
+ {
+     switch( aShape )
+     {
+@@ -588,7 +590,12 @@ bool readSTEP( Handle(TDocStd_Document)& m_doc, const char* fname )
+     IFSelect_ReturnStatus stat  = reader.ReadFile( fname );
+ 
+     if( stat != IFSelect_RetDone )
++    {
++#ifdef __EMSCRIPTEN__
++        printf( "kicad: STEP %s: could not be read (status %d)\n", fname, (int) stat );
++#endif
+         return false;
++    }
+ 
+     // Enable user-defined shape precision
+     if( !Interface_Static::SetIVal( "read.precision.mode", 1 ) )
+@@ -605,6 +612,9 @@ bool readSTEP( Handle(TDocStd_Document)& m_doc, const char* fname )
+ 
+     if( !reader.Transfer( m_doc ) )
+     {
++#ifdef __EMSCRIPTEN__
++        printf( "kicad: STEP %s: the shapes could not be translated\n", fname );
++#endif
+         if( m_doc->CanClose() == CDM_CCS_OK )
+             m_doc->Close();
+ 
+@@ -614,6 +624,9 @@ bool readSTEP( Handle(TDocStd_Document)& m_doc, const char* fname )
+     // are there any shapes to translate?
+     if( reader.NbRootsForTransfer() < 1 )
+     {
++#ifdef __EMSCRIPTEN__
++        printf( "kicad: STEP %s: no shapes in the file\n", fname );
++#endif
+         if( m_doc->CanClose() == CDM_CCS_OK )
+             m_doc->Close();
+ 
+@@ -726,6 +739,9 @@ SCENEGRAPH* LoadModel( char const* filename )
+ 
+ 
+     default:
++#ifdef __EMSCRIPTEN__
++        printf( "kicad: 3D model %s: not a STEP or IGES file by its first lines (format %d)\n", filename, (int) modelFmt );
++#endif
+         if( m_app->CanClose( data.m_doc ) == CDM_CCS_OK )
+             m_app->Close( data.m_doc );
+ 
+@@ -765,6 +781,9 @@ SCENEGRAPH* LoadModel( char const* filename )
+ 
+     if( !ret )
+     {
++#ifdef __EMSCRIPTEN__
++        printf( "kicad: 3D model %s: %d top shapes, none gave a mesh\n", filename, (int) frshapes.Length() );
++#endif
+         if( m_app->CanClose( data.m_doc ) == CDM_CCS_OK )
+             m_app->Close( data.m_doc );
+ 
+diff --git a/plugins/3d/oce/oce.cpp b/plugins/3d/oce/oce.cpp
+index a6e2d929..e2539bb4 100644
+--- a/plugins/3d/oce/oce.cpp
++++ b/plugins/3d/oce/oce.cpp
+@@ -1,3 +1,4 @@
++// kicad-play-5 3d-view: exported names through KIPLUGIN_FN (plugins/kicad_plugin.h)
+ /*
+  * This program source code file is part of KiCad, a free EDA CAD application.
+  *
+@@ -41,13 +42,13 @@ SCENEGRAPH* LoadModel( char const* filename );
+ #define PLUGIN_OCE_REVNO 0
+ 
+ 
+-const char* GetKicadPluginName( void )
++const char* KIPLUGIN_FN( GetKicadPluginName )( void )
+ {
+     return "PLUGIN_3D_OCE";
+ }
+ 
+ 
+-void GetPluginVersion( unsigned char* Major,
++void KIPLUGIN_FN( GetPluginVersion )( unsigned char* Major,
+                        unsigned char* Minor, unsigned char* Patch, unsigned char* Revision )
+ {
+     if( Major )
+@@ -66,7 +67,10 @@ void GetPluginVersion( unsigned char* Major,
+ }
+ 
+ 
+-static struct FILE_DATA
++namespace
++{
++// kicad-play-5 3d-view: the type is this file's own (both loaders have one)
++struct FILE_DATA
+ {
+     std::vector<std::string> extensions;
+     std::vector<std::string> filters;
+@@ -94,15 +98,16 @@ static struct FILE_DATA
+     }
+ 
+ } file_data;
++}  // namespace
+ 
+ 
+-int GetNExtensions( void )
++int KIPLUGIN_FN( GetNExtensions )( void )
+ {
+     return file_data.extensions.size();
+ }
+ 
+ 
+-char const* GetModelExtension( int aIndex )
++char const* KIPLUGIN_FN( GetModelExtension )( int aIndex )
+ {
+     if( aIndex < 0 || aIndex >= int( file_data.extensions.size() ) )
+         return nullptr;
+@@ -111,13 +116,13 @@ char const* GetModelExtension( int aIndex )
+ }
+ 
+ 
+-int GetNFilters( void )
++int KIPLUGIN_FN( GetNFilters )( void )
+ {
+     return file_data.filters.size();
+ }
+ 
+ 
+-char const* GetFileFilter( int aIndex )
++char const* KIPLUGIN_FN( GetFileFilter )( int aIndex )
+ {
+     if( aIndex < 0 || aIndex >= int( file_data.filters.size() ) )
+         return nullptr;
+@@ -126,14 +131,14 @@ char const* GetFileFilter( int aIndex )
+ }
+ 
+ 
+-bool CanRender( void )
++bool KIPLUGIN_FN( CanRender )( void )
+ {
+     // this plugin supports rendering of IDF component outlines
+     return true;
+ }
+ 
+ 
+-SCENEGRAPH* Load( char const* aFileName )
++SCENEGRAPH* KIPLUGIN_FN( Load )( char const* aFileName )
+ {
+     if( nullptr == aFileName )
+         return nullptr;
+diff --git a/plugins/3d/vrml/vrml.cpp b/plugins/3d/vrml/vrml.cpp
+index 3ef2f56c..dde08537 100644
+--- a/plugins/3d/vrml/vrml.cpp
++++ b/plugins/3d/vrml/vrml.cpp
+@@ -1,3 +1,4 @@
++// kicad-play-5 3d-view: exported names through KIPLUGIN_FN (plugins/kicad_plugin.h)
+ /*
+  * This program source code file is part of KiCad, a free EDA CAD application.
+  *
+@@ -63,13 +64,13 @@
+ const wxChar* const traceVrmlPlugin = wxT( "KICAD_VRML_PLUGIN" );
+ 
+ 
+-const char* GetKicadPluginName( void )
++const char* KIPLUGIN_FN( GetKicadPluginName )( void )
+ {
+     return "PLUGIN_3D_VRML";
+ }
+ 
+ 
+-void GetPluginVersion( unsigned char* Major, unsigned char* Minor, unsigned char* Patch,
++void KIPLUGIN_FN( GetPluginVersion )( unsigned char* Major, unsigned char* Minor, unsigned char* Patch,
+                        unsigned char* Revision )
+ {
+     if( Major )
+@@ -88,7 +89,10 @@ void GetPluginVersion( unsigned char* Major, unsigned char* Minor, unsigned char
+ }
+ 
+ 
+-static struct FILE_DATA
++namespace
++{
++// kicad-play-5 3d-view: the type is this file's own (both loaders have one)
++struct FILE_DATA
+ {
+     std::vector<std::string> extensions;
+     std::vector<std::string> filters;
+@@ -108,15 +112,16 @@ static struct FILE_DATA
+     }
+ 
+ } file_data;
++}  // namespace
+ 
+ 
+-int GetNExtensions( void )
++int KIPLUGIN_FN( GetNExtensions )( void )
+ {
+     return file_data.extensions.size();
+ }
+ 
+ 
+-char const* GetModelExtension( int aIndex )
++char const* KIPLUGIN_FN( GetModelExtension )( int aIndex )
+ {
+     if( aIndex < 0 || aIndex >= int( file_data.extensions.size() ) )
+         return nullptr;
+@@ -125,13 +130,13 @@ char const* GetModelExtension( int aIndex )
+ }
+ 
+ 
+-int GetNFilters( void )
++int KIPLUGIN_FN( GetNFilters )( void )
+ {
+     return file_data.filters.size();
+ }
+ 
+ 
+-char const* GetFileFilter( int aIndex )
++char const* KIPLUGIN_FN( GetFileFilter )( int aIndex )
+ {
+     if( aIndex < 0 || aIndex >= int( file_data.filters.size() ) )
+         return nullptr;
+@@ -140,7 +145,7 @@ char const* GetFileFilter( int aIndex )
+ }
+ 
+ 
+-bool CanRender( void )
++bool KIPLUGIN_FN( CanRender )( void )
+ {
+     // this plugin supports rendering of IDF component outlines
+     return true;
+@@ -334,7 +339,7 @@ SCENEGRAPH* LoadX3D( const wxString& aFileName )
+ }
+ 
+ 
+-SCENEGRAPH* Load( char const* aFileName )
++SCENEGRAPH* KIPLUGIN_FN( Load )( char const* aFileName )
+ {
+     if( nullptr == aFileName )
+         return nullptr;
+diff --git a/plugins/ldr/pluginldr.cpp b/plugins/ldr/pluginldr.cpp
+index 9d3cb170..ac31a5cc 100644
+--- a/plugins/ldr/pluginldr.cpp
++++ b/plugins/ldr/pluginldr.cpp
+@@ -466,3 +466,58 @@ void KICAD_PLUGIN_LDR::GetPluginInfo( std::string& aPluginInfo )
+ {
+     aPluginInfo = m_pluginInfo;
+ }
++
++#ifdef __EMSCRIPTEN__
++// kicad-play-5 3d-view: the plugins linked into this program (spike/gui/programs.cmake builds plugins/3d/vrml and
++// plugins/3d/oce as static libraries with KICAD_PLUGIN_BUILTIN=vrml_ / oce_). The references are weak: a program
++// linked without a plugin has a null first entry and the plugin is simply absent.
++class SCENEGRAPH;
++
++#define KIPLUGIN_DECLARE( p ) \
++    extern "C" __attribute__(( weak )) char const* p##GetKicadPluginClass( void ); \
++    extern "C" __attribute__(( weak )) void p##GetClassVersion( unsigned char*, unsigned char*, unsigned char*, unsigned char* ); \
++    extern "C" __attribute__(( weak )) bool p##CheckClassVersion( unsigned char, unsigned char, unsigned char, unsigned char ); \
++    extern "C" __attribute__(( weak )) const char* p##GetKicadPluginName( void ); \
++    extern "C" __attribute__(( weak )) void p##GetPluginVersion( unsigned char*, unsigned char*, unsigned char*, unsigned char* ); \
++    extern "C" __attribute__(( weak )) int p##GetNExtensions( void ); \
++    extern "C" __attribute__(( weak )) char const* p##GetModelExtension( int ); \
++    extern "C" __attribute__(( weak )) int p##GetNFilters( void ); \
++    extern "C" __attribute__(( weak )) char const* p##GetFileFilter( int ); \
++    extern "C" __attribute__(( weak )) bool p##CanRender( void ); \
++    extern "C" __attribute__(( weak )) SCENEGRAPH* p##Load( char const* ); \
++
++KIPLUGIN_DECLARE( vrml_ )
++KIPLUGIN_DECLARE( oce_ )
++
++struct KIPLUGIN_BUILTIN_FN
++{
++    const char* name;
++    void*       fn;
++};
++
++#define KIPLUGIN_ROW( p, n ) { #n, (void*) &p##n }
++#define KIPLUGIN_TABLE( p ) { KIPLUGIN_ROW( p, GetKicadPluginClass ), KIPLUGIN_ROW( p, GetClassVersion ), KIPLUGIN_ROW( p, CheckClassVersion ), KIPLUGIN_ROW( p, GetKicadPluginName ), KIPLUGIN_ROW( p, GetPluginVersion ), KIPLUGIN_ROW( p, GetNExtensions ), KIPLUGIN_ROW( p, GetModelExtension ), KIPLUGIN_ROW( p, GetNFilters ), KIPLUGIN_ROW( p, GetFileFilter ), KIPLUGIN_ROW( p, CanRender ), KIPLUGIN_ROW( p, Load ), { nullptr, nullptr } }
++
++static const KIPLUGIN_BUILTIN_FN s_vrmlPlugin[] = KIPLUGIN_TABLE( vrml_ );
++static const KIPLUGIN_BUILTIN_FN s_ocePlugin[] = KIPLUGIN_TABLE( oce_ );
++
++bool KIPLUGIN_BUILTIN_LIB::Load( const wxString& aName, int )
++{
++    const KIPLUGIN_BUILTIN_FN* t = aName == wxT( "builtin:vrml" ) ? s_vrmlPlugin
++                                 : aName == wxT( "builtin:oce" )  ? s_ocePlugin
++                                                                    : nullptr;
++    m_table = ( t && t[0].fn ) ? t : nullptr;
++    return IsLoaded();
++}
++
++void* KIPLUGIN_BUILTIN_LIB::GetSymbol( const wxString& aName ) const
++{
++    for( const KIPLUGIN_BUILTIN_FN* r = m_table; r && r->name; r++ )
++    {
++        if( aName == r->name )
++            return r->fn;
++    }
++
++    return nullptr;
++}
++#endif
+diff --git a/plugins/ldr/pluginldr.h b/plugins/ldr/pluginldr.h
+index 89ef39d6..f3414ef8 100644
+--- a/plugins/ldr/pluginldr.h
++++ b/plugins/ldr/pluginldr.h
+@@ -40,6 +40,24 @@ extern const wxChar* const tracePluginLoader;
+ 
+ #define MASK_PLUGINLDR wxT( "PLUGIN_LOADER" )
+ 
++#ifdef __EMSCRIPTEN__
++// kicad-play-5 3d-view: a browser program cannot load a shared library; its plugins are linked in and opened by name
++// ("builtin:vrml", "builtin:oce") from a table of their functions (KIPLUGIN_FN in plugins/kicad_plugin.h)
++struct KIPLUGIN_BUILTIN_FN;
++
++class KIPLUGIN_BUILTIN_LIB
++{
++public:
++    bool  Load( const wxString& aName, int aFlags = 0 );
++    bool  IsLoaded() const { return m_table != nullptr; }
++    void* GetSymbol( const wxString& aName ) const;
++    void  Unload() { m_table = nullptr; }
++
++private:
++    const KIPLUGIN_BUILTIN_FN* m_table = nullptr;
++};
++#endif
++
+ 
+ // helper function to link functions in the plugin
+ #define LINK_ITEM( funcPtr, funcType, funcName ) \
+@@ -134,7 +152,11 @@ protected:
+     std::string m_error;    // error message
+ 
+     // the plugin loader
++#ifdef __EMSCRIPTEN__
++    KIPLUGIN_BUILTIN_LIB m_PluginLoader;
++#else
+     wxDynamicLibrary m_PluginLoader;
++#endif
+ 
+ private:
+     bool                ok;                       // set TRUE if all functions are linked
+diff --git a/thirdparty/glad/CMakeLists.txt b/thirdparty/glad/CMakeLists.txt
+index a5d58072..55f5822f 100644
+--- a/thirdparty/glad/CMakeLists.txt
++++ b/thirdparty/glad/CMakeLists.txt
+@@ -4,7 +4,10 @@ set(GLAD_SOURCES
+ 	${CMAKE_CURRENT_SOURCE_DIR}/src/gl.c
+ )
+ 
+-if(WIN32)
++if(EMSCRIPTEN)
++	# Browser build: OpenGL calls answered by WebGL2 and a small fixed-function stand-in
++	list(APPEND GLAD_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/gl_es_compat.cpp)
++elseif(WIN32)
+ 	list(APPEND GLAD_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/wgl.c)
+ elseif(UNIX AND NOT APPLE)
+ 	if(wxWidgets_HAS_GLX EQUAL 1 OR wxWidgets_HAS_EGL EQUAL 1)
+diff --git a/thirdparty/glad/src/gl.c b/thirdparty/glad/src/gl.c
+index 44ffe4ae..8ff7f0c4 100644
+--- a/thirdparty/glad/src/gl.c
++++ b/thirdparty/glad/src/gl.c
+@@ -10536,6 +10536,17 @@ static struct _glad_gl_userptr glad_gl_build_userptr(void *handle) {
+     return userptr;
+ }
+ 
++#ifdef __EMSCRIPTEN__
++/* Browser build: WebGL2 plus the desktop calls KiCad's drawing makes (gl_es_compat.cpp); nothing to dlopen. */
++void* kigl_es_proc(const char* name);
++
++int gladLoaderLoadGL(void) {
++    return gladLoadGL((GLADloadfunc) kigl_es_proc);
++}
++
++void gladLoaderUnloadGL(void) {
++}
++#else
+ int gladLoaderLoadGL(void) {
+     int version = 0;
+     void *handle;
+@@ -10565,6 +10576,7 @@ void gladLoaderUnloadGL(void) {
+         _glad_GL_loader_handle = NULL;
+     }
+ }
++#endif /* __EMSCRIPTEN__ */
+ 
+ #endif /* GLAD_GL */
+ 
+diff --git a/thirdparty/glad/src/gl_es_compat.cpp b/thirdparty/glad/src/gl_es_compat.cpp
+new file mode 100644
+index 00000000..a29ed77d
+--- /dev/null
++++ b/thirdparty/glad/src/gl_es_compat.cpp
+@@ -0,0 +1,2153 @@
++/*
++ * Browser build only (__EMSCRIPTEN__): KiCad's OpenGL drawing (GAL) on WebGL2 (OpenGL ES 3.0).
++ *
++ * glad asks kigl_es_proc() for every OpenGL entry point instead of dlopen'ing libGL. Names WebGL2 has go to
++ * Emscripten's own functions (emscripten_webgl_get_proc_address). The desktop-only calls the GAL makes get a
++ * small stand-in here:
++ *  - fixed function: matrix stacks, glBegin/glEnd, current colour and texture coordinate, client arrays
++ *    (vertex -> attribute 0, colour -> 1, texture coordinate -> 2), textured and alpha-tested drawing with no
++ *    program bound (a built-in program does it);
++ *  - GLSL 1.20 shaders: rewritten to GLSL ES 3.00 (gl_Vertex, gl_Color, gl_ModelViewProjectionMatrix, gl_TexCoord[0],
++ *    gl_FragColor, ftransform(), texture2D ... become the kg_ names declared at the top);
++ *  - several colour attachments on one framebuffer drawn to one at a time (glDrawBuffer / glReadBuffer): ES draws a
++ *    shader's output to attachment 0 only, so the chosen texture is attached at 0;
++ *  - glad's checks: the version is ES 3.0 and the two ARB extensions KiCad asks for are core in it;
++ *  - KiCad's client arrays go back lazily after a draw from our own buffers (applyArrays before KiCad's next draw,
++ *    deleted buffers known from glDeleteBuffers): no glIsBuffer round trips (kicad-play-10);
++ *  - for the 3D view: normals (attribute 3), fixed-function lighting done per vertex as the desktop does it (lights
++ *    in eye space, materials front and back, colour material, two-sided), the texture combine the models use for
++ *    their opacity, display lists (recorded calls; a glDrawArrays inside one keeps a copy of the client arrays),
++ *    glGetFloatv of the matrices, glPointSize; GLU's few GL calls (kigl_glu_*, see spike/gui/build-glu.sh).
++ * Every WebGL context (the board editor's canvas, a 3D view, a preview) has its own state: programs, buffers and
++ * display lists belong to one context.
++ */
++#ifdef __EMSCRIPTEN__
++
++#undef GL_GLES_PROTOTYPES
++#define GL_GLES_PROTOTYPES 1
++#include <GLES3/gl3.h>
++#include <emscripten/html5_webgl.h>
++
++#include <array>
++#include <cstdlib>
++#include <cstdio>
++#include <cmath>
++#include <cstdio>
++#include <cstring>
++#include <functional>
++#include <map>
++#include <string>
++#include <vector>
++
++typedef double GLdouble;
++
++namespace
++{
++// Desktop-only enums
++const GLenum KG_QUADS = 0x0007, KG_QUAD_STRIP = 0x0008, KG_POLYGON = 0x0009;
++const GLenum KG_MODELVIEW = 0x1700, KG_PROJECTION = 0x1701, KG_TEXTURE = 0x1702;
++const GLenum KG_VERTEX_ARRAY = 0x8074, KG_NORMAL_ARRAY = 0x8075, KG_COLOR_ARRAY = 0x8076, KG_TEXTURE_COORD_ARRAY = 0x8078;
++const GLenum KG_ALPHA_TEST = 0x0BC0, KG_DRAW_BUFFER = 0x0C01, KG_MATRIX_MODE = 0x0BA0;
++const GLenum KG_MODELVIEW_MATRIX = 0x0BA6, KG_PROJECTION_MATRIX = 0x0BA7, KG_TEXTURE_MATRIX = 0x0BA8;
++const GLenum KG_LIGHTING = 0x0B50, KG_LIGHT0 = 0x4000, KG_COLOR_MATERIAL = 0x0B57;
++const GLenum KG_AMBIENT = 0x1200, KG_DIFFUSE = 0x1201, KG_SPECULAR = 0x1202, KG_POSITION = 0x1203;
++const GLenum KG_EMISSION = 0x1600, KG_SHININESS = 0x1601, KG_AMBIENT_AND_DIFFUSE = 0x1602;
++const GLenum KG_FRONT = 0x0404, KG_BACK = 0x0405;
++const GLenum KG_LIGHT_MODEL_TWO_SIDE = 0x0B52, KG_LIGHT_MODEL_AMBIENT = 0x0B53;
++const GLenum KG_TEXTURE_ENV_MODE = 0x2200, KG_TEXTURE_ENV_COLOR = 0x2201;
++const GLenum KG_MODULATE = 0x2100, KG_REPLACE = 0x1E01, KG_COMBINE = 0x8570;
++const GLenum KG_COMPILE_AND_EXECUTE = 0x1301;
++const int    N_LIGHTS = 8, N_ARRAYS = 4;   // arrays: vertex, colour, texture coordinate, normal
++
++const char* const EXTRA_EXTS[] = { "GL_ARB_framebuffer_object", "GL_ARB_vertex_buffer_object" };
++const int         N_EXTRA_EXTS = 2;
++
++struct MAT
++{
++    double m[16];
++};
++
++MAT identity()
++{
++    MAT r = { { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 } };
++    return r;
++}
++
++MAT mul( const MAT& a, const MAT& b ) // column-major a * b
++{
++    MAT r;
++
++    for( int c = 0; c < 4; c++ )
++        for( int row = 0; row < 4; row++ )
++        {
++            double s = 0;
++
++            for( int k = 0; k < 4; k++ )
++                s += a.m[k * 4 + row] * b.m[c * 4 + k];
++
++            r.m[c * 4 + row] = s;
++        }
++
++    return r;
++}
++
++struct VTX
++{
++    float pos[4];
++    float col[4];
++    float tex[4];
++    float nrm[4];
++};
++
++typedef std::array<float, 4> VEC4;
++
++struct LIGHT
++{
++    bool on = false;
++    VEC4 amb = { 0, 0, 0, 1 }, dif = { 0, 0, 0, 1 }, spec = { 0, 0, 0, 1 };
++    VEC4 pos = { 0, 0, 1, 0 };            // in eye space (transformed when set, as the desktop does)
++};
++
++struct MATERIAL
++{
++    VEC4  amb = { 0.2f, 0.2f, 0.2f, 1 }, dif = { 0.8f, 0.8f, 0.8f, 1 }, spec = { 0, 0, 0, 1 }, emi = { 0, 0, 0, 1 };
++    float shin = 0;
++};
++
++struct ARRAY                              // what the last gl*Pointer said, to put back after drawing from our buffers
++{
++    GLint       size = 0;
++    GLenum      type = GL_FLOAT;
++    GLboolean   norm = GL_FALSE;
++    GLsizei     stride = 0;
++    const void* ptr = nullptr;
++    GLuint      buffer = 0;
++};
++
++typedef std::vector<std::function<void()>> CALLS;
++
++struct DLIST
++{
++    CALLS               calls;
++    std::vector<GLuint> buffers;          // copies of the client arrays its glDrawArrays used
++};
++
++struct STATE
++{
++    std::vector<MAT> stacks[3] = { { identity() }, { identity() }, { identity() } };
++    int              mode = 0;           // 0 modelview, 1 projection, 2 texture
++    unsigned         matVersion = 1;     // bumped on every matrix change
++
++    float col[4] = { 1, 1, 1, 1 };
++    float tex[4] = { 0, 0, 0, 1 };
++    float nrm[4] = { 0, 0, 1, 0 };
++
++    bool  arrayOn[N_ARRAYS] = {};          // client arrays: vertex, colour, texture coordinate, normal
++    ARRAY arrays[N_ARRAYS];
++    GLuint arrayBuffer = 0;
++    bool   arraysStale = false;         // a draw from our own buffers moved the attributes: KiCad's go back before its next draw
++
++    // What GL was last told (kicad-play-10): a WebGL call costs about 0.3-1 us through Emscripten's binding and a 3D frame
++    // made 12,000 of them, most re-sending unchanged state. Each of these is sent only when it differs.
++    struct GLATTR
++    {
++        bool        valid = false, on = false;
++        GLuint      buffer = 0;
++        GLint       size = 0;
++        GLenum      type = 0;
++        GLboolean   norm = GL_FALSE;
++        GLsizei     stride = 0;
++        const void* ptr = nullptr;
++    };
++    GLATTR glAttr[N_ARRAYS];               // attribute pointer and enable, as GL has them
++    GLuint glArrayBuffer = 0;              // GL_ARRAY_BUFFER binding, as GL has it
++    GLuint glProg = 0;                     // the program GL has bound (ours or KiCad's)
++    bool   sentAttrValid[N_ARRAYS] = {};   // glVertexAttrib4fv constants last sent
++    float  sentAttr[N_ARRAYS][4] = {};
++    struct FXSENT                          // the built-in program's uniforms last sent
++    {
++        bool  valid = false, litValid = false;   // litValid: the lighting block below was sent at least once
++        float mvp[16], texMat[16], mv[16], nm[9], envColor[4], modelAmb[4];
++        float mamb[8], mdif[8], mspec[8], memi[8], mshin[2];
++        float amb[N_LIGHTS * 4], dif[N_LIGHTS * 4], spec[N_LIGHTS * 4], pos[N_LIGHTS * 4];
++        GLint on[N_LIGHTS];
++        int   useTex, envMode, alphaFunc, lighting, twoSide, colorMat;
++        float pointSize, alphaRef;
++    } fx;
++
++    // lighting
++    bool     lighting = false, twoSide = false, colorMaterial = false;
++    GLenum   colorMaterialMode = KG_AMBIENT_AND_DIFFUSE;
++    LIGHT    lights[N_LIGHTS];
++    MATERIAL mat[2];                       // front, back
++    VEC4     modelAmb = { 0.2f, 0.2f, 0.2f, 1 };
++    float    pointSize = 1;
++
++    // texture environment of unit 0 (the one the built-in program samples)
++    GLenum envMode = KG_MODULATE;
++    VEC4   envColor = { 0, 0, 0, 0 };
++
++    // display lists
++    GLuint                  nextList = 1;
++    std::map<GLuint, DLIST> lists;
++    DLIST*                  rec = nullptr; // the list being recorded
++    bool                    recExec = false;
++    float                   recSaved[3][4];
++
++    bool   texOn[32] = {};                // GL_TEXTURE_2D per texture unit
++    int    activeUnit = 0;
++    bool   alphaTest = false;
++    GLenum alphaFunc = GL_ALWAYS;
++    float  alphaRef = 0;
++
++    GLuint program = 0;                   // the program KiCad has bound
++
++    struct PROG
++    {
++        GLint    mvp = -1;
++        unsigned ver = 0;
++    };
++    std::map<GLuint, PROG>   progs;
++    std::map<GLuint, GLenum> shaderTypes;
++
++    // immediate mode
++    bool             inBegin = false;
++    GLenum           prim = 0;
++    std::vector<VTX> verts;
++    GLuint           immBuf = 0;
++    GLuint           clientBuf = 0;   // KiCad's client arrays, copied for one draw (drawClientArrays)
++    static const int N_EXTRA = 16;
++    ARRAY            extra[N_EXTRA];     // KiCad's attributes past the four arrays (a_shaderParams), as it set them
++    bool             extraOn[N_EXTRA] = {};
++
++    // the fixed-function stand-in program
++    GLuint fixedProg = 0;
++    GLint  fxMvp = -1, fxTexMat = -1, fxUseTex = -1, fxTex = -1, fxAlpha = -1, fxAlphaFunc = -1;
++    GLint  fxMv = -1, fxNormalMat = -1, fxLighting = -1, fxTwoSide = -1, fxColorMat = -1, fxPointSize = -1;
++    GLint  fxLightOn = -1, fxLAmb = -1, fxLDif = -1, fxLSpec = -1, fxLPos = -1, fxModelAmb = -1;
++    GLint  fxMAmb = -1, fxMDif = -1, fxMSpec = -1, fxMEmi = -1, fxMShin = -1, fxEnvMode = -1, fxEnvColor = -1;
++
++    // virtual colour attachments: fbo -> (n -> texture), the one attached at 0
++    GLuint                                   drawFbo = 0, readFbo = 0;
++    std::map<GLuint, std::map<int, GLuint>>  attach;
++    std::map<GLuint, int>                    current;
++};
++
++// One state per WebGL context (Emscripten never reuses a context handle).
++STATE& S()
++{
++    static std::map<EMSCRIPTEN_WEBGL_CONTEXT_HANDLE, STATE*> all;
++    static EMSCRIPTEN_WEBGL_CONTEXT_HANDLE                   lastHandle = 0;
++    static STATE*                                            last = nullptr;
++    EMSCRIPTEN_WEBGL_CONTEXT_HANDLE                          h = emscripten_webgl_get_current_context();
++
++    if( last && h == lastHandle )
++        return *last;
++
++    STATE*& st = all[h];
++
++    if( !st )
++        st = new STATE;
++
++    lastHandle = h;
++    last = st;
++    return *st;
++}
++
++// Display lists: while one is being recorded (GL_COMPILE) the calls below are kept in it instead of run.
++bool recording()
++{
++    return S().rec != nullptr;
++}
++
++void record( std::function<void()> f )
++{
++    STATE& s = S();
++    s.rec->calls.push_back( f );
++
++    if( s.recExec )                       // GL_COMPILE_AND_EXECUTE: run it too, outside the recording
++    {
++        DLIST* r = s.rec;
++        s.rec = nullptr;
++        f();
++        s.rec = r;
++    }
++}
++
++#define KG_RECORD( ... )                              \
++    if( recording() )                                 \
++    {                                                 \
++        record( [=]() { __VA_ARGS__; } );             \
++        return;                                       \
++    }
++
++MAT& top()
++{
++    return S().stacks[S().mode].back();
++}
++
++void changed()
++{
++    S().matVersion++;
++}
++
++void mvp( float out[16] )
++{
++    MAT r = mul( S().stacks[1].back(), S().stacks[0].back() );
++
++    for( int i = 0; i < 16; i++ )
++        out[i] = (float) r.m[i];
++}
++
++// ── matrices ──
++void kg_MatrixMode( GLenum m )
++{
++    KG_RECORD( kg_MatrixMode( m ) );
++    S().mode = m == KG_PROJECTION ? 1 : m == KG_TEXTURE ? 2 : 0;
++}
++
++void kg_LoadIdentity()
++{
++    KG_RECORD( kg_LoadIdentity() );
++    top() = identity();
++    changed();
++}
++
++void kg_PushMatrix()
++{
++    KG_RECORD( kg_PushMatrix() );
++    auto& st = S().stacks[S().mode];
++    st.push_back( st.back() );
++}
++
++void kg_PopMatrix()
++{
++    KG_RECORD( kg_PopMatrix() );
++    auto& st = S().stacks[S().mode];
++
++    if( st.size() > 1 )
++        st.pop_back();
++
++    changed();
++}
++
++void multBy( const MAT& b )
++{
++    top() = mul( top(), b );
++    changed();
++}
++
++template <typename T>
++MAT toMat( const T* d )
++{
++    MAT b;
++
++    for( int i = 0; i < 16; i++ )
++        b.m[i] = d[i];
++
++    return b;
++}
++
++void loadMat( const MAT b )
++{
++    KG_RECORD( loadMat( b ) );
++    top() = b;
++    changed();
++}
++
++void multMat( const MAT b )
++{
++    KG_RECORD( multMat( b ) );
++    multBy( b );
++}
++
++void kg_LoadMatrixd( const GLdouble* d ) { loadMat( toMat( d ) ); }
++void kg_LoadMatrixf( const GLfloat* d ) { loadMat( toMat( d ) ); }
++void kg_MultMatrixd( const GLdouble* d ) { multMat( toMat( d ) ); }
++void kg_MultMatrixf( const GLfloat* d ) { multMat( toMat( d ) ); }
++
++void kg_Ortho( GLdouble l, GLdouble r, GLdouble b, GLdouble t, GLdouble n, GLdouble f )
++{
++    MAT o = identity();
++    o.m[0] = 2 / ( r - l );
++    o.m[5] = 2 / ( t - b );
++    o.m[10] = -2 / ( f - n );
++    o.m[12] = -( r + l ) / ( r - l );
++    o.m[13] = -( t + b ) / ( t - b );
++    o.m[14] = -( f + n ) / ( f - n );
++    multMat( o );
++}
++
++void kg_Translated( GLdouble x, GLdouble y, GLdouble z )
++{
++    MAT t = identity();
++    t.m[12] = x;
++    t.m[13] = y;
++    t.m[14] = z;
++    multMat( t );
++}
++
++void kg_Translatef( GLfloat x, GLfloat y, GLfloat z )
++{
++    kg_Translated( x, y, z );
++}
++
++void kg_Scaled( GLdouble x, GLdouble y, GLdouble z )
++{
++    MAT s = identity();
++    s.m[0] = x;
++    s.m[5] = y;
++    s.m[10] = z;
++    multMat( s );
++}
++
++void kg_Scalef( GLfloat x, GLfloat y, GLfloat z )
++{
++    kg_Scaled( x, y, z );
++}
++
++void kg_Rotated( GLdouble deg, GLdouble x, GLdouble y, GLdouble z )
++{
++    double len = std::sqrt( x * x + y * y + z * z );
++
++    if( len == 0 )
++        return;
++
++    x /= len;
++    y /= len;
++    z /= len;
++    double a = deg * M_PI / 180.0, c = std::cos( a ), s = std::sin( a ), ic = 1 - c;
++    MAT    r = identity();
++    r.m[0] = x * x * ic + c;
++    r.m[1] = y * x * ic + z * s;
++    r.m[2] = x * z * ic - y * s;
++    r.m[4] = x * y * ic - z * s;
++    r.m[5] = y * y * ic + c;
++    r.m[6] = y * z * ic + x * s;
++    r.m[8] = x * z * ic + y * s;
++    r.m[9] = y * z * ic - x * s;
++    r.m[10] = z * z * ic + c;
++    multMat( r );
++}
++
++void kg_Rotatef( GLfloat deg, GLfloat x, GLfloat y, GLfloat z )
++{
++    kg_Rotated( deg, x, y, z );
++}
++
++// ── current colour / texture coordinate ──
++void setCol( float r, float g, float b, float a )
++{
++    if( recording() )
++        S().rec->calls.push_back( [=]() { setCol( r, g, b, a ); } );
++
++    S().col[0] = r;
++    S().col[1] = g;
++    S().col[2] = b;
++    S().col[3] = a;
++}
++
++void kg_Color4f( GLfloat r, GLfloat g, GLfloat b, GLfloat a ) { setCol( r, g, b, a ); }
++void kg_Color4d( GLdouble r, GLdouble g, GLdouble b, GLdouble a ) { setCol( r, g, b, a ); }
++void kg_Color3f( GLfloat r, GLfloat g, GLfloat b ) { setCol( r, g, b, 1 ); }
++void kg_Color3d( GLdouble r, GLdouble g, GLdouble b ) { setCol( r, g, b, 1 ); }
++void kg_Color4ub( GLubyte r, GLubyte g, GLubyte b, GLubyte a ) { setCol( r / 255.f, g / 255.f, b / 255.f, a / 255.f ); }
++void kg_Color4fv( const GLfloat* v ) { setCol( v[0], v[1], v[2], v[3] ); }
++void kg_Color3fv( const GLfloat* v ) { setCol( v[0], v[1], v[2], 1 ); }
++void kg_Color4dv( const GLdouble* v ) { setCol( v[0], v[1], v[2], v[3] ); }
++void kg_Color3dv( const GLdouble* v ) { setCol( v[0], v[1], v[2], 1 ); }
++
++void setTex( float s, float t )
++{
++    if( recording() )
++        S().rec->calls.push_back( [=]() { setTex( s, t ); } );
++
++    S().tex[0] = s;
++    S().tex[1] = t;
++    S().tex[2] = 0;
++    S().tex[3] = 1;
++}
++
++void kg_TexCoord2f( GLfloat s, GLfloat t ) { setTex( s, t ); }
++void kg_TexCoord2d( GLdouble s, GLdouble t ) { setTex( s, t ); }
++void kg_TexCoord2fv( const GLfloat* v ) { setTex( v[0], v[1] ); }
++
++void setNrm( float x, float y, float z )
++{
++    if( recording() )
++        S().rec->calls.push_back( [=]() { setNrm( x, y, z ); } );
++
++    S().nrm[0] = x;
++    S().nrm[1] = y;
++    S().nrm[2] = z;
++    S().nrm[3] = 0;
++}
++
++void kg_Normal3f( GLfloat x, GLfloat y, GLfloat z ) { setNrm( x, y, z ); }
++void kg_Normal3d( GLdouble x, GLdouble y, GLdouble z ) { setNrm( x, y, z ); }
++void kg_Normal3fv( const GLfloat* v ) { setNrm( v[0], v[1], v[2] ); }
++
++// ── immediate mode ──
++void kg_Begin( GLenum prim )
++{
++    S().inBegin = true;
++    S().prim = prim;
++    S().verts.clear();
++}
++
++void vertex( float x, float y, float z )
++{
++    VTX v = { { x, y, z, 1 }, {}, {}, {} };
++    memcpy( v.col, S().col, sizeof v.col );
++    memcpy( v.tex, S().tex, sizeof v.tex );
++    memcpy( v.nrm, S().nrm, sizeof v.nrm );
++    S().verts.push_back( v );
++}
++
++void kg_Vertex2f( GLfloat x, GLfloat y ) { vertex( x, y, 0 ); }
++void kg_Vertex2d( GLdouble x, GLdouble y ) { vertex( x, y, 0 ); }
++void kg_Vertex3f( GLfloat x, GLfloat y, GLfloat z ) { vertex( x, y, z ); }
++void kg_Vertex3d( GLdouble x, GLdouble y, GLdouble z ) { vertex( x, y, z ); }
++void kg_Vertex2fv( const GLfloat* v ) { vertex( v[0], v[1], 0 ); }
++void kg_Vertex3fv( const GLfloat* v ) { vertex( v[0], v[1], v[2] ); }
++void kg_Vertex2dv( const GLdouble* v ) { vertex( v[0], v[1], 0 ); }
++void kg_Vertex3dv( const GLdouble* v ) { vertex( v[0], v[1], v[2] ); }
++
++// ── the built-in program (drawing with no program bound) ──
++// Lighting is the desktop's fixed-function formula, per vertex: emission + ambient x model ambient + for each light
++// ambient + diffuse x max(N.L, 0) + specular x max(N.H, 0)^shininess (H with the viewer at infinity), clamped; the
++// alpha is the diffuse one. Two-sided lighting gives back faces their own colour (the back material, the normal
++// turned round).
++const char* FIXED_VS = "#version 300 es\n"
++                       "precision highp float;\n"
++                       "in vec4 kg_Vertex; in vec4 kg_Color; in vec4 kg_MultiTexCoord0; in vec4 kg_Normal;\n"
++                       "uniform mat4 kg_MVP; uniform mat4 kg_TexMatrix; uniform mat4 kg_MV; uniform mat3 kg_NormalMat;\n"
++                       "uniform int kg_Lighting; uniform int kg_TwoSide; uniform int kg_ColorMat; uniform float kg_PointSize;\n"
++                       "uniform int kg_LightOn[8]; uniform vec4 kg_LAmb[8]; uniform vec4 kg_LDif[8]; uniform vec4 kg_LSpec[8];\n"
++                       "uniform vec4 kg_LPos[8]; uniform vec4 kg_ModelAmb;\n"
++                       "uniform vec4 kg_MAmb[2]; uniform vec4 kg_MDif[2]; uniform vec4 kg_MSpec[2]; uniform vec4 kg_MEmi[2];\n"
++                       "uniform float kg_MShin[2];\n"
++                       "out vec4 c; out vec4 cb; out vec2 t;\n"
++                       "vec4 shade( int f, vec3 n, vec3 v ) {\n"
++                       " vec4 amb = ( kg_ColorMat == 1 || kg_ColorMat == 2 ) ? kg_Color : kg_MAmb[f];\n"
++                       " vec4 dif = ( kg_ColorMat == 1 || kg_ColorMat == 3 ) ? kg_Color : kg_MDif[f];\n"
++                       " vec3 r = kg_MEmi[f].rgb + amb.rgb * kg_ModelAmb.rgb;\n"
++                       " for( int i = 0; i < 8; i++ ) {\n"
++                       "  if( kg_LightOn[i] == 0 ) continue;\n"
++                       "  vec3 L = kg_LPos[i].w == 0.0 ? normalize( kg_LPos[i].xyz ) : normalize( kg_LPos[i].xyz / kg_LPos[i].w - v );\n"
++                       "  float d = max( dot( n, L ), 0.0 );\n"
++                       "  r += amb.rgb * kg_LAmb[i].rgb + d * dif.rgb * kg_LDif[i].rgb;\n"
++                       "  if( d > 0.0 ) {\n"
++                       "   float nh = max( dot( n, normalize( L + vec3( 0.0, 0.0, 1.0 ) ) ), 0.0 );\n"
++                       "   r += ( kg_MShin[f] > 0.0 ? pow( nh, kg_MShin[f] ) : 1.0 ) * kg_MSpec[f].rgb * kg_LSpec[i].rgb;\n"
++                       "  }\n"
++                       " }\n"
++                       " return vec4( clamp( r, 0.0, 1.0 ), dif.a );\n"
++                       "}\n"
++                       "void main() { gl_Position = kg_MVP * kg_Vertex; gl_PointSize = kg_PointSize;"
++                       " vec4 q = kg_TexMatrix * kg_MultiTexCoord0; t = q.xy / q.w;\n"
++                       " if( kg_Lighting == 1 ) {\n"
++                       "  vec4 e = kg_MV * kg_Vertex; vec3 v = e.xyz / e.w;\n"
++                       "  vec3 n = kg_NormalMat * kg_Normal.xyz; float l = length( n ); n = l > 0.0 ? n / l : vec3( 0.0, 0.0, 1.0 );\n"
++                       "  c = shade( 0, n, v ); cb = kg_TwoSide == 1 ? shade( 1, -n, v ) : c;\n"
++                       " } else { c = kg_Color; cb = kg_Color; }\n"
++                       "}\n";
++
++const char* FIXED_FS = "#version 300 es\n"
++                       "precision highp float;\n"
++                       "in vec4 c; in vec4 cb; in vec2 t; out vec4 o;\n"
++                       "uniform sampler2D kg_Tex; uniform int kg_UseTex; uniform int kg_AlphaFunc; uniform float kg_AlphaRef;\n"
++                       "uniform int kg_EnvMode; uniform vec4 kg_EnvColor;\n"
++                       "void main() { o = gl_FrontFacing ? c : cb;\n"
++                       " if( kg_UseTex == 1 ) {\n"
++                       "  if( kg_EnvMode == 1 ) o.a *= kg_EnvColor.a;\n"      // the models' combine: colour as lit, alpha x env alpha
++                       "  else if( kg_EnvMode == 2 ) o = texture( kg_Tex, t );\n"
++                       "  else o *= texture( kg_Tex, t ); }\n"
++                       " bool pass = kg_AlphaFunc == 0 || ( kg_AlphaFunc == 1 && o.a > kg_AlphaRef )"
++                       " || ( kg_AlphaFunc == 2 && o.a >= kg_AlphaRef ) || ( kg_AlphaFunc == 3 && o.a < kg_AlphaRef )"
++                       " || ( kg_AlphaFunc == 4 && o.a <= kg_AlphaRef ) || ( kg_AlphaFunc == 5 && o.a == kg_AlphaRef )"
++                       " || ( kg_AlphaFunc == 6 && o.a != kg_AlphaRef );\n"
++                       " if( !pass ) discard; }\n";
++
++GLuint compile( GLenum type, const char* src )
++{
++    GLuint sh = glCreateShader( type );
++    glShaderSource( sh, 1, &src, nullptr );
++    glCompileShader( sh );
++
++    GLint ok = 0;
++    glGetShaderiv( sh, GL_COMPILE_STATUS, &ok );
++
++    if( !ok )
++    {
++        char log[1024] = "";
++        glGetShaderInfoLog( sh, sizeof log, nullptr, log );
++        fprintf( stderr, "kicad: the OpenGL stand-in's own shader did not compile: %s\n", log );
++    }
++
++    return sh;
++}
++
++void bindKgAttribs( GLuint prog )
++{
++    glBindAttribLocation( prog, 0, "kg_Vertex" );
++    glBindAttribLocation( prog, 1, "kg_Color" );
++    glBindAttribLocation( prog, 2, "kg_MultiTexCoord0" );
++    glBindAttribLocation( prog, 3, "kg_Normal" );
++}
++
++// Inverse transpose of the modelview's upper 3x3 (normals into eye space).
++void normalMatrix( float out[9] )
++{
++    const double* m = S().stacks[0].back().m;
++    double a = m[0], b = m[4], c = m[8], d = m[1], e = m[5], f = m[9], g = m[2], h = m[6], i = m[10];
++    double A = e * i - f * h, B = -( d * i - f * g ), C = d * h - e * g;
++    double det = a * A + b * B + c * C;
++
++    if( det == 0 )
++        det = 1;
++
++    // cofactor matrix / det = inverse transpose; stored column-major
++    double cof[9] = { A, B, C,
++                      -( b * i - c * h ), a * i - c * g, -( a * h - b * g ),
++                      b * f - c * e, -( a * f - c * d ), a * e - b * d };
++
++    for( int r = 0; r < 3; r++ )      // row r of the cofactor matrix -> column... cof[r*3+k] is row r, column k
++        for( int k = 0; k < 3; k++ )
++            out[k * 3 + r] = (float) ( cof[r * 3 + k] / det );
++}
++
++// Test switch (kicad-play-10): <program>/?glcache=MASK keeps only the given caches (1 program, 2 attribute pointers,
++// 4 attribute enables, 8 array binding, 16 uniforms, 32 attribute constants); without it every cache is on.
++EM_JS( int, kigl_cache_mask_js, (), {
++    try
++    {
++        var m = /[?&]glcache=(\d+)/.exec( self.location.search || '' );
++        if( m ) { console.log( 'kicad: test switch glcache=' + m[1] ); return parseInt( m[1] ); }
++    }
++    catch( e ) {}
++    return 63;
++} );
++
++int cacheMask()
++{
++    static int mask = -1;
++
++    if( mask < 0 )
++    {
++        mask = kigl_cache_mask_js();
++        const char* e = getenv( "KIGL_CACHE" );   // kicad-pre.js: ENV.KIGL_CACHE from the page's ?glcache=
++
++        if( e )
++        {
++            mask = atoi( e );
++            printf( "kicad: test switch glcache=%d (KIGL_CACHE)\n", mask );
++        }
++    }
++
++    return mask;
++}
++
++// GL_ARRAY_BUFFER binding, attribute pointers and enables, program: told to GL only when they change
++void bindArray( GLuint b )
++{
++    STATE& s = S();
++
++    if( s.glArrayBuffer == b && ( cacheMask() & 8 ) )
++        return;
++
++    s.glArrayBuffer = b;
++    glBindBuffer( GL_ARRAY_BUFFER, b );
++}
++
++void attribPointer( GLuint a, GLuint buffer, GLint size, GLenum type, GLboolean norm, GLsizei stride, const void* ptr )
++{
++    STATE::GLATTR& g = S().glAttr[a];
++
++    if( g.valid && g.buffer == buffer && g.size == size && g.type == type && g.norm == norm && g.stride == stride
++        && g.ptr == ptr && ( cacheMask() & 2 ) )
++        return;
++
++    bindArray( buffer );
++    glVertexAttribPointer( a, size, type, norm, stride, ptr );
++    bool on = g.valid ? g.on : false;
++    g = STATE::GLATTR{ true, on, buffer, size, type, norm, stride, ptr };
++}
++
++void attribEnable( GLuint a, bool on )
++{
++    STATE::GLATTR& g = S().glAttr[a];
++
++    if( g.valid && g.on == on && ( cacheMask() & 4 ) )
++        return;
++
++    on ? glEnableVertexAttribArray( a ) : glDisableVertexAttribArray( a );
++    g.valid = true;   // a pointer never set stays "unknown" (size 0 never matches a real one)
++    g.on = on;
++}
++
++void useProgramGL( GLuint p )
++{
++    STATE& s = S();
++
++    if( s.glProg == p && ( cacheMask() & 1 ) )
++        return;
++
++    s.glProg = p;
++    glUseProgram( p );
++}
++
++// Buffers going away: GL unbinds a deleted buffer from GL_ARRAY_BUFFER; the attribute caches referring to it forget it.
++void forgetBuffers( GLsizei n, const GLuint* ids )
++{
++    STATE& s = S();
++
++    for( GLsizei i = 0; i < n; i++ )
++    {
++        if( ids[i] == 0 )
++            continue;
++
++        if( s.glArrayBuffer == ids[i] )
++            s.glArrayBuffer = 0;
++
++        for( STATE::GLATTR& g : s.glAttr )
++        {
++            if( g.buffer == ids[i] )
++                g.valid = false;
++        }
++    }
++}
++
++template <size_t N>
++void sendFv( GLint loc, float ( &sent )[N], const float* cur, bool valid, void ( *fn )( GLint, GLsizei, const GLfloat* ) )
++{
++    if( valid && memcmp( sent, cur, sizeof sent ) == 0 )
++        return;
++
++    memcpy( sent, cur, sizeof sent );
++    fn( loc, (GLsizei) ( N / 4 ), cur );
++}
++
++void send1i( GLint loc, int& sent, int cur, bool valid )
++{
++    if( valid && sent == cur )
++        return;
++
++    sent = cur;
++    glUniform1i( loc, cur );
++}
++
++void send1f( GLint loc, float& sent, float cur, bool valid )
++{
++    if( valid && sent == cur )
++        return;
++
++    sent = cur;
++    glUniform1f( loc, cur );
++}
++
++void useFixed()
++{
++    STATE& s = S();
++
++    if( !s.fixedProg )
++    {
++        s.fixedProg = glCreateProgram();
++        GLuint vs = compile( GL_VERTEX_SHADER, FIXED_VS );
++        GLuint fs = compile( GL_FRAGMENT_SHADER, FIXED_FS );
++        glAttachShader( s.fixedProg, vs );
++        glAttachShader( s.fixedProg, fs );
++        bindKgAttribs( s.fixedProg );
++        glLinkProgram( s.fixedProg );
++        glDeleteShader( vs );
++        glDeleteShader( fs );
++        GLuint p = s.fixedProg;
++        s.fxMvp = glGetUniformLocation( p, "kg_MVP" );
++        s.fxTexMat = glGetUniformLocation( p, "kg_TexMatrix" );
++        s.fxUseTex = glGetUniformLocation( p, "kg_UseTex" );
++        s.fxTex = glGetUniformLocation( p, "kg_Tex" );
++        s.fxAlpha = glGetUniformLocation( p, "kg_AlphaRef" );
++        s.fxAlphaFunc = glGetUniformLocation( p, "kg_AlphaFunc" );
++        s.fxMv = glGetUniformLocation( p, "kg_MV" );
++        s.fxNormalMat = glGetUniformLocation( p, "kg_NormalMat" );
++        s.fxLighting = glGetUniformLocation( p, "kg_Lighting" );
++        s.fxTwoSide = glGetUniformLocation( p, "kg_TwoSide" );
++        s.fxColorMat = glGetUniformLocation( p, "kg_ColorMat" );
++        s.fxPointSize = glGetUniformLocation( p, "kg_PointSize" );
++        s.fxLightOn = glGetUniformLocation( p, "kg_LightOn" );
++        s.fxLAmb = glGetUniformLocation( p, "kg_LAmb" );
++        s.fxLDif = glGetUniformLocation( p, "kg_LDif" );
++        s.fxLSpec = glGetUniformLocation( p, "kg_LSpec" );
++        s.fxLPos = glGetUniformLocation( p, "kg_LPos" );
++        s.fxModelAmb = glGetUniformLocation( p, "kg_ModelAmb" );
++        s.fxMAmb = glGetUniformLocation( p, "kg_MAmb" );
++        s.fxMDif = glGetUniformLocation( p, "kg_MDif" );
++        s.fxMSpec = glGetUniformLocation( p, "kg_MSpec" );
++        s.fxMEmi = glGetUniformLocation( p, "kg_MEmi" );
++        s.fxMShin = glGetUniformLocation( p, "kg_MShin" );
++        s.fxEnvMode = glGetUniformLocation( p, "kg_EnvMode" );
++        s.fxEnvColor = glGetUniformLocation( p, "kg_EnvColor" );
++    }
++
++    useProgramGL( s.fixedProg );
++    STATE::FXSENT& f = s.fx;
++    const bool     v = f.valid && ( cacheMask() & 16 );
++    float          m[16];
++    mvp( m );
++
++    if( !v || memcmp( f.mvp, m, sizeof m ) != 0 )
++    {
++        memcpy( f.mvp, m, sizeof m );
++        glUniformMatrix4fv( s.fxMvp, 1, GL_FALSE, m );
++    }
++
++    for( int i = 0; i < 16; i++ )
++        m[i] = (float) s.stacks[2].back().m[i];
++
++    if( !v || memcmp( f.texMat, m, sizeof m ) != 0 )
++    {
++        memcpy( f.texMat, m, sizeof m );
++        glUniformMatrix4fv( s.fxTexMat, 1, GL_FALSE, m );
++    }
++
++    send1i( s.fxUseTex, f.useTex, s.texOn[0] ? 1 : 0, v );
++
++    if( !v )
++        glUniform1i( s.fxTex, 0 );
++
++    send1i( s.fxEnvMode, f.envMode, s.envMode == KG_COMBINE ? 1 : s.envMode == KG_REPLACE ? 2 : 0, v );
++    sendFv( s.fxEnvColor, f.envColor, s.envColor.data(), v, glUniform4fv );
++    send1f( s.fxPointSize, f.pointSize, s.pointSize, v );
++
++    int fn = 0;
++
++    if( s.alphaTest )
++    {
++        switch( s.alphaFunc )
++        {
++        case GL_GREATER:  fn = 1; break;
++        case GL_GEQUAL:   fn = 2; break;
++        case GL_LESS:     fn = 3; break;
++        case GL_LEQUAL:   fn = 4; break;
++        case GL_EQUAL:    fn = 5; break;
++        case GL_NOTEQUAL: fn = 6; break;
++        case GL_NEVER:    fn = 7; break;   // no branch passes: everything is discarded
++        default:          fn = 0;
++        }
++    }
++
++    send1i( s.fxAlphaFunc, f.alphaFunc, fn, v );
++    send1f( s.fxAlpha, f.alphaRef, s.alphaRef, v );
++    send1i( s.fxLighting, f.lighting, s.lighting ? 1 : 0, v );
++
++    f.valid = true;
++
++    if( !s.lighting )
++        return;
++
++    const bool lv = f.litValid && ( cacheMask() & 16 );
++
++    for( int i = 0; i < 16; i++ )
++        m[i] = (float) s.stacks[0].back().m[i];
++
++    if( !lv || memcmp( f.mv, m, sizeof m ) != 0 )
++    {
++        memcpy( f.mv, m, sizeof m );
++        glUniformMatrix4fv( s.fxMv, 1, GL_FALSE, m );
++    }
++
++    float nm[9];
++    normalMatrix( nm );
++
++    if( !lv || memcmp( f.nm, nm, sizeof nm ) != 0 )
++    {
++        memcpy( f.nm, nm, sizeof nm );
++        glUniformMatrix3fv( s.fxNormalMat, 1, GL_FALSE, nm );
++    }
++
++    send1i( s.fxTwoSide, f.twoSide, s.twoSide ? 1 : 0, lv );
++
++    int cm = 0;
++
++    if( s.colorMaterial )
++        cm = s.colorMaterialMode == KG_AMBIENT_AND_DIFFUSE ? 1 : s.colorMaterialMode == KG_AMBIENT ? 2
++           : s.colorMaterialMode == KG_DIFFUSE ? 3 : 0;
++
++    send1i( s.fxColorMat, f.colorMat, cm, lv );
++
++    GLint on[N_LIGHTS];
++    float amb[N_LIGHTS * 4], dif[N_LIGHTS * 4], spec[N_LIGHTS * 4], pos[N_LIGHTS * 4];
++
++    for( int i = 0; i < N_LIGHTS; i++ )
++    {
++        const LIGHT& l = s.lights[i];
++        on[i] = l.on ? 1 : 0;
++        memcpy( amb + i * 4, l.amb.data(), 16 );
++        memcpy( dif + i * 4, l.dif.data(), 16 );
++        memcpy( spec + i * 4, l.spec.data(), 16 );
++        memcpy( pos + i * 4, l.pos.data(), 16 );
++    }
++
++    if( !lv || memcmp( f.on, on, sizeof on ) != 0 )
++    {
++        memcpy( f.on, on, sizeof on );
++        glUniform1iv( s.fxLightOn, N_LIGHTS, on );
++    }
++
++    sendFv( s.fxLAmb, f.amb, amb, lv, glUniform4fv );
++    sendFv( s.fxLDif, f.dif, dif, lv, glUniform4fv );
++    sendFv( s.fxLSpec, f.spec, spec, lv, glUniform4fv );
++    sendFv( s.fxLPos, f.pos, pos, lv, glUniform4fv );
++    sendFv( s.fxModelAmb, f.modelAmb, s.modelAmb.data(), lv, glUniform4fv );
++
++    float mamb[8], mdif[8], mspec[8], memi[8], mshin[2];
++
++    for( int i = 0; i < 2; i++ )
++    {
++        memcpy( mamb + i * 4, s.mat[i].amb.data(), 16 );
++        memcpy( mdif + i * 4, s.mat[i].dif.data(), 16 );
++        memcpy( mspec + i * 4, s.mat[i].spec.data(), 16 );
++        memcpy( memi + i * 4, s.mat[i].emi.data(), 16 );
++        mshin[i] = s.mat[i].shin;
++    }
++
++    sendFv( s.fxMAmb, f.mamb, mamb, lv, glUniform4fv );
++    sendFv( s.fxMDif, f.mdif, mdif, lv, glUniform4fv );
++    sendFv( s.fxMSpec, f.mspec, mspec, lv, glUniform4fv );
++    sendFv( s.fxMEmi, f.memi, memi, lv, glUniform4fv );
++
++    if( !lv || memcmp( f.mshin, mshin, sizeof mshin ) != 0 )
++    {
++        memcpy( f.mshin, mshin, sizeof mshin );
++        glUniform1fv( s.fxMShin, 2, mshin );
++    }
++
++    f.litValid = true;
++}
++
++// Before a draw: the bound program gets the current matrices; with none bound the built-in one draws.
++// Returns true when the built-in program was bound (unbind it after the draw).
++bool beforeDraw()
++{
++    STATE& s = S();
++
++    const float* cst[N_ARRAYS] = { nullptr, s.col, s.tex, s.nrm };
++
++    for( GLuint a = 1; a < N_ARRAYS; a++ )
++    {
++        if( s.arrayOn[a] )
++            continue;
++
++        if( s.sentAttrValid[a] && memcmp( s.sentAttr[a], cst[a], 16 ) == 0 && ( cacheMask() & 32 ) )
++            continue;
++
++        memcpy( s.sentAttr[a], cst[a], 16 );
++        s.sentAttrValid[a] = true;
++        glVertexAttrib4fv( a, cst[a] );
++    }
++
++    if( s.program == 0 )
++    {
++        useFixed();
++        return true;
++    }
++
++    useProgramGL( s.program );
++    STATE::PROG& p = s.progs[s.program];
++
++    if( p.ver == 0 )
++    {
++        p.mvp = glGetUniformLocation( s.program, "kg_MVP" );
++        p.ver = 0xffffffff; // looked up; set below
++    }
++
++    if( p.mvp >= 0 && p.ver != s.matVersion )
++    {
++        float m[16];
++        mvp( m );
++        glUniformMatrix4fv( p.mvp, 1, GL_FALSE, m );
++        p.ver = s.matVersion;
++    }
++
++    return false;
++}
++
++void afterDraw( bool fixed )
++{
++    // the desktop has no program bound after a fixed-function draw; KiCad's 2D drawing (GAL) stopped with
++    // "switching framebuffer: invalid operation" when the built-in program stayed bound (k16, kicad-play-10)
++    if( fixed )
++        useProgramGL( 0 );
++}
++
++// After a draw from one of our own buffers (a display list, glBegin/glEnd) the attributes point at that buffer.
++// KiCad's arrays go back just before KiCad's next draw, not after every list: a frame of the 3D view calls hundreds
++// of lists between two draws of its own, and the old restore after each one asked glIsBuffer four times (a
++// synchronous round trip to Chrome's GPU process, 64 us each: 81% of a frame, kicad-play-10). A buffer deleted
++// meanwhile is known from kg_DeleteBuffers, so nothing is asked of the GPU.
++void arraysStale()
++{
++    STATE& s = S();
++    s.arraysStale = true;
++    bindArray( s.arrayBuffer );   // a gl*Pointer call from KiCad lands on its own binding
++}
++
++void applyArrays()
++{
++    STATE& s = S();
++
++    if( !s.arraysStale )
++        return;
++
++    s.arraysStale = false;
++
++    for( GLuint a = 0; a < N_ARRAYS; a++ )
++    {
++        const ARRAY& r = s.arrays[a];
++
++        if( r.size > 0 )
++            attribPointer( a, r.buffer, r.size, r.type, r.norm, r.stride, r.ptr );
++
++        attribEnable( a, s.arrayOn[a] );
++    }
++
++    bindArray( s.arrayBuffer );
++}
++
++void drawImmediate( GLenum prim, const std::vector<VTX>& v )
++{
++    STATE&           s = S();
++    std::vector<VTX> quads;
++    const std::vector<VTX>* tri = &v;
++    GLenum           mode = prim;
++
++    if( mode == KG_QUADS )
++    {
++        for( size_t i = 0; i + 3 < v.size(); i += 4 )
++        {
++            const VTX q[6] = { v[i], v[i + 1], v[i + 2], v[i], v[i + 2], v[i + 3] };
++            quads.insert( quads.end(), q, q + 6 );
++        }
++
++        tri = &quads;
++        mode = GL_TRIANGLES;
++    }
++    else if( mode == KG_QUAD_STRIP )
++    {
++        mode = GL_TRIANGLE_STRIP;
++    }
++    else if( mode == KG_POLYGON )
++    {
++        mode = GL_TRIANGLE_FAN;
++    }
++
++    if( tri->empty() )
++        return;
++
++    if( !s.immBuf )
++        glGenBuffers( 1, &s.immBuf );
++
++    bindArray( s.immBuf );
++    glBufferData( GL_ARRAY_BUFFER, tri->size() * sizeof( VTX ), tri->data(), GL_STREAM_DRAW );
++
++    for( GLuint a = 0; a < N_ARRAYS; a++ )
++    {
++        attribEnable( a, true );
++        attribPointer( a, s.immBuf, 4, GL_FLOAT, GL_FALSE, sizeof( VTX ), (const void*) ( a * 4 * sizeof( float ) ) );
++    }
++
++    bool savedOn[N_ARRAYS];
++    memcpy( savedOn, s.arrayOn, sizeof savedOn );
++
++    for( bool& on : s.arrayOn )
++        on = true;                      // every vertex brings its colour, texture coordinate and normal
++
++    bool fixed = beforeDraw();
++    glDrawArrays( mode, 0, (GLsizei) tri->size() );
++    afterDraw( fixed );
++    memcpy( s.arrayOn, savedOn, sizeof savedOn );
++    arraysStale();
++}
++
++void kg_End()
++{
++    STATE& s = S();
++    s.inBegin = false;
++
++    if( recording() )
++    {
++        std::vector<VTX> v = s.verts;
++        GLenum           prim = s.prim;
++        record( [v, prim]() { drawImmediate( prim, v ); } );
++        return;
++    }
++
++    drawImmediate( s.prim, s.verts );
++}
++
++// ── client arrays ──
++int arrayIndex( GLenum a )
++{
++    return a == KG_VERTEX_ARRAY ? 0 : a == KG_COLOR_ARRAY ? 1 : a == KG_TEXTURE_COORD_ARRAY ? 2
++         : a == KG_NORMAL_ARRAY ? 3 : -1;
++}
++
++void kg_EnableClientState( GLenum a )
++{
++    int i = arrayIndex( a );
++
++    if( i >= 0 )
++    {
++        S().arrayOn[i] = true;
++        attribEnable( i, true );
++    }
++}
++
++void kg_DisableClientState( GLenum a )
++{
++    int i = arrayIndex( a );
++
++    if( i >= 0 )
++    {
++        S().arrayOn[i] = false;
++        attribEnable( i, false );
++    }
++}
++
++void setArray( GLuint a, GLint size, GLenum type, GLboolean norm, GLsizei stride, const void* p )
++{
++    ARRAY& r = S().arrays[a];
++    r.size = size;
++    r.type = type;
++    r.norm = norm;
++    r.stride = stride;
++    r.ptr = p;
++    r.buffer = S().arrayBuffer;
++    attribPointer( a, r.buffer, size, type, norm, stride, p );
++}
++
++void kg_VertexPointer( GLint size, GLenum type, GLsizei stride, const void* p )
++{
++    setArray( 0, size, type, GL_FALSE, stride, p );
++}
++
++void kg_ColorPointer( GLint size, GLenum type, GLsizei stride, const void* p )
++{
++    setArray( 1, size, type, type == GL_FLOAT ? GL_FALSE : GL_TRUE, stride, p );
++}
++
++void kg_TexCoordPointer( GLint size, GLenum type, GLsizei stride, const void* p )
++{
++    setArray( 2, size, type, GL_FALSE, stride, p );
++}
++
++void kg_NormalPointer( GLenum type, GLsizei stride, const void* p )
++{
++    setArray( 3, 3, type, type == GL_FLOAT ? GL_FALSE : GL_TRUE, stride, p );   // GL_BYTE normals are -1..1
++}
++
++void kg_ClientActiveTexture( GLenum ) {}   // one texture coordinate array (unit 0)
++
++// KiCad's own attribute calls (kicad-play-11 attrib-calls): on attributes 0-3 the same GL state as the client arrays, recorded
++// with them so they go back after our own draws and the cache knows them; the others pass straight through.
++void kg_VertexAttribPointer( GLuint a, GLint size, GLenum type, GLboolean norm, GLsizei stride, const void* p )
++{
++    if( a < N_ARRAYS )
++        setArray( a, size, type, norm, stride, p );
++    else
++    {
++        if( a < (GLuint) STATE::N_EXTRA )
++            S().extra[a] = ARRAY{ size, type, norm, stride, p, S().arrayBuffer };
++
++        glVertexAttribPointer( a, size, type, norm, stride, p );
++    }
++}
++
++void kg_EnableVertexAttribArray( GLuint a )
++{
++    if( a < N_ARRAYS )
++    {
++        S().arrayOn[a] = true;
++        attribEnable( a, true );
++    }
++    else
++    {
++        if( a < (GLuint) STATE::N_EXTRA )
++            S().extraOn[a] = true;
++
++        glEnableVertexAttribArray( a );
++    }
++}
++
++void kg_DisableVertexAttribArray( GLuint a )
++{
++    if( a < N_ARRAYS )
++    {
++        S().arrayOn[a] = false;
++        attribEnable( a, false );
++    }
++    else
++    {
++        if( a < (GLuint) STATE::N_EXTRA )
++            S().extraOn[a] = false;
++
++        glDisableVertexAttribArray( a );
++    }
++}
++
++void kg_BindBuffer( GLenum target, GLuint b )
++{
++    if( target == GL_ARRAY_BUFFER )
++    {
++        S().arrayBuffer = b;
++        bindArray( b );
++        return;
++    }
++
++    glBindBuffer( target, b );
++}
++
++int typeSize( GLenum t )
++{
++    switch( t )
++    {
++    case GL_BYTE:
++    case GL_UNSIGNED_BYTE: return 1;
++    case GL_SHORT:
++    case GL_UNSIGNED_SHORT:
++    case GL_HALF_FLOAT: return 2;
++    default: return 4;
++    }
++}
++
++// glDrawArrays inside a display list: the client arrays are read now (KiCad frees them after glEndList) into a
++// buffer of the list's own; calling the list draws from it.
++void recordDrawArrays( GLenum mode, GLint first, GLsizei count )
++{
++    STATE& s = S();
++
++    struct SNAP
++    {
++        bool      on[N_ARRAYS] = {};
++        GLint     size[N_ARRAYS] = {};
++        GLenum    type[N_ARRAYS] = {};
++        GLboolean norm[N_ARRAYS] = {};
++        GLintptr  off[N_ARRAYS] = {};
++    } snap;
++
++    std::vector<unsigned char> data;
++
++    for( int a = 0; a < N_ARRAYS; a++ )
++    {
++        const ARRAY& r = s.arrays[a];
++
++        if( !s.arrayOn[a] || r.size <= 0 )
++            continue;
++
++        if( r.buffer != 0 )
++        {
++            fprintf( stderr, "kicad: a display list draws from a buffer object (not kept; drawn without it)\n" );
++            continue;
++        }
++
++        size_t elem = (size_t) r.size * typeSize( r.type );
++        size_t stride = r.stride ? (size_t) r.stride : elem;
++        snap.on[a] = true;
++        snap.size[a] = r.size;
++        snap.type[a] = r.type;
++        snap.norm[a] = r.norm;
++        snap.off[a] = (GLintptr) data.size();
++        data.resize( data.size() + elem * count + ( 4 - elem * count % 4 ) % 4 );
++
++        for( GLsizei i = 0; i < count; i++ )
++            memcpy( &data[snap.off[a] + i * elem], (const unsigned char*) r.ptr + ( first + i ) * stride, elem );
++    }
++
++    GLuint vbo = 0;
++    glGenBuffers( 1, &vbo );
++    bindArray( vbo );
++    glBufferData( GL_ARRAY_BUFFER, data.size(), data.data(), GL_STATIC_DRAW );
++    bindArray( s.arrayBuffer );
++    s.rec->buffers.push_back( vbo );
++
++    record( [snap, vbo, mode, count]()
++            {
++                STATE& st = S();
++                bool savedOn[N_ARRAYS];
++                memcpy( savedOn, st.arrayOn, sizeof savedOn );
++
++                for( GLuint a = 0; a < N_ARRAYS; a++ )
++                {
++                    st.arrayOn[a] = snap.on[a];
++                    attribEnable( a, snap.on[a] );
++
++                    if( snap.on[a] )
++                        attribPointer( a, vbo, snap.size[a], snap.type[a], snap.norm[a], 0, (const void*) snap.off[a] );
++                }
++
++                bool fixed = beforeDraw();
++                glDrawArrays( mode, 0, count );
++                afterDraw( fixed );
++                memcpy( st.arrayOn, savedOn, sizeof savedOn );
++                arraysStale();
++            } );
++}
++
++// glDrawArrays from client arrays (memory, no buffer object: the board editor's non-cached drawing, gpu_manager.cpp):
++// the arrays' vertices first..first+count-1 are copied into a buffer of ours and drawn from it. Emscripten's own
++// emulation copies them into a ring of temporary buffers that ends at 2 MB (GL_MAX_TEMP_BUFFER_SIZE) and fails past it
++// ("Cannot read properties of undefined" in getTempVertexBuffer): Ctrl+A on a board draws a selection larger than that
++// (kicad-crash-2, 10-26). Interleaved arrays (one stride, KiCad's VERTEX) go as one span with their layout kept.
++// Returns false when no enabled array is a client array (the draw is KiCad's buffers only).
++bool drawClientArrays( GLenum mode, GLint first, GLsizei count )
++{
++    STATE& s = S();
++
++    struct CLIENT
++    {
++        GLuint       a;
++        const ARRAY* r;
++        size_t       elem, stride;
++        GLintptr     off;
++    };
++
++    CLIENT  list[STATE::N_EXTRA];
++    int     n = 0;
++    bool    oneStride = true;
++    const unsigned char* lo = nullptr;
++    const unsigned char* hi = nullptr;
++
++    for( GLuint a = 0; a < (GLuint) STATE::N_EXTRA; a++ )
++    {
++        const ARRAY& r = a < N_ARRAYS ? s.arrays[a] : s.extra[a];
++        bool         on = a < N_ARRAYS ? s.arrayOn[a] : s.extraOn[a];
++
++        if( !on || r.size <= 0 || r.buffer != 0 || !r.ptr )
++            continue;
++
++        size_t elem = (size_t) r.size * typeSize( r.type );
++        size_t stride = r.stride ? (size_t) r.stride : elem;
++        const unsigned char* b = (const unsigned char*) r.ptr + (size_t) first * stride;
++        const unsigned char* e = b + ( count > 0 ? ( count - 1 ) * stride + elem : 0 );
++
++        if( n && stride != list[0].stride )
++            oneStride = false;
++
++        lo = n && lo < b ? lo : b;
++        hi = n && hi > e ? hi : e;
++        list[n++] = CLIENT{ a, &r, elem, stride, 0 };
++    }
++
++    if( !n )
++        return false;
++
++    static std::vector<unsigned char> packed;
++    const void* src = lo;
++    size_t      bytes = hi - lo;
++
++    if( oneStride )
++    {
++        for( int k = 0; k < n; k++ )
++            list[k].off = (const unsigned char*) list[k].r->ptr + (size_t) first * list[k].stride - lo;
++    }
++    else
++    {
++        packed.clear();
++
++        for( int k = 0; k < n; k++ )
++        {
++            CLIENT& c = list[k];
++            c.off = (GLintptr) packed.size();
++            packed.resize( packed.size() + c.elem * count + ( 4 - c.elem * count % 4 ) % 4 );
++
++            for( GLsizei i = 0; i < count; i++ )
++                memcpy( &packed[c.off + i * c.elem], (const unsigned char*) c.r->ptr + ( first + i ) * c.stride, c.elem );
++
++            c.stride = c.elem;
++        }
++
++        src = packed.data();
++        bytes = packed.size();
++    }
++
++    if( !s.clientBuf )
++        glGenBuffers( 1, &s.clientBuf );
++
++    bindArray( s.clientBuf );
++    glBufferData( GL_ARRAY_BUFFER, bytes, src, GL_STREAM_DRAW );
++
++    for( int k = 0; k < n; k++ )
++    {
++        const CLIENT& c = list[k];
++
++        if( c.a < N_ARRAYS )
++            attribPointer( c.a, s.clientBuf, c.r->size, c.r->type, c.r->norm, (GLsizei) c.stride, (const void*) c.off );
++        else
++            glVertexAttribPointer( c.a, c.r->size, c.r->type, c.r->norm, (GLsizei) c.stride, (const void*) c.off );
++    }
++
++    bool fixed = beforeDraw();
++    glDrawArrays( mode, 0, count );
++    afterDraw( fixed );
++
++    // KiCad's own pointers back: the four arrays before its next draw, the others now (KiCad may draw again without
++    // setting them)
++    bindArray( 0 );
++
++    for( int k = 0; k < n; k++ )
++    {
++        const CLIENT& c = list[k];
++
++        if( c.a >= N_ARRAYS )
++            glVertexAttribPointer( c.a, c.r->size, c.r->type, c.r->norm, c.r->stride, c.r->ptr );
++    }
++
++    arraysStale();
++    return true;
++}
++
++void kg_DrawArrays( GLenum mode, GLint first, GLsizei count )
++{
++    if( recording() )
++    {
++        recordDrawArrays( mode, first, count );
++        return;
++    }
++
++    applyArrays();
++
++    if( drawClientArrays( mode, first, count ) )
++        return;
++
++    bool fixed = beforeDraw();
++    glDrawArrays( mode, first, count );
++    afterDraw( fixed );
++}
++
++void kg_DrawElements( GLenum mode, GLsizei count, GLenum type, const void* idx )
++{
++    applyArrays();
++    bool fixed = beforeDraw();
++    glDrawElements( mode, count, type, idx );
++    afterDraw( fixed );
++}
++
++// A buffer KiCad deletes is forgotten here, so it is never bound again (the desktop unbinds it the same way).
++void kg_DeleteBuffers( GLsizei n, const GLuint* ids )
++{
++    STATE& s = S();
++
++    for( GLsizei i = 0; i < n; i++ )
++    {
++        if( ids[i] == 0 )
++            continue;
++
++        for( ARRAY& r : s.arrays )
++        {
++            if( r.buffer == ids[i] )
++                r = ARRAY();
++        }
++
++        if( s.arrayBuffer == ids[i] )
++            s.arrayBuffer = 0;
++    }
++
++    forgetBuffers( n, ids );
++    glDeleteBuffers( n, ids );
++}
++
++// ── display lists ──
++GLuint kg_GenLists( GLsizei n )
++{
++    STATE& s = S();
++    GLuint base = s.nextList;
++    s.nextList += n;
++
++    for( GLsizei i = 0; i < n; i++ )
++        s.lists[base + i];              // reserved names are lists (empty), as on the desktop
++
++    return base;
++}
++
++GLboolean kg_IsList( GLuint l )
++{
++    return l != 0 && S().lists.count( l ) ? GL_TRUE : GL_FALSE;
++}
++
++void freeList( DLIST& d )
++{
++    if( !d.buffers.empty() )
++    {
++        forgetBuffers( (GLsizei) d.buffers.size(), d.buffers.data() );
++        glDeleteBuffers( (GLsizei) d.buffers.size(), d.buffers.data() );
++    }
++
++    d.buffers.clear();
++    d.calls.clear();
++}
++
++void kg_NewList( GLuint l, GLenum mode )
++{
++    STATE& s = S();
++
++    if( l == 0 || s.rec )
++        return;
++
++    DLIST& d = s.lists[l];
++    freeList( d );
++    s.rec = &d;
++    s.recExec = mode == KG_COMPILE_AND_EXECUTE;
++    memcpy( s.recSaved[0], s.col, sizeof s.col );
++    memcpy( s.recSaved[1], s.tex, sizeof s.tex );
++    memcpy( s.recSaved[2], s.nrm, sizeof s.nrm );
++}
++
++void kg_EndList()
++{
++    STATE& s = S();
++
++    if( !s.rec )
++        return;
++
++    s.rec = nullptr;
++
++    if( !s.recExec )                    // GL_COMPILE leaves the current colour, texture coordinate and normal alone
++    {
++        memcpy( s.col, s.recSaved[0], sizeof s.col );
++        memcpy( s.tex, s.recSaved[1], sizeof s.tex );
++        memcpy( s.nrm, s.recSaved[2], sizeof s.nrm );
++    }
++
++    s.recExec = false;
++}
++
++void kg_CallList( GLuint l )
++{
++    KG_RECORD( kg_CallList( l ) );
++    auto it = S().lists.find( l );
++
++    if( it == S().lists.end() )
++        return;
++
++    for( const std::function<void()>& f : it->second.calls )
++        f();
++}
++
++void kg_DeleteLists( GLuint l, GLsizei range )
++{
++    STATE& s = S();
++
++    for( GLsizei i = 0; i < range; i++ )
++    {
++        auto it = s.lists.find( l + i );
++
++        if( it != s.lists.end() && &it->second != s.rec )
++        {
++            freeList( it->second );
++            s.lists.erase( it );
++        }
++    }
++}
++
++// ── lighting ──
++VEC4 vec4( const GLfloat* v, int n )
++{
++    VEC4 r = { 0, 0, 0, 1 };
++
++    for( int i = 0; i < n; i++ )
++        r[i] = v[i];
++
++    return r;
++}
++
++void lightv( GLenum light, GLenum pname, VEC4 v )
++{
++    KG_RECORD( lightv( light, pname, v ) );
++    int i = (int) light - (int) KG_LIGHT0;
++
++    if( i < 0 || i >= N_LIGHTS )
++        return;
++
++    LIGHT& l = S().lights[i];
++
++    switch( pname )
++    {
++    case KG_AMBIENT:  l.amb = v; break;
++    case KG_DIFFUSE:  l.dif = v; break;
++    case KG_SPECULAR: l.spec = v; break;
++    case KG_POSITION:
++    {
++        const double* m = S().stacks[0].back().m;   // into eye space by the modelview of now
++
++        for( int r = 0; r < 4; r++ )
++            l.pos[r] = (float) ( m[r] * v[0] + m[4 + r] * v[1] + m[8 + r] * v[2] + m[12 + r] * v[3] );
++
++        break;
++    }
++    default: break;                                 // spot and attenuation: KiCad leaves them at their defaults
++    }
++}
++
++void kg_Lightfv( GLenum light, GLenum pname, const GLfloat* v )
++{
++    lightv( light, pname, vec4( v, pname == KG_POSITION || pname == KG_AMBIENT || pname == KG_DIFFUSE
++                                       || pname == KG_SPECULAR ? 4 : 1 ) );
++}
++
++void kg_Lightf( GLenum light, GLenum pname, GLfloat v ) { lightv( light, pname, vec4( &v, 1 ) ); }
++
++void lightModel( GLenum pname, VEC4 v )
++{
++    KG_RECORD( lightModel( pname, v ) );
++
++    if( pname == KG_LIGHT_MODEL_AMBIENT )
++        S().modelAmb = v;
++    else if( pname == KG_LIGHT_MODEL_TWO_SIDE )
++        S().twoSide = v[0] != 0;
++}
++
++void kg_LightModelfv( GLenum pname, const GLfloat* v )
++{
++    lightModel( pname, vec4( v, pname == KG_LIGHT_MODEL_AMBIENT ? 4 : 1 ) );
++}
++
++void kg_LightModelf( GLenum pname, GLfloat v ) { lightModel( pname, vec4( &v, 1 ) ); }
++void kg_LightModeli( GLenum pname, GLint v ) { float f = (float) v; lightModel( pname, vec4( &f, 1 ) ); }
++
++void materialv( GLenum face, GLenum pname, VEC4 v )
++{
++    KG_RECORD( materialv( face, pname, v ) );
++
++    for( int f = 0; f < 2; f++ )
++    {
++        if( ( f == 0 && face == KG_BACK ) || ( f == 1 && face == KG_FRONT ) )
++            continue;
++
++        MATERIAL& m = S().mat[f];
++
++        switch( pname )
++        {
++        case KG_AMBIENT:             m.amb = v; break;
++        case KG_DIFFUSE:             m.dif = v; break;
++        case KG_AMBIENT_AND_DIFFUSE: m.amb = v; m.dif = v; break;
++        case KG_SPECULAR:            m.spec = v; break;
++        case KG_EMISSION:            m.emi = v; break;
++        case KG_SHININESS:           m.shin = v[0]; break;
++        default: break;
++        }
++    }
++}
++
++void kg_Materialfv( GLenum face, GLenum pname, const GLfloat* v )
++{
++    materialv( face, pname, vec4( v, pname == KG_SHININESS ? 1 : 4 ) );
++}
++
++void kg_Materialf( GLenum face, GLenum pname, GLfloat v ) { materialv( face, pname, vec4( &v, 1 ) ); }
++
++void kg_ColorMaterial( GLenum face, GLenum mode )
++{
++    KG_RECORD( kg_ColorMaterial( face, mode ) );
++    S().colorMaterialMode = mode;
++}
++
++void kg_PointSize( GLfloat size )
++{
++    KG_RECORD( kg_PointSize( size ) );
++    S().pointSize = size;
++}
++
++void kg_GetFloatv( GLenum p, GLfloat* v )
++{
++    int st = p == KG_MODELVIEW_MATRIX ? 0 : p == KG_PROJECTION_MATRIX ? 1 : p == KG_TEXTURE_MATRIX ? 2 : -1;
++
++    if( st < 0 )
++    {
++        glGetFloatv( p, v );
++        return;
++    }
++
++    for( int i = 0; i < 16; i++ )
++        v[i] = (float) S().stacks[st].back().m[i];
++}
++
++// Calls a display list keeps (KiCad sets these inside its lists) that WebGL2 has under the same name.
++void kg_BindTexture( GLenum target, GLuint t )
++{
++    KG_RECORD( kg_BindTexture( target, t ) );
++    glBindTexture( target, t );
++}
++
++void kg_BlendFunc( GLenum sf, GLenum df )
++{
++    KG_RECORD( kg_BlendFunc( sf, df ) );
++    glBlendFunc( sf, df );
++}
++
++void kg_LineWidth( GLfloat w )
++{
++    KG_RECORD( kg_LineWidth( w ) );
++    glLineWidth( w );
++}
++
++// ── capabilities ──
++bool isEsCap( GLenum c )
++{
++    switch( c )
++    {
++    case GL_BLEND:
++    case GL_CULL_FACE:
++    case GL_DEPTH_TEST:
++    case GL_DITHER:
++    case GL_POLYGON_OFFSET_FILL:
++    case GL_PRIMITIVE_RESTART_FIXED_INDEX:
++    case GL_RASTERIZER_DISCARD:
++    case GL_SAMPLE_ALPHA_TO_COVERAGE:
++    case GL_SAMPLE_COVERAGE:
++    case GL_SCISSOR_TEST:
++    case GL_STENCIL_TEST: return true;
++    default: return false;
++    }
++}
++
++void setCap( GLenum c, bool on )
++{
++    KG_RECORD( setCap( c, on ) );
++    STATE& s = S();
++
++    if( c == GL_TEXTURE_2D )
++        s.texOn[s.activeUnit] = on;
++    else if( c == KG_ALPHA_TEST )
++        s.alphaTest = on;
++    else if( c == KG_LIGHTING )
++        s.lighting = on;
++    else if( c >= KG_LIGHT0 && c < KG_LIGHT0 + N_LIGHTS )
++        s.lights[c - KG_LIGHT0].on = on;
++    else if( c == KG_COLOR_MATERIAL )
++        s.colorMaterial = on;
++    else if( isEsCap( c ) )
++        on ? glEnable( c ) : glDisable( c );
++    // anything else (smoothing, multisample, normalize: normals are always normalized here) has no meaning here
++}
++
++void kg_Enable( GLenum c ) { setCap( c, true ); }
++void kg_Disable( GLenum c ) { setCap( c, false ); }
++
++GLboolean kg_IsEnabled( GLenum c )
++{
++    STATE& s = S();
++
++    if( c == GL_TEXTURE_2D )
++        return s.texOn[s.activeUnit];
++
++    if( c == KG_ALPHA_TEST )
++        return s.alphaTest;
++
++    if( c == KG_LIGHTING )
++        return s.lighting;
++
++    if( c >= KG_LIGHT0 && c < KG_LIGHT0 + N_LIGHTS )
++        return s.lights[c - KG_LIGHT0].on;
++
++    if( c == KG_COLOR_MATERIAL )
++        return s.colorMaterial;
++
++    return isEsCap( c ) ? glIsEnabled( c ) : GL_FALSE;
++}
++
++void kg_ActiveTexture( GLenum t )
++{
++    int u = (int) ( t - GL_TEXTURE0 );
++    S().activeUnit = u >= 0 && u < 32 ? u : 0;
++    glActiveTexture( t );
++}
++
++void kg_AlphaFunc( GLenum f, GLfloat ref )
++{
++    KG_RECORD( kg_AlphaFunc( f, ref ) );
++    S().alphaFunc = f;
++    S().alphaRef = ref;
++}
++
++// Texture environment of unit 0: the mode (modulate, replace, or the combine the 3D models use) and its colour. The
++// combine's own sources are not read: KiCad uses one setting of it (render_3d_opengl.cpp: rgb from the lit colour,
++// alpha = lit alpha x the environment colour's alpha), which the built-in program does as "combine".
++void texEnv( GLenum pname, VEC4 v )
++{
++    KG_RECORD( texEnv( pname, v ) );
++    STATE& s = S();
++
++    if( s.activeUnit != 0 )
++        return;
++
++    if( pname == KG_TEXTURE_ENV_MODE )
++        s.envMode = (GLenum) v[0];
++    else if( pname == KG_TEXTURE_ENV_COLOR )
++        s.envColor = v;
++}
++
++void kg_TexEnvf( GLenum, GLenum pname, GLfloat v ) { texEnv( pname, VEC4{ v, 0, 0, 0 } ); }
++void kg_TexEnvi( GLenum, GLenum pname, GLint v ) { texEnv( pname, VEC4{ (float) v, 0, 0, 0 } ); }
++
++void kg_TexEnvfv( GLenum, GLenum pname, const GLfloat* v )
++{
++    texEnv( pname, pname == KG_TEXTURE_ENV_COLOR ? vec4( v, 4 ) : VEC4{ v[0], 0, 0, 0 } );
++}
++void kg_ShadeModel( GLenum ) {}
++void kg_PolygonMode( GLenum, GLenum ) {}
++void kg_ClearDepth( GLdouble d ) { glClearDepthf( (GLfloat) d ); }
++void kg_DepthRange( GLdouble n, GLdouble f ) { glDepthRangef( (GLfloat) n, (GLfloat) f ); }
++void* kg_MapBuffer( GLenum, GLenum ) { return nullptr; } // WebGL maps nothing (the RAM vertex container is used)
++
++// ── programs and shaders ──
++void kg_UseProgram( GLuint p )
++{
++    S().program = p;
++    useProgramGL( p );
++}
++
++GLuint kg_CreateShader( GLenum type )
++{
++    GLuint sh = glCreateShader( type );
++    S().shaderTypes[sh] = type;
++    return sh;
++}
++
++bool identChar( char c )
++{
++    return ( c >= 'a' && c <= 'z' ) || ( c >= 'A' && c <= 'Z' ) || ( c >= '0' && c <= '9' ) || c == '_';
++}
++
++// Replace whole identifiers (or tokens starting with one) only.
++void replaceIdent( std::string& s, const std::string& from, const std::string& to )
++{
++    size_t pos = 0;
++
++    while( ( pos = s.find( from, pos ) ) != std::string::npos )
++    {
++        bool startOk = pos == 0 || !identChar( s[pos - 1] );
++        bool endOk = !identChar( from.back() ) || pos + from.size() >= s.size() || !identChar( s[pos + from.size()] );
++
++        if( startOk && endOk )
++        {
++            s.replace( pos, from.size(), to );
++            pos += to.size();
++        }
++        else
++        {
++            pos += from.size();
++        }
++    }
++}
++
++std::string toEs( std::string src, bool vertex )
++{
++    size_t v = src.find( "#version" );
++
++    if( v == std::string::npos )
++        return src;
++
++    size_t eol = src.find( '\n', v );
++    std::string ver = src.substr( v, eol == std::string::npos ? std::string::npos : eol - v );
++
++    if( ver.find( "es" ) != std::string::npos )
++        return src; // already GLSL ES
++
++    src.erase( v, eol == std::string::npos ? std::string::npos : eol - v );
++
++    std::string head = "#version 300 es\nprecision highp float;\nprecision highp int;\n";
++
++    if( vertex )
++    {
++        head += "in vec4 kg_Vertex;\nin vec4 kg_Color;\nin vec4 kg_MultiTexCoord0;\nuniform mat4 kg_MVP;\n"
++                "out vec4 kg_FrontColor;\nout vec4 kg_TexCoord0;\n";
++        replaceIdent( src, "attribute", "in" );
++        replaceIdent( src, "varying", "out" );
++        replaceIdent( src, "ftransform()", "(kg_MVP * kg_Vertex)" );
++        replaceIdent( src, "gl_Vertex", "kg_Vertex" );
++        replaceIdent( src, "gl_Color", "kg_Color" );
++        replaceIdent( src, "gl_MultiTexCoord0", "kg_MultiTexCoord0" );
++        replaceIdent( src, "gl_FrontColor", "kg_FrontColor" );
++    }
++    else
++    {
++        head += "in vec4 kg_FrontColor;\nin vec4 kg_TexCoord0;\nout vec4 kg_FragColor;\n";
++        replaceIdent( src, "varying", "in" );
++        replaceIdent( src, "gl_Color", "kg_FrontColor" );
++        replaceIdent( src, "gl_FragColor", "kg_FragColor" );
++    }
++
++    replaceIdent( src, "gl_ModelViewProjectionMatrix", "kg_MVP" );
++    replaceIdent( src, "gl_TexCoord[0]", "kg_TexCoord0" );
++    replaceIdent( src, "texture2DLod", "textureLod" );
++    replaceIdent( src, "texture2D", "texture" );
++    return head + src;
++}
++
++void kg_ShaderSource( GLuint sh, GLsizei n, const GLchar* const* strs, const GLint* lens )
++{
++    std::string src;
++
++    for( GLsizei i = 0; i < n; i++ )
++    {
++        if( lens && lens[i] >= 0 )
++            src.append( strs[i], lens[i] );
++        else
++            src.append( strs[i] );
++    }
++
++    auto it = S().shaderTypes.find( sh );
++    bool vertex = it != S().shaderTypes.end() && it->second == GL_VERTEX_SHADER;
++    std::string es = toEs( src, vertex );
++    const char* p = es.c_str();
++    glShaderSource( sh, 1, &p, nullptr );
++}
++
++void kg_LinkProgram( GLuint p )
++{
++    bindKgAttribs( p );
++    glLinkProgram( p );
++    S().progs.erase( p ); // uniform locations looked up again
++}
++
++void kg_DeleteProgram( GLuint p )
++{
++    S().progs.erase( p );
++
++    if( S().glProg == p )
++        S().glProg = 0;   // GL unbinds a deleted program
++
++    glDeleteProgram( p );
++}
++
++void kg_DeleteShader( GLuint sh )
++{
++    S().shaderTypes.erase( sh );
++    glDeleteShader( sh );
++}
++
++// ── framebuffers: one colour attachment at a time ──
++GLuint& boundFbo( GLenum target )
++{
++    return target == GL_READ_FRAMEBUFFER ? S().readFbo : S().drawFbo;
++}
++
++void kg_BindFramebuffer( GLenum target, GLuint f )
++{
++    if( target == GL_FRAMEBUFFER )
++        S().drawFbo = S().readFbo = f;
++    else
++        boundFbo( target ) = f;
++
++    glBindFramebuffer( target, f );
++}
++
++void attachAt0( GLenum target, GLuint fbo, int n )
++{
++    auto& m = S().attach[fbo];
++    auto  it = m.find( n );
++
++    if( it == m.end() || S().current[fbo] == n )
++        return;
++
++    glFramebufferTexture2D( target, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, it->second, 0 );
++    S().current[fbo] = n;
++}
++
++void kg_FramebufferTexture2D( GLenum target, GLenum att, GLenum textarget, GLuint tex, GLint level )
++{
++    int n = (int) att - (int) GL_COLOR_ATTACHMENT0;
++
++    if( n >= 0 && n < 32 )
++    {
++        GLuint fbo = boundFbo( target == GL_FRAMEBUFFER ? GL_DRAW_FRAMEBUFFER : target );
++        S().attach[fbo][n] = tex;
++        S().current[fbo] = n;
++        glFramebufferTexture2D( target, GL_COLOR_ATTACHMENT0, textarget, tex, level );
++        return;
++    }
++
++    glFramebufferTexture2D( target, att, textarget, tex, level );
++}
++
++void kg_DrawBuffer( GLenum buf )
++{
++    GLuint fbo = S().drawFbo;
++
++    if( fbo == 0 )
++    {
++        GLenum b = buf == GL_NONE ? GL_NONE : GL_BACK;
++        glDrawBuffers( 1, &b );
++        return;
++    }
++
++    int n = (int) buf - (int) GL_COLOR_ATTACHMENT0;
++
++    if( n < 0 || n >= 32 )
++    {
++        GLenum b = GL_NONE;
++        glDrawBuffers( 1, &b );
++        return;
++    }
++
++    attachAt0( GL_DRAW_FRAMEBUFFER, fbo, n );
++    GLenum b = GL_COLOR_ATTACHMENT0;
++    glDrawBuffers( 1, &b );
++}
++
++void kg_ReadBuffer( GLenum buf )
++{
++    GLuint fbo = S().readFbo;
++
++    if( fbo == 0 )
++    {
++        glReadBuffer( buf == GL_NONE ? GL_NONE : GL_BACK );
++        return;
++    }
++
++    int n = (int) buf - (int) GL_COLOR_ATTACHMENT0;
++
++    if( n >= 0 && n < 32 )
++    {
++        attachAt0( GL_READ_FRAMEBUFFER, fbo, n );
++        glReadBuffer( GL_COLOR_ATTACHMENT0 );
++    }
++    else
++    {
++        glReadBuffer( buf );
++    }
++}
++
++void kg_DeleteFramebuffers( GLsizei n, const GLuint* f )
++{
++    for( GLsizei i = 0; i < n; i++ )
++    {
++        S().attach.erase( f[i] );
++        S().current.erase( f[i] );
++    }
++
++    glDeleteFramebuffers( n, f );
++}
++
++void kg_DeleteTextures( GLsizei n, const GLuint* t )
++{
++    for( auto& fb : S().attach )
++        for( auto it = fb.second.begin(); it != fb.second.end(); )
++        {
++            bool gone = false;
++
++            for( GLsizei i = 0; i < n; i++ )
++                gone |= it->second == t[i];
++
++            it = gone ? fb.second.erase( it ) : std::next( it );
++        }
++
++    glDeleteTextures( n, t );
++}
++
++// ── queries ──
++void kg_GetIntegerv( GLenum p, GLint* v )
++{
++    STATE& s = S();
++
++    if( p == KG_DRAW_BUFFER || p == GL_DRAW_BUFFER0 )
++    {
++        *v = s.drawFbo == 0 ? GL_BACK : GL_COLOR_ATTACHMENT0 + s.current[s.drawFbo];
++        return;
++    }
++
++    if( p == GL_READ_BUFFER )
++    {
++        *v = s.readFbo == 0 ? GL_BACK : GL_COLOR_ATTACHMENT0 + s.current[s.readFbo];
++        return;
++    }
++
++    if( p == KG_MATRIX_MODE )
++    {
++        *v = s.mode == 1 ? KG_PROJECTION : s.mode == 2 ? KG_TEXTURE : KG_MODELVIEW;
++        return;
++    }
++
++    glGetIntegerv( p, v );
++
++    if( p == GL_NUM_EXTENSIONS )
++        *v += N_EXTRA_EXTS;
++    else if( p == GL_MAX_COLOR_ATTACHMENTS || p == GL_MAX_DRAW_BUFFERS )
++        *v = 16; // attachments are swapped in at 0, so any number fits
++}
++
++const GLubyte* kg_GetStringi( GLenum name, GLuint i )
++{
++    if( name == GL_EXTENSIONS )
++    {
++        GLint real = 0;
++        glGetIntegerv( GL_NUM_EXTENSIONS, &real );
++
++        if( i >= (GLuint) real && i < (GLuint) ( real + N_EXTRA_EXTS ) )
++            return (const GLubyte*) EXTRA_EXTS[i - real];
++    }
++
++    return glGetStringi( name, i );
++}
++
++struct ENTRY
++{
++    const char* name;
++    void*       fn;
++};
++
++#define E( n ) { "gl" #n, (void*) &kg_##n }
++const ENTRY ENTRIES[] = {
++    E( MatrixMode ), E( LoadIdentity ), E( PushMatrix ), E( PopMatrix ), E( LoadMatrixd ), E( LoadMatrixf ),
++    E( MultMatrixd ), E( MultMatrixf ), E( Ortho ), E( Translated ), E( Translatef ), E( Scaled ), E( Scalef ),
++    E( Rotated ), E( Rotatef ),
++    E( Color4f ), E( Color4d ), E( Color3f ), E( Color3d ), E( Color4ub ), E( Color4fv ), E( Color3fv ), E( Color4dv ),
++    E( Color3dv ), E( TexCoord2f ), E( TexCoord2d ), E( TexCoord2fv ),
++    E( Begin ), E( End ), E( Vertex2f ), E( Vertex2d ), E( Vertex3f ), E( Vertex3d ), E( Vertex2fv ), E( Vertex3fv ),
++    E( Vertex2dv ), E( Vertex3dv ),
++    E( EnableClientState ), E( DisableClientState ), E( VertexPointer ), E( ColorPointer ), E( TexCoordPointer ),
++    E( BindBuffer ), E( DrawArrays ), E( DrawElements ), E( DeleteBuffers ), E( NormalPointer ), E( ClientActiveTexture ),
++    E( VertexAttribPointer ), E( EnableVertexAttribArray ), E( DisableVertexAttribArray ),
++    E( Normal3f ), E( Normal3d ), E( Normal3fv ),
++    E( GenLists ), E( IsList ), E( NewList ), E( EndList ), E( CallList ), E( DeleteLists ),
++    E( Lightfv ), E( Lightf ), E( LightModelfv ), E( LightModelf ), E( LightModeli ), E( Materialfv ), E( Materialf ),
++    E( ColorMaterial ), E( PointSize ), E( GetFloatv ), E( TexEnvfv ), E( BindTexture ), E( BlendFunc ), E( LineWidth ),
++    E( Enable ), E( Disable ), E( IsEnabled ), E( ActiveTexture ), E( AlphaFunc ), E( TexEnvf ), E( TexEnvi ),
++    E( ShadeModel ), E( PolygonMode ), E( ClearDepth ), E( DepthRange ), E( MapBuffer ),
++    E( UseProgram ), E( CreateShader ), E( ShaderSource ), E( LinkProgram ), E( DeleteProgram ), E( DeleteShader ),
++    E( BindFramebuffer ), E( FramebufferTexture2D ), E( DrawBuffer ), E( ReadBuffer ), E( DeleteFramebuffers ),
++    E( DeleteTextures ), E( GetIntegerv ), E( GetStringi ),
++};
++#undef E
++} // namespace
++
++// GLU's GL calls (its quadrics and projection: the 3D view's arrows and pivot, the footprint preview), renamed
++// kigl_glu_* when GLU is built (spike/gui/build-glu.sh).
++extern "C"
++{
++void kigl_glu_Begin( GLenum m ) { kg_Begin( m ); }
++void kigl_glu_End( void ) { kg_End(); }
++void kigl_glu_MultMatrixd( const GLdouble* m ) { kg_MultMatrixd( m ); }
++void kigl_glu_MultMatrixf( const GLfloat* m ) { kg_MultMatrixf( m ); }
++void kigl_glu_Normal3f( GLfloat x, GLfloat y, GLfloat z ) { kg_Normal3f( x, y, z ); }
++void kigl_glu_Ortho( GLdouble l, GLdouble r, GLdouble b, GLdouble t, GLdouble n, GLdouble f ) { kg_Ortho( l, r, b, t, n, f ); }
++void kigl_glu_Scalef( GLfloat x, GLfloat y, GLfloat z ) { kg_Scalef( x, y, z ); }
++void kigl_glu_TexCoord2f( GLfloat s, GLfloat t ) { kg_TexCoord2f( s, t ); }
++void kigl_glu_Translated( GLdouble x, GLdouble y, GLdouble z ) { kg_Translated( x, y, z ); }
++void kigl_glu_Translatef( GLfloat x, GLfloat y, GLfloat z ) { kg_Translatef( x, y, z ); }
++void kigl_glu_Vertex3f( GLfloat x, GLfloat y, GLfloat z ) { kg_Vertex3f( x, y, z ); }
++}
++
++
++extern "C" void* kigl_es_proc( const char* name )
++{
++    for( const ENTRY& e : ENTRIES )
++    {
++        if( strcmp( e.name, name ) == 0 )
++            return e.fn;
++    }
++
++    return emscripten_webgl_get_proc_address( name );
++}
++
++#endif // __EMSCRIPTEN__
+diff --git a/thirdparty/lemon/CMakeLists.txt b/thirdparty/lemon/CMakeLists.txt
+index 12c97d2f..3bed89c3 100644
+--- a/thirdparty/lemon/CMakeLists.txt
++++ b/thirdparty/lemon/CMakeLists.txt
+@@ -1,6 +1,11 @@
+-add_executable( lemon
+-    lemon.c
+-    )
++if( KICAD_WASM_HOST_LEMON )   # browser build: lemon runs at build time, so it is the host's program, not a wasm one
++    add_executable( lemon IMPORTED GLOBAL )
++    set_property( TARGET lemon PROPERTY IMPORTED_LOCATION ${KICAD_WASM_HOST_LEMON} )
++else()
++    add_executable( lemon
++        lemon.c
++        )
++endif()
+ 
+ # The location of the template file for lemon is passed as a property on the lemon target
+ define_property( TARGET
+diff --git a/thirdparty/libcontext/CMakeLists.txt b/thirdparty/libcontext/CMakeLists.txt
+index 24d88a1f..0fe04a3c 100644
+--- a/thirdparty/libcontext/CMakeLists.txt
++++ b/thirdparty/libcontext/CMakeLists.txt
+@@ -34,6 +34,10 @@ if( MSVC )
+     list(APPEND LIBCONTEXT_SOURCES ${LIBCONTEXT_ASM_SOURCES})
+ endif()
+ 
++if( KICAD_WASM_LIBCONTEXT )   # browser build: contexts as threads instead of the assembly
++    set( LIBCONTEXT_SOURCES ${KICAD_WASM_LIBCONTEXT} )
++endif()
++
+ add_library( libcontext STATIC
+     ${LIBCONTEXT_SOURCES}
+     )
+diff --git a/thirdparty/libcontext/libcontext.h b/thirdparty/libcontext/libcontext.h
+index 20a1f2a3..7b1d2645 100644
+--- a/thirdparty/libcontext/libcontext.h
++++ b/thirdparty/libcontext/libcontext.h
+@@ -22,7 +22,11 @@
+ #include <cstdio>
+ 
+ 
+-#if defined(__GNUC__) || defined(__APPLE__) || defined(__FreeBSD__)
++#if defined(__EMSCRIPTEN__)
++    // browser build: contexts are threads (spike/gui/stubs/libcontext_threads.cpp)
++    #define LIBCONTEXT_PLATFORM_wasm_threads
++    #define LIBCONTEXT_CALL_CONVENTION
++#elif defined(__GNUC__) || defined(__APPLE__) || defined(__FreeBSD__)
+ 
+     #undef LIBCONTEXT_HAS_OWN_STACK
+ 
+diff --git a/thirdparty/thread-pool/CMakeLists.txt b/thirdparty/thread-pool/CMakeLists.txt
+index f61e527c..ba4b4994 100644
+--- a/thirdparty/thread-pool/CMakeLists.txt
++++ b/thirdparty/thread-pool/CMakeLists.txt
+@@ -3,7 +3,9 @@ add_library( thread-pool INTERFACE )
+ target_include_directories( thread-pool INTERFACE ${CMAKE_CURRENT_SOURCE_DIR} )
+ 
+ # Enable native extensions
+-target_compile_definitions( thread-pool INTERFACE BS_THREAD_POOL_NATIVE_EXTENSIONS=1 )
++if( NOT EMSCRIPTEN )   # browser build: no thread priorities
++    target_compile_definitions( thread-pool INTERFACE BS_THREAD_POOL_NATIVE_EXTENSIONS=1 )
++endif()
+ 
+ target_sources( thread-pool INTERFACE
+     ${CMAKE_CURRENT_SOURCE_DIR}/bs_thread_pool.hpp
