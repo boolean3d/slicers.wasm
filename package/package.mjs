@@ -33,7 +33,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 // Our scripts on every program page, in the order the page loads them (before the program's own script): each is a file of
 // this folder, kept in the program's data file as a start file and loaded by index.html.
 export const PAGE_SCRIPTS = ['loading-art.js', 'credit.js', 'home-folder-sync.js', 'project-folder.js', 'boolean3d-folder.js', 'open-part-from-link.js',
-  'workspace-bar.js', 'print-anywhere.js'];
+  'home-bar.js', 'print-anywhere.js'];
 
 // Every response from the slicer host. Threads need SharedArrayBuffer, which needs cross-origin isolation.
 const HEADERS = {
