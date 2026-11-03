@@ -89,3 +89,7 @@ the folder reproduces the build.
 `package/package.mjs` turns a build into what a web host serves (brotli-compressed files and a manifest of
 headers) and adds the loading screen (`package/credit.js`), the lazy loader (`package/install-and-lazy-load.js`: files the program
 has not read yet are fetched when it first reads them) and the part opener (`package/open-part-from-link.js`).
+Every version folder also gets `LICENSE.txt` (the program's licence, AGPL-3.0, plus Mulan PSL v2 for Anycubic's
+open-plugins) and `SOURCE.txt` (the upstream version, this repository's folder at the commit the package was made from,
+the libraries built in), written from `package/program-sources.mjs`; the loading screen links to both. Pass
+`--source-rev <commit>` when packaging from a copy of `package/` without git.
