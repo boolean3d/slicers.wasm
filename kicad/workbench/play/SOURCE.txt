@@ -1,0 +1,27 @@
+KiCad in a browser tab: where its source is
+=============================================
+
+This browser copy runs KiCad 10.0.7 (GPL-3.0-or-later), compiled to WebAssembly as it is, with a small
+set of build changes. Whoever receives this copy is owed its Corresponding Source (GPLv3 section 6).
+It is made of:
+
+- KiCad 10.0.7: https://gitlab.com/kicad/code/kicad (tag 10.0.7), plus our build patch
+  (CMake plumbing for a static browser build, a platform layer for the browser, no 3D mouse,
+  scripting without the Python module): GPL-3.0-or-later, like the files beside it.
+- wxWidgets 3.2.6 with a browser port (a fork of Prusa Research's port, plus our edits):
+  wxWindows Library Licence 3.1.
+- OpenCASCADE 7.6.1 (LGPL-2.1 with OCCT's exception), CPython 3.12.11 (PSF licence),
+  cairo 1.16 (LGPL-2.1 / MPL-1.1), pixman 0.42 (MIT), freetype 2.13 (FTL), harfbuzz 8.5 (Old MIT),
+  fontconfig 2.15 (MIT-like), zstd 1.5.6 (BSD-3), glm 1.0.1 (MIT), libgit2 1.8.4 (GPLv2 with the
+  linking exception), protobuf 3.21.12 (BSD-3), nng 1.9 (MIT), pcre2 10.42 (BSD-3), unixODBC (LGPL-2.1),
+  Boost (BSL-1.0), GLU 9.0.3 (SGI Free Software License B 2.0), Emscripten's runtime (MIT/UIUC).
+- Their licences and copyright notices, as their makers publish them: NOTICES.txt beside this file.
+- The demo projects come from KiCad's own demos folder, under CC BY-SA 4.0.
+- The part models the demo boards show in 3D come from the KiCad libraries (kicad-packages3D 10.0.0,
+  https://gitlab.com/kicad/libraries/kicad-packages3D), under CC BY-SA 4.0 with the KiCad libraries' exception;
+  their licence text travels with them (share/kicad/3dmodels/LICENSE.md in this copy's data file).
+
+Our patches (to KiCad and to wxWidgets), the build scripts, the platform layer and the package of this copy:
+- https://github.com/boolean3d/slicers.wasm/tree/main/kicad (how to build it: kicad/README.md there)
+Or write to legal@boolean3d.com, naming the version above, and you get the exact source of it, at no charge.
+"KiCad" is the KiCad project's name. This copy is unofficial: not made or endorsed by the KiCad team.

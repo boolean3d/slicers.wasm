@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang=en>
+<meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<title>KiCad</title>
+<style>
+  :root { --bg: #26282b; --fg: #e8e8e8; --dim: #c4c4c4; --mute: #9aa0a6; --line: #3a3d41; --btn: #34373b; --btn-h: #43474c; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 680px; margin: 0 auto; padding: 48px 16px; }
+  h1 { font-size: 28px; font-weight: 600; margin: 0 0 16px; }
+  h2 { font-size: 17px; font-weight: 600; margin: 36px 0 12px; }
+  p { margin: 0 0 6px; color: var(--dim); }
+  .note { color: var(--mute); font-size: 13px; margin-top: 12px; }
+  .demo { display: flex; align-items: center; gap: 8px; padding: 12px 0; border-top: 1px solid var(--line); flex-wrap: wrap; }
+  .demo:last-child { border-bottom: 1px solid var(--line); }
+  .demo .name { flex: 1 1 220px; }
+  .demo .name small { display: block; color: var(--mute); font-size: 13px; }
+  a.btn { display: inline-block; padding: 6px 14px; border-radius: 4px; background: var(--btn); color: var(--fg); text-decoration: none; font-size: 14px; }
+  a.btn:hover { background: var(--btn-h); }
+  .links { margin-top: 28px; font-size: 13px; }
+  .links a { color: var(--dim); margin-right: 18px; }
+</style>
+<main>
+  <h1>KiCad</h1>
+  <p>Made by the KiCad developers. Version @KICAD@.</p>
+  <p>Open source under the GNU GPL-3.0. Running in your browser.</p>
+  <p>Unofficial: not made or endorsed by the KiCad team.</p>
+  <p>Demo projects from KiCad, under CC BY-SA 4.0.</p>
+  <p>Part models from the KiCad libraries (kicad-packages3D 10.0.0), under CC BY-SA 4.0.</p>
+
+  <h2>Pick a demo project</h2>
+  <div id=demos></div>
+  <p class=note>Your changes are saved in this browser (Ctrl+S). Each program opens in this tab and takes about a minute to start the first time.</p>
+
+  <div class=links>
+    <a href=kicad/>Project manager (empty)</a>
+    <a href=LICENSE.txt target=_blank rel=noopener>Licence</a>
+    <a href=SOURCE.txt target=_blank rel=noopener>Source of this browser copy</a>
+  </div>
+</main>
+<script>
+  // The demos the programs carry: kicad-pre.js copies them into the home folder at the first start, which the browser keeps.
+  var HOME = '/home/web_user/Documents/kicad-demos/';
+  var DEMOS = [
+    ['pic_programmer', 'pic_programmer', 'PIC programmer', '2 sheets, 2-layer board, 63 parts'],
+    ['ecc83', 'ecc83-pp', 'ECC83 tube amplifier', '1 sheet, 2-layer board, 15 parts'],
+    ['complex_hierarchy', 'complex_hierarchy', 'Complex hierarchy', 'Sheets used twice, 2-layer board, 68 parts'],
+    ['kit-dev-coldfire-xilinx_5213', 'kit-dev-coldfire-xilinx_5213', 'ColdFire + Xilinx dev kit', '3 sheets, 4-layer board, 160 parts'],
+  ];
+  var list = document.getElementById('demos');
+  DEMOS.forEach(function (d) {
+    var file = HOME + d[0] + '/' + d[1];
+    var row = document.createElement('div'); row.className = 'demo';
+    var n = document.createElement('div'); n.className = 'name'; n.textContent = d[2];
+    var s = document.createElement('small'); s.textContent = d[3]; n.appendChild(s); row.appendChild(n);
+    [['Project', 'kicad', '.kicad_pro'], ['Schematic', 'kicad', '.kicad_sch'], ['Board', 'kicad', '.kicad_pcb']].forEach(function (b) {
+      var a = document.createElement('a'); a.className = 'btn'; a.textContent = b[0];
+      a.href = b[1] + '/?arg=' + encodeURIComponent(file + b[2]);
+      row.appendChild(a);
+    });
+    list.appendChild(row);
+  });
+</script>
+</html>

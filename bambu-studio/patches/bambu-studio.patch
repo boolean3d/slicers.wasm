@@ -139,6 +139,38 @@ index dbb257b..13b33a9 100644
  
      Realize();
  }
+diff --git a/src/slic3r/GUI/BitmapCache.cpp b/src/slic3r/GUI/BitmapCache.cpp
+index 1d1d93d..42e6696 100644
+--- a/src/slic3r/GUI/BitmapCache.cpp
++++ b/src/slic3r/GUI/BitmapCache.cpp
+@@ -48,6 +48,9 @@ BitmapCache::BitmapCache()
+     // return bogus results quite often (such as 1.0 on Retina or even 0.0).
+     // We're using the max scaling factor across all screens because it's very likely to be good enough.
+     m_scale = mac_max_scaling_factor();
++#elif defined(__WXWASM__)
++    // (z61) 2x icons at any scale above 1, drawn down by the page (as on a Mac at a Retina factor)
++    m_scale = float(wxContentScaleFactor());
+ #endif
+ }
+ 
+@@ -68,7 +71,7 @@ static wxBitmap wxImage_to_wxBitmap_with_alpha(wxImage &&image, float scale = 1.
+     wxStreamBuffer *buf = stream.GetOutputStreamBuffer();
+     return wxBitmap::NewFromPNGData(buf->GetBufferStart(), buf->GetBufferSize());
+ #else
+-#ifdef __APPLE__
++#if defined(__APPLE__) || defined(__WXWASM__)   // (z61) the wasm bitmap takes the scale too
+     // This is a c-tor native to Mac OS. We need to let the Mac OS wxBitmap implementation
+     // know that the image may already be scaled appropriately for Retina,
+     // and thereby that it's not supposed to upscale it.
+@@ -91,7 +94,7 @@ wxBitmap* BitmapCache::insert(const std::string &bitmap_key, size_t width, size_
+             , 32
+ #endif
+             );
+-#ifdef __APPLE__
++#if defined(__APPLE__) || defined(__WXWASM__)   // (z61) composite icons at the cache's scale
+         // Contrary to intuition, the `scale` argument isn't "please scale this to such and such"
+         // but rather "the wxImage is sized for backing scale such and such".
+         // So, We need to let the Mac OS wxBitmap implementation
 diff --git a/src/slic3r/GUI/GUI_App.cpp b/src/slic3r/GUI/GUI_App.cpp
 index a87793f..2058bd1 100644
 --- a/src/slic3r/GUI/GUI_App.cpp

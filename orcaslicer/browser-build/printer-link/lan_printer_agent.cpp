@@ -129,7 +129,7 @@ int b3d_set_on_local_connect_fn(void *a, OnLocalConnectedFn fn) { static_cast<Ag
 int b3d_set_on_local_message_fn(void *a, OnMessageFn fn) { static_cast<Agent *>(a)->on_local_message = fn; return 0; }
 int b3d_set_queue_on_main_fn(void *a, QueueOnMainFn fn) { static_cast<Agent *>(a)->queue_on_main = fn; return 0; }
 // Cloud-only callbacks: kept nowhere, there is no cloud.
-int  b3d_set_ignored_fn_login(void *, OnUserLoginFn) { return 0; }
+int  b3d_set_ignored_fn_login(void *, std::function<void(int, bool)>) { return 0; }   // = OnUserLoginFn (Orca 2.4 / Elegoo 1.5 dropped the typedef)
 int  b3d_set_ignored_fn_printer(void *, OnPrinterConnectedFn) { return 0; }
 int  b3d_set_ignored_fn_server(void *, OnServerConnectedFn) { return 0; }
 int  b3d_set_ignored_fn_http(void *, OnHttpErrorFn) { return 0; }
