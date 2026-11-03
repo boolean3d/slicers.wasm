@@ -20,5 +20,7 @@ It is made of:
   https://gitlab.com/kicad/libraries/kicad-packages3D), under CC BY-SA 4.0 with the KiCad libraries' exception;
   their licence text travels with them (share/kicad/3dmodels/LICENSE.md in this copy's data file).
 
-The patch, build scripts and platform layer are offered with this copy; ask for them and you get them.
+Our patches (to KiCad and to wxWidgets), the build scripts, the platform layer and the package of this copy:
+- https://github.com/boolean3d/slicers.wasm/tree/main/kicad (how to build it: kicad/README.md there)
+Or write to legal@boolean3d.com, naming the version above, and you get the exact source of it, at no charge.
 "KiCad" is the KiCad project's name. This copy is unofficial: not made or endorsed by the KiCad team.
