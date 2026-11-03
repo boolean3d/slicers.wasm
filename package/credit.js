@@ -1,7 +1,6 @@
 // The loading screen of a slicer served in a browser tab: who made the program, its licence, that this browser
 // copy is not theirs, where its source is, and how far the download (the install, install-and-lazy-load.js) has got. Plain text on a neutral background,
-// no logo (neither the slicer maker's nor the host's). Over the words, the picture every program of the site loads under
-// (loading-art.js, loaded just before this script): a line-drawn part turning, its edges tracing the download as it goes. The package puts this script after the page's Module set-up
+// no logo (neither the slicer maker's nor the host's). The package puts this script after the page's Module set-up
 // and before the program's script; it stays until the slicer's main window fills the page.
 (function () {
   var TEXT = {
@@ -60,9 +59,8 @@
     + '#credit .box{max-width:560px;padding:32px}'
     + '#credit h1{font-size:28px;font-weight:600;margin:0 0 16px}'
     + '#credit p{margin:0 0 6px;color:#c4c4c4}'
-    + '#credit .art{margin:0 0 20px -14px}'
-    + '#credit .bar{height:2px;background:#3a3d41;border-radius:1px;margin:24px 0 8px;overflow:hidden}'
-    + '#credit .fill{height:100%;width:0;background:#3a9bfd;transition:width .2s}'
+    + '#credit .bar{height:4px;background:#3a3d41;border-radius:2px;margin:24px 0 8px;overflow:hidden}'
+    + '#credit .fill{height:100%;width:0;background:#9aa0a6;transition:width .2s}'
     + '#credit .state{font-size:13px;color:#9aa0a6;min-height:20px}'
     + '#credit .part{font-size:13px;color:#e8e8e8;min-height:20px}'
     + '#credit .links{margin-top:20px;font-size:13px}'
@@ -76,10 +74,6 @@
   root.id = 'credit';
   var box = document.createElement('div');
   box.className = 'box';
-  var artBox = document.createElement('div'); artBox.className = 'art';
-  box.appendChild(artBox);
-  // The part's edges trace the share done; null (nothing counted yet, or the program starting) = a short trace going round.
-  var art = window.B3dLoadingArt ? window.B3dLoadingArt.mount(artBox, { size: 120 }) : { progress: function () {}, stop: function () {} };
   var h = document.createElement('h1');
   h.textContent = t.name;
   box.appendChild(h);
@@ -106,7 +100,7 @@
   var mb = function (n) { return Math.round(n / 1e6); };
   // The install (install-and-lazy-load.js): share done (0..1, or null to keep the bar) and what it is doing, in its words.
   window.SLICER_CREDIT = { show: function (share, text) {
-    if (share !== null && share !== undefined) { fill.style.width = (100 * Math.min(1, share)) + '%'; art.progress(share < 1 ? share : null); }
+    if (share !== null && share !== undefined) fill.style.width = (100 * Math.min(1, share)) + '%';
     state.textContent = text;
   }, part: function (text) { partLine.textContent = text || ''; } };
   var setStatus = Module.setStatus;
@@ -118,11 +112,9 @@
       var done = Math.min(1, m[1] / (cfg.dataRaw || m[2]));
       var sent = cfg.dataSent || m[2];
       fill.style.width = (100 * done) + '%';
-      art.progress(done < 1 ? done : null);
       state.textContent = 'Downloading ' + mb(done * sent) + ' of ' + mb(sent) + ' MB';
     } else if (s === '' || /complete|preparing|running/i.test(s || '')) {
       fill.style.width = '100%';
-      art.progress(null);
       state.textContent = 'Starting ' + t.name + '…';
     }
     if (setStatus) return setStatus.apply(this, arguments);
@@ -130,7 +122,6 @@
   var onAbort = Module.onAbort;
   Module.onAbort = function (what) {
     state.textContent = t.name + ' stopped while starting. Reload the page to try again.';
-    art.stop();   // a program that stopped is not loading: the part stands still
     if (onAbort) return onAbort.apply(this, arguments);
   };
 
