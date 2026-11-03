@@ -15,6 +15,7 @@ It is made of:
   fontconfig 2.15 (MIT-like), zstd 1.5.6 (BSD-3), glm 1.0.1 (MIT), libgit2 1.8.4 (GPLv2 with the
   linking exception), protobuf 3.21.12 (BSD-3), nng 1.9 (MIT), pcre2 10.42 (BSD-3), unixODBC (LGPL-2.1),
   Boost (BSL-1.0), GLU 9.0.3 (SGI Free Software License B 2.0), Emscripten's runtime (MIT/UIUC).
+- Their licences and copyright notices, as their makers publish them: NOTICES.txt beside this file.
 - The demo projects come from KiCad's own demos folder, under CC BY-SA 4.0.
 - The part models the demo boards show in 3D come from the KiCad libraries (kicad-packages3D 10.0.0,
   https://gitlab.com/kicad/libraries/kicad-packages3D), under CC BY-SA 4.0 with the KiCad libraries' exception;

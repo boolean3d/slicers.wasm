@@ -11,7 +11,7 @@
 //   <out>/kicad/<version>/index.html           the demo picker (start.html)
 //   <out>/kicad/<version>/kicad/index.{html,js,wasm}   the program (project manager + both editors; page never cached)
 //   <out>/kicad/<version>/index.data           the files all three read (demos, Python's library, fonts): one copy
-//   <out>/kicad/<version>/{kicad-credit.js,home-sync.js,LICENSE.txt,SOURCE.txt}
+//   <out>/kicad/<version>/{kicad-credit.js,backdrop.webp,home-sync.js,LICENSE.txt,SOURCE.txt}
 // One home folder for all three: home-sync.js names its store after the first path piece (b3d-home-kicad).
 import fs from 'node:fs';
 import path from 'node:path';
@@ -67,10 +67,13 @@ async function main() {
   if (new Set(dataSha).size !== 1) throw new Error('the three index.data differ');
   add('index.data', path.join(src, 'kicad', 'index.data'));
   add('kicad-credit.js', path.join(here, 'kicad-credit.js'));
+  // The loading screen's backdrop (kicad-credit.js): a small blurred picture of KiCad's window, beside this script.
+  const backdrop = path.join(here, 'backdrop-kicad.webp');
+  if (fs.existsSync(backdrop)) add('backdrop.webp', backdrop);
   add('home-sync.js', path.resolve(a.homesync));
   const HOOKUP = a.scripts ? ['project-folder.js', 'workspace-bar.js'] : [];
   for (const s of HOOKUP) add(s, path.join(path.resolve(a.scripts), s));
-  // KiCad's stock symbol and footprint libraries: --libs <folder with kicad-symbols/ and kicad-footprints/,
+  // KiCad's stock symbol and footprint libraries (kicad-gerbers-1): --libs <folder with kicad-symbols/ and kicad-footprints/,
   // checked out at --libtag>. One object per library (a pack: a zero byte, then its files in name order) under
   // kicad/lib-<tag>/, shared by every version; the list + the stock tables in <version>/kicad-libs-list.js; kicad-libs.js
   // makes the files in the tab and reads a pack when KiCad first reads one of its files.
@@ -78,7 +81,7 @@ async function main() {
   if (a.libs) {
     const tag = a.libtag; if (!/^[\w.-]+$/.test(tag || '')) throw new Error('bad --libtag');
     const sets = {}, root = path.resolve(a.libs);
-    // Symbols as KiCad's own installers ship them: one .kicad_sym file per library, packed from the
+    // Symbols as KiCad's own installers ship them (kicad-gerbers-3): one .kicad_sym file per library, packed from the
     // repo's .kicad_symdir folders by the repo's tools/kicad_lib_pack.py (KICAD_PACK_SYM_LIBRARIES) into
     // kicad-symbols-packed/ with its table; the folder layout made KiCad open 22.7k files at start. A flat set's library
     // is one file straight in the set's folder.
@@ -103,6 +106,8 @@ async function main() {
   }
   add('LICENSE.txt', path.resolve(a.licence));
   add('SOURCE.txt', path.resolve(a.source));
+  // The libraries built in carry their own licences and copyright notices (BSD, MIT, Boost, SGI B ask for the notice in a binary copy).
+  add('NOTICES.txt', path.resolve(a.notices || path.join(here, 'NOTICES.txt')));
   add('index.html', stageFile('start.html', fs.readFileSync(path.join(here, 'start.html'), 'utf8').replaceAll('@KICAD@', a.kicad)), NEVER);
   const pages = [];
   for (const p of PROGS) {
@@ -148,15 +153,17 @@ async function main() {
   // Each program's page: the credit screen, the shared data one folder up, the home folder, before index.js.
   const data = files.find(f => f.rel === 'index.data');
   for (const pg of pages) {
-    const page = { prog: pg.p, kicad: a.kicad, version: a.version, dataRaw: data.raw, dataSent: data.stored };
-    const inject = '<script>window.KICAD_PAGE=' + JSON.stringify(page) + ';'
+    const page = { prog: pg.p, kicad: a.kicad, version: a.version, dataRaw: data.raw, dataSent: data.stored,
+      ...(fs.existsSync(backdrop) ? { backdrop: '../backdrop.webp' } : {}) };
+    // The backdrop is asked for with the page's first bytes, ahead of the program, so it paints at once.
+    const inject = (page.backdrop ? '<link rel=preload as=image href=../backdrop.webp fetchpriority=high>' : '') + '<script>window.KICAD_PAGE=' + JSON.stringify(page) + ';'
       + 'Module.locateFile=function(p,d){return p==="index.data"?"../index.data":(d||"")+p};</script>'
       + '<script src=../kicad-credit.js></script><script src=../home-sync.js></script>'
       + HOOKUP.map(s => '<script src=../' + s + '></script>').join('')
       + LIBS.map(s => '<script src=../' + s + '></script>').join('');
     // index.js is loaded with the page's ?gl= (and ?glcache=) test switches in its address (kicad-pre.js): the program's threads start from that
     // address and see only its own query, not the page's.
-    // the glcache= test switch of the GL stand-in travels the same way
+    // (kicad-play-10) the glcache= test switch of the GL stand-in travels the same way
     const load = '<script>(function(){var s=document.createElement("script"),q=new URLSearchParams(location.search),p=new URLSearchParams();'
       + '["gl","glcache","glattr"].forEach(function(k){if(q.get(k))p.set(k,q.get(k))});var t=p.toString();'
       + 's.src="index.js"+(t?"?"+t:"");document.body.appendChild(s)})()</script>';
@@ -170,8 +177,8 @@ async function main() {
   }
 
   const top = path.join(out, 'kicad', 'index.html');
-  // The host's one lasting address: /kicad/ goes to this version's start page, or, given ?open=<a project file> (a
-  // Boolean3d project's board, schematic or project), straight to the program that file belongs to.
+  // The host's one lasting address: /kicad/ starts KiCad on its Project Manager, as on a computer (kicad-entry-1103:
+  // never a demo list first; the demos open from KiCad's Open box, boolean3d-folder.js), ?project=&open= kept.
   fs.writeFileSync(top, kicadTopPage(a.version));
 
   const mf = path.join(out, 'manifest.json');
@@ -191,10 +198,8 @@ async function main() {
   console.log(`kicad ${a.version}: ${files.length} files, ${(sum(() => true) / 1e6).toFixed(1)} MB stored`);
 }
 
-/** /kicad/index.html: forward to <version>/, or to <version>/kicad/ (the one program) when ?open= names a KiCad file. */
+/** /kicad/index.html: forward to <version>/kicad/ (the Project Manager), the address kept (same page as kicad-hookup.mjs). */
 function kicadTopPage(version) {
-  return '<!doctype html><meta charset=utf-8><title>KiCad</title><script>(function(){'
-    + 'var v=' + JSON.stringify(version + '/') + ',o=new URLSearchParams(location.search).get("open")||"",'
-    + 'm=/\\.kicad_(pcb|sch|pro)$/i.exec(o),g=m?"kicad/":"";'
-    + 'location.replace(v+g+location.search+location.hash)})()</script>';
+  return '<!doctype html><meta charset=utf-8><title>KiCad</title><script>location.replace('
+    + JSON.stringify(version + '/kicad/') + '+location.search+location.hash)</script>';
 }
