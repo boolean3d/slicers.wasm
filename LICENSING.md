@@ -17,6 +17,7 @@
 | `sync-workbench.sh`, `rename-workbench-files.py`, `sync-helper.sh`, `check-public.sh` | Boolean3d | AGPL-3.0-or-later |
 | `helper/` (the printer helper) | Expresslane Equity LLC (Boolean3d); facts about the printers' LAN protocol from MIT tools credited in `helper/bambu.mjs` (ha-bambulab, bambulabs_api), no Bambu code | MIT (`helper/LICENSE`) |
 | `package/` | Boolean3d | AGPL-3.0-or-later |
+| `package/licences/` | The GNU AGPL-3.0 text (Free Software Foundation) and the Mulan PSL v2 text (from Anycubic's open-plugins), unchanged | Their own terms (verbatim copies) |
 | `docker/`, `build.sh`, the .md files | Boolean3d | AGPL-3.0-or-later |
 
 The licences of the libraries a build downloads are listed in `SOURCE.md`. Every one of them may be combined

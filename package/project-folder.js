@@ -33,7 +33,7 @@
 //
 // A slicer file made from a CAD part (its made_from link) whose part was saved since: the file the program last read
 // is asked about at the start, when the tab comes back to the front and every minute (the door's links call, the
-// file_link_state view's update_available). The workspace bar (workspace-bar.js) shows it: the window event
+// file_link_state view's update_available). The home bar (home-bar.js) shows it: the window event
 // 'b3d-part-update' carries {name, number, step: 'making' | 'not_made' | 'offer' | 'fetching' | 'reload', update()} or
 // null; 'making': the part's 3MF of that version is still being made in Boolean3d (asked again every few seconds),
 // 'not_made': it could not be made; Update is offered only once it is made. Update fetches
@@ -107,7 +107,7 @@
     close.onclick = function () { noticeBox.style.display = 'none'; };
     noticeBox.appendChild(words);
     noticeBox.appendChild(close);
-    // Under the workspace bar when the package has one (it sits above everything, the notice included).
+    // Under the home bar when the package has one (it sits above everything, the notice included).
     var bar = document.getElementById('b3d-bar');
     noticeBox.style.top = ((bar ? bar.getBoundingClientRect().bottom : 0) + 12) + 'px';
     noticeBox.style.display = 'flex';
