@@ -16,24 +16,53 @@
 //
 // Projects and parts shared with the person are listed too (the door decides, by the sharing gate), a shared folder
 // saying who shared it. A save into a project shared to view is refused by the server, in its words (project-folder.js).
+//
+// KiCad (its Open Project and Open Demo Project, which take a .kicad_pro): the same box opens a whole KiCad project in
+// place, as KiCad on a computer reads it, because a project is a folder (schematic, board, tables beside the .kicad_pro).
+// "Boolean3d" lists the person's projects holding a .kicad_pro: picked, project-folder.js puts the project's folder
+// under Projects/ and KiCad opens it there, so its saves go up as versions. "Examples" lists KiCad's own demo
+// projects (the copies in the home folder, kicad-pre.js). The program's picker writes what is picked under Uploads/ and
+// opens it by that name: the name handed back is the path from Uploads/ to the project file (../Projects/..), and the
+// bytes are the file's own, so nothing is copied. Shown signed out too (Examples, This computer).
 (function () {
   if (typeof Module === 'undefined' || typeof HTMLInputElement === 'undefined') return;
   var APP = (location.pathname.split('/')[1] || 'slicer').replace(/[^\w-]/g, '');
   var ACCENT = { bambu: '#00ae42', orca: '#009688' }[APP] || '#2f6fde';
+  var KICAD = APP === 'kicad';
+  var DEMOS = '/home/web_user/Documents/kicad-demos';   // kicad-pre.js copies KiCad's demos here at the first start
   var click = HTMLInputElement.prototype.click;
   var bypass = false;
 
   function linked() { return !!(Module.b3dHome && Module.b3dHome.linked && Module.b3dHome.linked()); }
-  // The box is only for a picker that takes a 3MF (open project, import): any other (a G-code, a picture) goes straight on.
-  function takes3mf(input) {
-    var a = (input.accept || '').toLowerCase();
-    return !a || a.split(',').some(function (x) { return x.trim() === '.3mf' || x.trim() === '*' || x.trim() === '*.*'; });
+  // The box is only for a picker that takes a 3MF (open project, import), in KiCad a .kicad_pro (open a project): any
+  // other (a G-code, a picture, a netlist) goes straight on.
+  function takes(input) {
+    var a = (input.accept || '').toLowerCase().split(',').map(function (x) { return x.trim(); });
+    if (KICAD) return a.indexOf('.kicad_pro') >= 0;
+    return !a[0] || a.some(function (x) { return x === '.3mf' || x === '*' || x === '*.*'; });
   }
 
   HTMLInputElement.prototype.click = function () {
-    if (this.type !== 'file' || bypass || !linked() || !takes3mf(this)) return click.apply(this, arguments);
+    if (this.type !== 'file' || bypass || (!KICAD && !linked()) || !takes(this)) return click.apply(this, arguments);
     choose(this);
   };
+  var FILE = KICAD ? /\.kicad_pro$/i : /\.3mf$/i;   // a project's files the box lists
+
+  /** KiCad's demo projects in the home folder: [{name, abs, folder}], each .kicad_pro two folders deep at most. */
+  function examples() {
+    var FS = Module.FS, out = [];
+    function walk(dir, depth) {
+      var names; try { names = FS.readdir(dir); } catch (e) { return; }
+      names.sort().forEach(function (n) {
+        if (n === '.' || n === '..') return;
+        var at = dir + '/' + n, st; try { st = FS.stat(at); } catch (e) { return; }
+        if (FS.isDir(st.mode)) { if (depth < 2) walk(at, depth + 1); }
+        else if (/\.kicad_pro$/i.test(n)) out.push({ name: n.replace(/\.kicad_pro$/i, ''), abs: at, folder: dir.slice(DEMOS.length + 1), example: true });
+      });
+    }
+    walk(DEMOS, 0);
+    return out;
+  }
 
   function ask(op, body) { return Module.b3dHome.ask(op, body); }
   var UPLOADS = '/home/web_user/Uploads';   // wxWASM_UPLOAD_DIR: where the program's picker puts what was picked
@@ -73,16 +102,18 @@
   var DISK = '<svg width="16" height="16" viewBox="0 0 16 16"><rect x="1.5" y="3.5" width="13" height="9" rx="1.5" fill="#dfe3e4" stroke="#8a9294"/><circle cx="12" cy="10" r="1" fill="#3a4244"/></svg>';
   function icon(svg) { var s = el('span', { style: 'display:inline-flex' }); s.innerHTML = svg; return s; }
 
+  var EXAMPLES = 'b3d-examples';
   function choose(input) {
     if (!document.getElementById('b3dd-css')) document.head.appendChild(el('style', { id: 'b3dd-css' }, [CSS]));
     var folders = {}, parts = [], at = null, picked = null, busy = false, done = false;
     var projectFiles = {};   // folder id -> its project's 3MF files ([] while asked), from project-folder.js
-    var root = el('div', { class: 'b3dd', style: '--b3dd-accent:' + ACCENT, role: 'dialog', 'aria-label': 'Open' });
+    var TITLE = KICAD ? 'Open project' : 'Open';
+    var root = el('div', { class: 'b3dd', style: '--b3dd-accent:' + ACCENT, role: 'dialog', 'aria-label': TITLE });
     var side = el('div', { class: 'b3dd-side' }), path = el('div', { class: 'b3dd-path' }), grid = el('div', { class: 'b3dd-grid' });
     var say = el('span', {}, ['']);
     var open = el('button', { class: 'b3dd-btn go', disabled: '', onclick: function () { if (picked) take(picked); } }, ['Open']);
     root.appendChild(el('div', { class: 'b3dd-box' }, [
-      el('div', { class: 'b3dd-head' }, [el('span', {}, ['Open']), el('button', { class: 'b3dd-x', title: 'Close', onclick: function () { finish(null); } }, ['×'])]),
+      el('div', { class: 'b3dd-head' }, [el('span', {}, [TITLE]), el('button', { class: 'b3dd-x', title: 'Close', onclick: function () { finish(null); } }, ['×'])]),
       el('div', { class: 'b3dd-body' }, [side, el('div', { class: 'b3dd-main' }, [path, grid])]),
       el('div', { class: 'b3dd-foot' }, [say, el('button', { class: 'b3dd-btn', onclick: function () { finish(null); } }, ['Cancel']), open]),
     ]));
@@ -101,7 +132,14 @@
     function finish(file) {
       if (done) return; done = true;
       root.remove();
-      if (file) {
+      if (file && file.abs) {
+        // A KiCad project where it is: the picker's list is a name from Uploads/ to the file, and the file's own bytes.
+        var rel = '..' + file.abs.slice('/home/web_user'.length), bytes = Module.FS.readFile(file.abs);
+        var list = [{ name: rel, size: bytes.length, arrayBuffer: function () { return Promise.resolve(bytes.slice().buffer); } }];
+        Object.defineProperty(input, 'files', { configurable: true, value: list });
+        console.log('b3d disk: opening ' + file.abs);
+        input.dispatchEvent(new Event('change'));
+      } else if (file) {
         var dt = new DataTransfer(); dt.items.add(file);
         input.files = dt.files;
         input.dispatchEvent(new Event('change'));
@@ -121,6 +159,15 @@
     function take(p) {
       if (busy) return; busy = true; open.disabled = true;
       say.textContent = 'Opening ' + p.name + '…';
+      if (p.example) return finish({ abs: p.abs });
+      if (KICAD) return projects().open(p.folder).then(function (o) {
+        var abs = o.dir + '/' + p.name;
+        if (!Module.FS.analyzePath(abs).exists) throw new Error(p.name + ' could not be fetched.');
+        finish({ abs: abs });
+      }).catch(function (e) {
+        busy = false; open.disabled = !picked;
+        say.textContent = e.message || 'The project could not be opened.';
+      });
       var made = null;   // the part's version this 3MF is of (the door's x-b3d-version)
       (p.projectFile ? projects().file(p.folder, p.id).then(function (got) {
         projects().track(UPLOADS + '/' + got.name, got.entry);
@@ -148,20 +195,38 @@
     function trail(id) { var out = []; for (var f = folders[id]; f; f = folders[f.parent]) { out.unshift(f); if (out.length > 20) break; } return out; }
     function drawSide() {
       side.textContent = '';
-      var top = el('div', { class: 'b3dd-place' + (at === null ? ' on' : ''), onclick: function () { go(null); } }, [icon(DISK), 'Boolean3d']);
-      side.appendChild(top);
-      kidsOf(null).forEach(function (f) {
+      if (linked()) side.appendChild(el('div', { class: 'b3dd-place' + (at === null ? ' on' : ''), onclick: function () { go(null); } }, [icon(DISK), 'Boolean3d']));
+      if (linked()) kidsOf(null).forEach(function (f) {
         side.appendChild(el('div', { class: 'b3dd-place sub' + (at === f.id || trail(at).some(function (t) { return t.id === f.id; }) ? ' on' : ''),
           title: f.owner ? f.name + ' (shared by ' + f.owner + ')' : f.name,
           onclick: function () { go(f.id); } }, [icon(FOLDER), f.name]));
       });
+      if (KICAD) side.appendChild(el('div', { class: 'b3dd-place' + (at === EXAMPLES ? ' on' : ''), 'data-place': 'examples',
+        onclick: function () { go(EXAMPLES); } }, [icon(FOLDER), 'Examples']));
       side.appendChild(el('div', { class: 'b3dd-sep' }));
       side.appendChild(el('div', { class: 'b3dd-place', onclick: computer }, [icon(DISK), 'This computer…']));
+    }
+    function pick(card, p) {
+      Array.prototype.forEach.call(grid.querySelectorAll('.b3dd-item.on'), function (c) { c.classList.remove('on'); });
+      card.classList.add('on'); picked = p; open.disabled = busy; say.textContent = p.projectFile || p.example ? p.name : fileName(p);
     }
     function go(id) {
       at = id; picked = null; open.disabled = true; say.textContent = '';
       drawSide();
       path.textContent = '';
+      if (id === EXAMPLES) {
+        path.appendChild(el('a', {}, ['Examples: KiCad\u2019s demo projects']));
+        grid.textContent = '';
+        var ex = examples();
+        ex.forEach(function (p) {
+          var card = el('div', { class: 'b3dd-item', title: p.abs, onclick: function () { pick(card, p); }, ondblclick: function () { take(p); } }, [
+            el('div', { class: 'b3dd-pic' }, [icon(FOLDER.replace(/16/g, '56'))]),
+            el('div', { class: 'b3dd-name' }, [p.name]), el('div', { class: 'b3dd-when' }, [p.folder || 'Example'])]);
+          grid.appendChild(card);
+        });
+        if (!ex.length) grid.appendChild(el('div', { class: 'b3dd-note' }, ['No examples in this copy of KiCad.']));
+        return;
+      }
       path.appendChild(el('a', { onclick: function () { go(null); } }, ['Boolean3d']));
       trail(id).forEach(function (f) { path.appendChild(document.createTextNode(' › ')); path.appendChild(el('a', { onclick: function () { go(f.id); } }, [f.name])); });
       grid.textContent = '';
@@ -170,7 +235,7 @@
         projectFiles[id] = [];
         Module.b3dHome.ask('project', { project: id }).then(function (r) { return r.json(); }).then(function (a) {
           if (!a || !a.ok) return;
-          projectFiles[id] = a.files.filter(function (f) { return f.kind === 'file' && f.version && /\.3mf$/i.test(f.path || ''); })
+          projectFiles[id] = a.files.filter(function (f) { return f.kind === 'file' && f.version && FILE.test(f.path || ''); })
             .map(function (f) { return { id: f.id, name: f.path, folder: id, updated: f.at, number: f.number, projectFile: true }; });
           if (at === id && !done && projectFiles[id].length) go(id);
         }).catch(function (e) { console.warn('b3d disk: project files: ' + e.message); });
@@ -182,10 +247,7 @@
           el('div', { class: 'b3dd-name' }, [f.name]), el('div', { class: 'b3dd-when' }, [f.owner ? 'Shared by ' + f.owner : 'Folder'])]));
       });
       here.forEach(function (p) {
-        var card = el('div', { class: 'b3dd-item', title: p.name, onclick: function () {
-          Array.prototype.forEach.call(grid.querySelectorAll('.b3dd-item.on'), function (c) { c.classList.remove('on'); });
-          card.classList.add('on'); picked = p; open.disabled = busy; say.textContent = p.projectFile ? p.name : fileName(p);
-        }, ondblclick: function () { take(p); } }, [
+        var card = el('div', { class: 'b3dd-item', title: p.name, onclick: function () { pick(card, p); }, ondblclick: function () { take(p); } }, [
           el('div', { class: 'b3dd-pic' }, [p.picture ? el('img', { crossorigin: 'anonymous', alt: '', loading: 'lazy', src: Module.b3dHome.beside(p.picture) }) : null]),
           el('div', { class: 'b3dd-name' }, [p.name]),
           el('div', { class: 'b3dd-when' }, [(p.projectFile ? 'Version ' + p.number + ' · ' : '')
@@ -196,14 +258,16 @@
     }
 
     drawSide();
-    grid.appendChild(el('div', { class: 'b3dd-note' }, ['Loading your Boolean3d parts…']));
+    // Signed out, KiCad's box has its examples and the computer only.
+    if (KICAD && !linked()) return go(EXAMPLES);
+    grid.appendChild(el('div', { class: 'b3dd-note' }, [KICAD ? 'Loading your Boolean3d projects…' : 'Loading your Boolean3d parts…']));
     ask('disk', {}).then(function (r) { return r.json(); }).then(function (a) {
       if (done) return;
       if (!a || !a.ok) throw new Error((a && a.error) || 'Your Boolean3d parts could not be listed.');
       a.folders.forEach(function (f) { folders[f.id] = f; });
       // A folder whose parent is not listed (deleted) is shown at the top.
       Object.keys(folders).forEach(function (k) { if (folders[k].parent && !folders[folders[k].parent]) folders[k].parent = null; });
-      parts = a.parts;
+      parts = KICAD ? [] : a.parts;   // CAD parts are no KiCad projects
       // One folder at the top (My files): open in it.
       var tops = kidsOf(null);
       go(tops.length === 1 && !parts.some(function (p) { return !p.folder; }) ? tops[0].id : null);
