@@ -295,6 +295,30 @@ var B3DHelper = (typeof document === 'undefined' || (typeof ENVIRONMENT_IS_PTHRE
       ['mousedown', 'mouseup', 'click', 'dblclick', 'mousemove', 'contextmenu', 'wheel', 'touchstart', 'touchend', 'touchmove', 'pointerdown', 'pointerup']
         .forEach(function (t) { node.addEventListener(t, function (e) { e.stopPropagation(); }); });
     }
+    // PUTTING A BOX AWAY (dead-ends-1103): Escape, or a press anywhere outside it, closes a box of ours like its cross,
+    // as every box on the site does. Window capture listeners run before the program's own (it listens on the window
+    // and the document) and before the box's shield; nothing is stopped but the Escape that closed the box. A box that
+    // is gone (closed by its cross, by the helper's answer) drops its listeners on the next key or press.
+    function awayCloses(node, close) {
+      function key(e) {
+        if (!node.isConnected) return drop();
+        if (e.key !== 'Escape') return;
+        e.stopPropagation(); e.preventDefault(); drop(); close();
+        // its key-up too: the program never saw that Escape go down
+        window.addEventListener('keyup', function up(u) {
+          if (u.key !== 'Escape') return;
+          u.stopPropagation(); window.removeEventListener('keyup', up, true);
+        }, true);
+      }
+      function press(e) {
+        if (!node.isConnected) return drop();
+        if (node.contains(e.target)) return;
+        drop(); close();
+      }
+      function drop() { window.removeEventListener('keydown', key, true); window.removeEventListener('pointerdown', press, true); }
+      window.addEventListener('keydown', key, true);
+      window.addEventListener('pointerdown', press, true);
+    }
     const SIGN_IN = 'Sign in to Boolean3d to connect your printer';
     // SIGNING IN FROM HERE: "Sign in" opens the site's Slicers page as #/slicers?back=1 in a new tab, this tab as its
     // opener. Signed in there (or once the person signs in), that page posts this browser's key here as a message and
@@ -333,6 +357,7 @@ var B3DHelper = (typeof document === 'undefined' || (typeof ENVIRONMENT_IS_PTHRE
       box.append(words, go, x);
       shield(box);
       document.body.appendChild(box);
+      awayCloses(box, x.onclick);
     }
     // The program's own background calls (the printer search at start, a disconnect) are dropped quietly; the box
     // answers what the person asked for (connect, Connect by IP, send, print).
@@ -401,6 +426,7 @@ var B3DHelper = (typeof document === 'undefined' || (typeof ENVIRONMENT_IS_PTHRE
       hbox.append(title, x, hparts);
       shield(hbox);
       document.body.appendChild(hbox);
+      awayCloses(hbox, x.onclick);
       return hbox;
     }
     function progress(n) {   // 1 Download · 2 Open it · 3 Pick your printer
