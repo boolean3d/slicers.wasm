@@ -117,14 +117,25 @@ addToLibrary({
       }
       return h === 'localhost' || h.endsWith('.local') || h.endsWith('.lan') || h.endsWith('.home.arpa') || p.length === 1;
     };
+    // The line to the home helper a printer page travels on (the service worker opens it): with the token this browser
+    // got when it paired with the helper (lan-printer-link.js keeps it; net-worker.js houseBridge puts it on the
+    // program's own printer lines the same way). Without it the helper refuses the page: "not paired".
     Module.wxwvLanBridge = function () {
-      return Module.lanBridge || new URLSearchParams(location.search).get('bridge') || 'ws://localhost:8770';
+      var b = Module.lanBridge || new URLSearchParams(location.search).get('bridge') || 'ws://localhost:8770';
+      try {
+        var t = localStorage.getItem('b3d-helper-token');
+        if (t) { var u = new URL(b, location.href); u.searchParams.set('token', t); return u.href; }
+      } catch (e) {}
+      return b;
     };
     Module.wxwvHouseUrl = function (url) {
       try {
         var u = new URL(url);
         if ((u.protocol !== 'http:' && u.protocol !== 'https:') || !Module.wxwvHouse(u.hostname)) return null;
         var port = u.port || (u.protocol === 'https:' ? '443' : '80');
+        // the worker gets the line as it is now: a browser that paired after the program started has its token since
+        var w = navigator.serviceWorker && (navigator.serviceWorker.controller || Module.wxwvWorker);
+        if (w) w.postMessage({ wxwvLanBridge: Module.wxwvLanBridge() });
         return new URL('__lan/' + encodeURIComponent(u.hostname) + '/' + port + u.pathname + u.search + u.hash, new URL('./', location.href)).href;
       } catch (e) { return null; }
     };
