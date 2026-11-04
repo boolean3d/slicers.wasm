@@ -9,7 +9,7 @@ const SRC = fs.readFileSync(new URL('print-anywhere.js', import.meta.url), 'utf8
 const PRINTER = { id: 'dc93f026-5fce-49d8-84fc-068b91f14702', name: 'Garage Voron', paired: true, online: true, kind: 'klipper' };
 
 /** A page with SOCKFS (createPeer as Emscripten's: a socket object is taken as is) and a door that answers. */
-function page({ printers = [PRINTER], linked = true } = {}) {
+function page({ printers = [PRINTER], linked = true, blocked = false } = {}) {
   const calls = [], store = { 'b3d-slicer-home': linked ? JSON.stringify({ key: 'k'.repeat(48), door: 'http://door.test/functions/v1/slicer-home', anon: 'anon' }) : null };
   const notices = [];
   const fetch = async (url, o = {}) => {
@@ -21,14 +21,16 @@ function page({ printers = [PRINTER], linked = true } = {}) {
       : url.includes('/upload/sign/') ? {} : { ok: false };
     return { ok: true, status: 200, json: async () => answer };
   };
-  const Module = { b3dNotice: (t) => notices.push(t) };
+  const Module = { b3dNotice: (t, kind, link) => notices.push(link ? { t, link } : t) };
+  const opened = [];
+  const window = { open: (url, name) => { opened.push({ url, name }); return blocked ? null : {}; } };
   const SOCKFS = { websocket_sock_ops: { createPeer(sock, addr, port) { return { addr, port, socket: addr }; } } };
-  const ctx = { Module, SOCKFS, fetch, document: { hidden: false }, location: { pathname: '/orca/2.3.2/' }, console: { log() {} },
+  const ctx = { Module, SOCKFS, fetch, window, document: { hidden: false }, location: { pathname: '/orca/2.3.2/' }, console: { log() {} },
     localStorage: { getItem: (k) => store[k] ?? null, setItem: (k, v) => { store[k] = v; } },
     setTimeout: (f, ms) => (ms ? 0 : (queueMicrotask(f), 0)), setInterval: () => 0, crypto, TextEncoder, TextDecoder, URL, Promise, JSON, Date };
   vm.runInNewContext(SRC, ctx);
   for (const f of Module.preRun) f();
-  return { Module, SOCKFS, calls, notices, ctx };
+  return { Module, SOCKFS, calls, notices, opened, ctx };
 }
 const tick = () => new Promise((r) => setTimeout(r, 5));
 /** What libcurl does: connect, send the request, read until the socket closes. */
@@ -79,6 +81,32 @@ test('Upload and Print: the file goes up through the account and the printer is 
   assert.equal(Buffer.from(put.body).toString(), gcode);
   assert.deepEqual(JSON.parse(go.body), { printer: PRINTER.id, print: JSON.parse(up.body).print, name: 'Box-60x40x12_PLA_12m' });
   assert.match(p.notices.at(-1), /Box-60x40x12_PLA_12m is on its way to Garage Voron/);
+});
+
+/** Upload and Print of a small file to `host` (what OrcaSlicer sends). */
+async function uploadAndPrint(p, host = 'garage-voron.boolean3d') {
+  const B = 'b0undary', body = Buffer.from(`--${B}\r\nContent-Disposition: form-data; name="print"\r\n\r\ntrue\r\n`
+    + `--${B}\r\nContent-Disposition: form-data; name="file"; filename="Cube.gcode"\r\n\r\nG28\r\n--${B}--\r\n`);
+  return request(p, host, [Buffer.from(`POST /api/files/local HTTP/1.1\r\nHost: ${host}\r\nContent-Length: ${body.length}\r\nContent-Type: multipart/form-data; boundary=${B}\r\n\r\n`), body]);
+}
+
+test('after Upload and Print to a Klipper printer its Mainsail opens, through the helper on this computer (like Bambu Studio\'s device view)', async () => {
+  const p = page();
+  await tick();
+  assert.match(await uploadAndPrint(p), /^HTTP\/1\.1 201/);
+  assert.deepEqual(p.opened, [{ url: 'http://garage-voron.localhost:8770/', name: 'b3d-printer-garage-voron' }]);
+  assert.match(p.notices.at(-1), /Cube is on its way to Garage Voron/);
+});
+
+test('a browser that stops the new tab gets the same page as a link in the notice; a Bambu Lab printer opens nothing', async () => {
+  const p = page({ blocked: true });
+  await tick();
+  await uploadAndPrint(p);
+  assert.deepEqual({ ...p.notices.at(-1).link }, { label: 'Open Mainsail', href: 'http://garage-voron.localhost:8770/' });
+  const b = page({ printers: [{ ...PRINTER, name: 'Office X1C', kind: 'bambu' }] });
+  await tick();
+  await uploadAndPrint(b, 'office-x1c.boolean3d');
+  assert.deepEqual(b.opened, []);
 });
 
 test('Upload without Print is refused in words; an unlinked slicer says how to link it', async () => {

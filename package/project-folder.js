@@ -72,15 +72,15 @@
 
   // ── Telling the person ───────────────────────────────────────────
   // One line over the program, in the account's words: kind 'refused' stays until closed, 'info' goes by itself.
-  // Module.b3dNotice(text, kind) for the other scripts of the package.
+  // Module.b3dNotice(text, kind, link?) for the other scripts of the package; link {label, href} opens in a new tab.
   var noticeBox = null, noticeTimer = null;
-  function notice(text, kind) {
+  function notice(text, kind, link) {
     if (typeof document === 'undefined' || !document.body) { console.warn('b3d projects: ' + text); return; }
     // A passing line said while the program starts would go before anyone sees it: it waits until the program's first
     // window is on the page and the start notice (credit.js) is gone.
     var up = function () { return !!document.querySelector('#window-container .window') && !document.getElementById('credit'); };
     if (kind !== 'refused' && !up()) {
-      var later = setInterval(function () { if (up()) { clearInterval(later); notice(text, kind); } }, 300);
+      var later = setInterval(function () { if (up()) { clearInterval(later); notice(text, kind, link); } }, 300);
       return;
     }
     if (!noticeBox) {
@@ -106,6 +106,15 @@
     close.style.cssText = 'border:0;background:none;font-size:18px;line-height:1;cursor:pointer;color:#6b7375;padding:0 2px';
     close.onclick = function () { noticeBox.style.display = 'none'; };
     noticeBox.appendChild(words);
+    if (link) {
+      var go = document.createElement('a');
+      go.href = link.href; go.target = '_blank'; go.rel = 'noopener'; go.textContent = link.label;
+      go.setAttribute('data-testid', 'b3d-notice-link');
+      go.style.cssText = 'align-self:center;white-space:nowrap;font-weight:600;color:#0a7a5c;text-decoration:none;'
+        + 'border:1px solid #0a7a5c;border-radius:4px;padding:3px 10px';
+      go.onclick = function () { noticeBox.style.display = 'none'; };
+      noticeBox.appendChild(go);
+    }
     noticeBox.appendChild(close);
     // Under the home bar when the package has one (it sits above everything, the notice included).
     var bar = document.getElementById('b3d-bar');

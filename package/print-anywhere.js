@@ -206,6 +206,15 @@
     var h = Array.prototype.map.call(b, function (x) { return (x + 256).toString(16).slice(1); }).join('');
     return h.slice(0, 8) + '-' + h.slice(8, 12) + '-' + h.slice(12, 16) + '-' + h.slice(16, 20) + '-' + h.slice(20);
   }
+  // After Print, a Klipper printer's own page (Mainsail or Fluidd) opens in a tab of its own, as Bambu Studio shows its
+  // device view: http://<printer name>.localhost:8770/, the helper on this computer passes it from the printer whole
+  // (farm-helper/bambu-home/tablink.mjs; the Printers page's Open Mainsail). One tab per printer, used again next time.
+  var HELPER_PORT = 8770;
+  function pageOf(p) { return p.kind === 'klipper' ? 'http://' + slug(p.name) + '.localhost:' + HELPER_PORT + '/' : null; }
+  function opened(url, p) {
+    try { return !!(typeof window !== 'undefined' && window.open && window.open(url, 'b3d-printer-' + slug(p.name))); }
+    catch (e) { return false; }
+  }
   function upload(host, head, body) {
     var form = formParts(head, body);
     if (!form || !form.file) return { status: 400, body: 'No file came with the upload.' };
@@ -224,7 +233,10 @@
           return call('POST', 'print-start', { printer: p.id, print: id, name: title }).then(function (s) {
             if (!s || !s.ok) return { status: 409, body: (s && s.error) || 'Boolean3d did not send it to ' + p.name + '.' };
             console.log('b3d print: ' + name + ' (' + bytes.length + ' bytes) sent to ' + p.name + ' through Boolean3d');
-            if (Module.b3dNotice) Module.b3dNotice(title + ' is on its way to ' + p.name + ' through your Boolean3d account: it starts in a few seconds.');
+            var said = title + ' is on its way to ' + p.name + ' through your Boolean3d account: it starts in a few seconds.';
+            var own = pageOf(p);
+            if (own && !opened(own, p)) { if (Module.b3dNotice) Module.b3dNotice(said, 'info', { label: 'Open Mainsail', href: own }); }
+            else if (Module.b3dNotice) Module.b3dNotice(said);
             return { status: 201, body: { done: true, files: { local: { name: name, origin: 'local', refs: {} } }, effectivePrint: true, effectiveSelect: true } };
           });
         });
