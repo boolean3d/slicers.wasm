@@ -260,12 +260,12 @@ var B3DHelper = (typeof document === 'undefined' || (typeof ENVIRONMENT_IS_PTHRE
     // browser has linked to the helper before (the person said yes then; the browser remembers it).
     let personAsked = false;
     try { personAsked = localStorage.getItem('b3d-lan-linked') === '1'; } catch (e) {}
-    if (new URLSearchParams(location.search).get('bridge')) personAsked = true; // an address naming the helper: their own setup
+    if (new URLSearchParams(location.search).get('bridge')) personAsked = true; // an address naming Printer Link: their own setup
     if (token()) personAsked = true; // paired before: the person gave the browser's permission then
     let parked = null; // the program's background request (Bambu: its printer search), sent once the person asks
     const background = (m) => { if (typeof m !== 'string' || !o.background) return false; try { return o.background(JSON.parse(m)); } catch (e) { return false; } };
-    let opened = false;   // the link opened at least once (the helper is there)
-    let helper = null;    // {id, name, version, paired} from the helper's hello answer
+    let opened = false;   // the link opened at least once (Printer Link is there)
+    let helper = null;    // {id, name, version, paired} from Printer Link's hello answer
     let wants = false;    // the person asked for a printer (connect, Connect by IP, send, print): the box may show
     function token() { try { return localStorage.getItem(TOKEN) || ''; } catch (e) { return ''; } }
     function lineUrl() {
@@ -383,7 +383,7 @@ var B3DHelper = (typeof document === 'undefined' || (typeof ENVIRONMENT_IS_PTHRE
     const SECRET = 'b3d-helper-secret';
     const SECRET_LETTERS = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';   // pairing.mjs CODE_LETTERS
     const SOURCE = 'https://github.com/boolean3d/slicers.wasm/tree/main/helper';
-    const found = new Map();   // dev_id -> {name, model, ip}: printers the helper heard (paired lines only)
+    const found = new Map();   // dev_id -> {name, model, ip}: printers Printer Link heard (paired lines only)
     let hbox = null, hstep = null, hparts = null, hideAt = null, looking = null;
     function secret() { try { return localStorage.getItem(SECRET) || ''; } catch (e) { return ''; } }
     function newSecret() {
@@ -443,13 +443,13 @@ var B3DHelper = (typeof document === 'undefined' || (typeof ENVIRONMENT_IS_PTHRE
       const wrap = el('div');
       if (hint) wrap.appendChild(el('p', 'margin:8px 0 4px', hint));
       const row = el('div', 'display:flex;gap:8px;align-items:center;margin-top:6px');
-      const input = el('input', css.input); input.placeholder = 'Code from the helper'; input.maxLength = 7; input.autocapitalize = 'characters'; input.spellcheck = false;
+      const input = el('input', css.input); input.placeholder = 'Code from Printer Link'; input.maxLength = 7; input.autocapitalize = 'characters'; input.spellcheck = false;
       const go = el('button', css.button, 'Pair');
       const status = el('p', css.muted);
       const pairNow = function () {
         const code = (input.value || '').toUpperCase().replace(/[\s-]/g, '');
-        if (code.length < 6) { status.textContent = 'The code is 6 letters and digits, as the helper shows it.'; return; }
-        if (!ws || ws.readyState !== 1) { status.textContent = 'The helper is not reachable yet. Is it open? This page looks for it at ' + url + '.'; open(); return; }
+        if (code.length < 6) { status.textContent = 'The code is 6 letters and digits, as Printer Link shows it.'; return; }
+        if (!ws || ws.readyState !== 1) { status.textContent = 'Printer Link is not reachable yet. Is it open? This page looks for it at ' + url + '.'; open(); return; }
         status.textContent = 'Pairing…'; go.disabled = true;
         ws.send(JSON.stringify({ op: 'pair', code: code, name: browserName() }));
       };
@@ -483,15 +483,15 @@ var B3DHelper = (typeof document === 'undefined' || (typeof ENVIRONMENT_IS_PTHRE
       })(0);
     }
     checkLna();
-    const LNA_ASK = 'Chrome will ask to let this page talk to the helper on this computer: press Allow.';
+    const LNA_ASK = 'Chrome will ask to let this page talk to Printer Link on this computer: press Allow.';
     // "Search my network" (the helper knocks on the printer port at this computer's own network's addresses) and the
     // printer's address, typed (the helper asks that one address only). The printers found come in the list as heard ones do.
     function searchRow() {
       const wrap = el('div', 'margin-top:10px;padding-top:8px;border-top:1px solid #eee');
-      wrap.appendChild(el('p', 'margin:0 0 4px', 'Not showing up? The helper can look for it.'));
+      wrap.appendChild(el('p', 'margin:0 0 4px', 'Not showing up? Printer Link can look for it.'));
       const b = el('button', css.button, 'Search my network');
       wrap.appendChild(b);
-      wrap.appendChild(el('p', css.muted, 'The helper asks each address on your home network whether it is a printer. It takes about 20 seconds.'));
+      wrap.appendChild(el('p', css.muted, 'Printer Link asks each address on your network whether it is a printer. It takes about 20 seconds.'));
       wrap.appendChild(el('p', 'margin:10px 0 0', 'Or type the printer\'s address (on its screen, under its network settings):'));
       const row = el('div', 'display:flex;gap:8px;align-items:center;margin-top:6px');
       const input = el('input', css.input.replace('text-transform:uppercase;', '')); input.placeholder = '192.168.1.50'; input.inputMode = 'decimal'; input.spellcheck = false;
@@ -500,7 +500,7 @@ var B3DHelper = (typeof document === 'undefined' || (typeof ENVIRONMENT_IS_PTHRE
       const status = el('p', css.muted);
       wrap.append(row, status);
       const ask = function (ip) {
-        if (!ws || ws.readyState !== 1) { status.textContent = 'The helper is not reachable. Is it still open?'; return; }
+        if (!ws || ws.readyState !== 1) { status.textContent = 'Printer Link is not reachable. Is it still open?'; return; }
         if (ip !== null && !/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) { status.textContent = 'An address looks like 192.168.1.50.'; return; }
         status.textContent = ip ? 'Asking ' + ip + '…' : 'Searching your network…'; b.disabled = go.disabled = true;
         ws.send(JSON.stringify(Object.assign({ op: 'search', id: ++searchId }, ip ? { ip: ip } : {})));
@@ -511,7 +511,7 @@ var B3DHelper = (typeof document === 'undefined' || (typeof ENVIRONMENT_IS_PTHRE
       keepKeys(input);
       wrap.done = function (r) {
         b.disabled = go.disabled = false;
-        if (!r.ok) status.textContent = r.error || 'The helper could not search. Is it the newest one? Download it again.';
+        if (!r.ok) status.textContent = r.error || 'Printer Link could not search. Is it the newest one? Download it again.';
         else if (!r.found) status.textContent = r.ip ? 'No printer answered at ' + r.ip + '. Is it on, in LAN-only mode, at that address?' : 'No printer answered. Is it on, in LAN-only mode, and on the same network as this computer?';
       };
       searchBox = wrap;
@@ -528,8 +528,8 @@ var B3DHelper = (typeof document === 'undefined' || (typeof ENVIRONMENT_IS_PTHRE
       const named = SYSTEMS.find(function (s) { return s[0] === system; })[1];
       if (step === 'download') {
         add(progress(1));
-        add(el('p', 'margin:8px 0 0', 'Your printer is on your own network, and a web page cannot reach it by itself. A small helper program on this computer does that.'));
-        const a = add(el('a', css.big, 'Download the helper for ' + named));
+        add(el('p', 'margin:8px 0 0', 'Your printer is on your own network, and a web page cannot reach it by itself. A small Boolean3d program, Printer Link, does that from this computer.'));
+        const a = add(el('a', css.big, 'Download Printer Link for ' + named));
         a.href = DOWNLOADS + fileOf(system); a.rel = 'noopener';
         a.onclick = function () { downloaded(system, a); };
         const src = add(el('a', 'display:block;text-align:center;font-size:13px;color:#2563eb;margin:2px 0 8px', 'Read the code'));
@@ -545,46 +545,46 @@ var B3DHelper = (typeof document === 'undefined' || (typeof ENVIRONMENT_IS_PTHRE
           list.appendChild(o);
         });
         others.append(more, list);
-        add(el('p', css.muted, 'The helper talks to your printer and to this page only.'));
+        add(el('p', css.muted, 'Printer Link talks to your printer and to this page only.'));
       } else if (step === 'open') {
         add(progress(2));
         const how = {
-          'win-x64': 'Open the helper from your downloads (the browser\'s download list). Windows may say it protected your PC: choose More info, then Run anyway.',
+          'win-x64': 'Open Printer Link from your downloads (the browser\'s download list). Windows may say it protected your PC: choose More info, then Run anyway.',
           'darwin-arm64': 'Open the zip from your downloads, then the boolean3d-helper inside it. The first time, right-click it and choose Open.',
           'darwin-x64': 'Open the zip from your downloads, then the boolean3d-helper inside it. The first time, right-click it and choose Open.',
         }[hbox.system || system] || 'Unzip it and run boolean3d-helper in a terminal.';
         add(el('p', 'margin:8px 0 0', how));
-        add(el('p', 'margin:10px 0 0;font-weight:600', 'Looking for the helper…'));
+        add(el('p', 'margin:10px 0 0;font-weight:600', 'Looking for Printer Link…'));
         add(el('p', css.muted, 'This page links to it by itself as soon as it runs. Keep this tab open.'));
         if (lna === 'prompt') add(el('p', 'margin:8px 0 0;font-weight:600', LNA_ASK));
         const other = add(el('p', css.muted));
-        const b = el('button', css.small, 'The helper is on another computer, or shows a code');
-        b.onclick = function () { other.remove(); codeBox = add(codeRow('Type the code the helper shows (in its window, or at http://localhost:8770 on that computer).')); };
+        const b = el('button', css.small, 'Printer Link is on another computer, or shows a code');
+        b.onclick = function () { other.remove(); codeBox = add(codeRow('Type the code Printer Link shows (in its window, or at http://localhost:8770 on that computer).')); };
         other.appendChild(b);
       } else if (step === 'linking') {
         add(progress(2));
-        add(el('p', 'margin:10px 0 0;font-weight:600', 'Found the helper' + (helper && helper.name ? ' on ' + helper.name : '') + '. Linking…'));
+        add(el('p', 'margin:10px 0 0;font-weight:600', 'Found Printer Link' + (helper && helper.name ? ' on ' + helper.name : '') + '. Linking…'));
       } else if (step === 'blocked') {
         add(progress(2));
-        add(el('p', 'margin:8px 0 0;font-weight:600;color:#b45309', 'Chrome is blocking this page from talking to the helper on this computer.'));
+        add(el('p', 'margin:8px 0 0;font-weight:600;color:#b45309', 'Chrome is blocking this page from talking to Printer Link on this computer.'));
         add(el('p', 'margin:6px 0 0', 'To allow it: click the icon left of the address bar, then Site settings, and set Local network access to Allow. Then reload this page.'));
       } else if (step === 'code') {
         add(progress(2));
         if (lna === 'prompt') add(el('p', 'margin:8px 0 0;font-weight:600', LNA_ASK));
-        codeBox = add(codeRow('The helper is running' + (helper && helper.name ? ' on ' + helper.name : '') + '. Type the code it shows (in its window, or at http://localhost:8770 on that computer).'));
+        codeBox = add(codeRow('Printer Link is running' + (helper && helper.name ? ' on ' + helper.name : '') + '. Type the code it shows (in its window, or at http://localhost:8770 on that computer).'));
       } else if (step === 'allow' || step === 'allowing') {
         add(el('p', 'margin:8px 0 0;font-weight:600', 'Let this slicer control your printer?'));
         add(el('p', 'margin:6px 0 0', 'That is moving the head, heating, the light and its settings. Printing, pausing and stopping a print need no yes.'));
         if (typeof why === 'string') add(el('p', css.muted, why));
         const row = add(el('div', 'display:flex;gap:8px;align-items:center;margin-top:10px'));
-        const yes = el('button', css.button, step === 'allowing' ? 'Asking the helper…' : 'Yes, let it'); yes.disabled = step === 'allowing';
+        const yes = el('button', css.button, step === 'allowing' ? 'Asking Printer Link…' : 'Yes, let it'); yes.disabled = step === 'allowing';
         const no = el('button', css.small, 'Not now');
-        yes.onclick = function () { if (!ws || ws.readyState !== 1) { showHelperBox('allow', 'The helper is not reachable. Is it still open?'); return; } ws.send(JSON.stringify({ op: 'allow', what: 'control' })); showHelperBox('allowing'); };
+        yes.onclick = function () { if (!ws || ws.readyState !== 1) { showHelperBox('allow', 'Printer Link is not reachable. Is it still open?'); return; } ws.send(JSON.stringify({ op: 'allow', what: 'control' })); showHelperBox('allowing'); };
         no.onclick = function () { hbox.remove(); hstep = null; };
         row.append(yes, no);
       } else if (step === 'printers') {
         add(progress(3));
-        add(el('p', 'margin:8px 0 0;color:#00ae42;font-weight:600', 'Linked with the helper' + (helper && helper.name ? ' on ' + helper.name : '') + '.'));
+        add(el('p', 'margin:8px 0 0;color:#00ae42;font-weight:600', 'Linked with Printer Link' + (helper && helper.name ? ' on ' + helper.name : '') + '.'));
         if (!found.size) {
           if (o.looking) {
             add(el('p', 'margin:8px 0 0;font-weight:600', 'Looking for printers on your network…'));
@@ -640,7 +640,7 @@ var B3DHelper = (typeof document === 'undefined' || (typeof ENVIRONMENT_IS_PTHRE
       if (r.ev === 'helper') {
         helper = r;
         if (r.paired) { if (boxUp() && hstep !== 'printers') hbox.remove(); return true; }
-        if (secret() && r.bySecret) {   // the helper this browser downloaded: link by itself
+        if (secret() && r.bySecret) {   // Printer Link this browser downloaded: link by itself
           if (boxUp() || wants) showHelperBox('linking');
           ws.send(JSON.stringify({ op: 'pair', code: secret(), name: browserName(), by: 'download' }));
         } else if (boxUp() || wants) showHelperBox('code');
@@ -654,7 +654,7 @@ var B3DHelper = (typeof document === 'undefined' || (typeof ENVIRONMENT_IS_PTHRE
       if (r.ev === 'needs') { if (r.what === 'control' && hstep !== 'allowing') showHelperBox('allow'); return true; }
       if (r.ev === 'allowed') {
         if (r.ok) { if (boxUp() && (hstep === 'allow' || hstep === 'allowing')) { hbox.remove(); hstep = null; } }
-        else if (hstep === 'allowing') showHelperBox('allow', r.error || 'The helper could not keep that. Is it the newest one?');
+        else if (hstep === 'allowing') showHelperBox('allow', r.error || 'Printer Link could not keep that. Is it the newest one?');
         return true;
       }
       if (r.ev === 'paired') {
@@ -670,7 +670,7 @@ var B3DHelper = (typeof document === 'undefined' || (typeof ENVIRONMENT_IS_PTHRE
           // the download's secret did not take (used, or this is another helper): the code
           try { localStorage.removeItem(SECRET); } catch (e) {}
           showHelperBox('code');
-        } else if (codeBox) codeBox.wrong(r.error || 'That is not the code the helper shows.');
+        } else if (codeBox) codeBox.wrong(r.error || 'That is not the code Printer Link shows.');
         return true;
       }
       // printers the helper heard: listed in the box, and delivered to the program as always
