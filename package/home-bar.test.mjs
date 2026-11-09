@@ -25,13 +25,17 @@ function page(address) {
   const main = make('div'); main.id = 'main-window'; body.appendChild(main);
   const store = new Map();
   const url = new URL(address);
+  const tab = new Map();   // sessionStorage: this tab's notes (the forwarding page's b3d-from / b3d-arrived)
+  const went = [];
   const window = {
     location: url, localStorage: { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)) },
+    sessionStorage: { getItem: (k) => tab.get(k) ?? null, setItem: (k, v) => tab.set(k, String(v)) },
+    history: { length: 1, go: (n) => went.push(n) },
     addEventListener() {}, dispatchEvent() {}, Event: class {},
   };
   const document = { body, head, createElement: make, getElementById: (id) => (id === 'main-window' ? main : null), addEventListener() {} };
-  Object.assign(window, { window, document, URLSearchParams, setTimeout, Module: undefined });
-  return { window, body, all: () => {
+  Object.assign(window, { window, document, URLSearchParams, URL, setTimeout: () => 0, Module: undefined });
+  return { window, body, tab, went, all: () => {
     const out = []; const walk = (n) => { out.push(n); n.children.forEach(walk); }; walk(body); return out;
   } };
 }
@@ -56,4 +60,45 @@ test('every program page loads the home row, under a name never cached before', 
   assert.ok(PAGE_SCRIPTS.includes('home-bar.js'));
   assert.ok(!PAGE_SCRIPTS.includes('workspace-bar.js'), 'workspace-bar.js is cached for a year under its name: never served again');
   assert.ok(!fs.existsSync(HERE + 'workspace-bar.js'));
+});
+
+// The house, pressed: back to the site's page this tab left when it came from the site, the link to Home otherwise.
+const press = (p) => {
+  vm.runInNewContext(fs.readFileSync(HERE + 'home-bar.js', 'utf8'), p.window);
+  const home = p.all().find((n) => n.tagName === 'A');
+  const e = { button: 0, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+  for (const f of home.listeners.click || []) f(e);
+  return { e, home };
+};
+const ADDRESS = 'https://slicers.boolean3d.com/bambu/2.08.02.61-b59/?project=abc';
+
+test('came from the site: the house goes back, stepping over what the program added to the history', () => {
+  const p = page(ADDRESS);
+  p.tab.set('b3d-from', 'https://boolean3d.com/');   // the forwarding page's note (package.mjs FWD_NOTE)
+  p.tab.set('b3d-arrived', '3');
+  p.window.history.length = 5;   // two entries added here since (web views)
+  const { e } = press(p);
+  assert.equal(e.defaultPrevented, true, 'not the link');
+  assert.deepEqual(p.went, [-3], 'back over the two entries added here and one more, to the page that was left');
+});
+
+test('came from somewhere else, or from a bookmark: the link to Home', () => {
+  for (const [from, arrived] of [['https://www.google.com/', '2'], ['', ''], ['https://boolean3d.com/', '']]) {
+    const p = page(ADDRESS);
+    if (from) p.tab.set('b3d-from', from);
+    if (arrived) p.tab.set('b3d-arrived', arrived);
+    p.window.history.length = 4;
+    const { e, home } = press(p);
+    assert.equal(e.defaultPrevented, false, `the link, from "${from}"`);
+    assert.deepEqual(p.went, []);
+    assert.equal(home.href, 'https://boolean3d.com/');
+  }
+});
+
+test('the forwarding page writes down where the tab came from before it forwards', () => {
+  const src = fs.readFileSync(HERE + 'package.mjs', 'utf8');
+  const note = src.match(/FWD_NOTE = '([^']*)'/)[1];
+  assert.match(note, /sessionStorage\.setItem\("b3d-from",document\.referrer\)/);
+  assert.match(note, /sessionStorage\.setItem\("b3d-arrived",String\(history\.length\)\)/);
+  assert.match(src, /FWD_NOTE \+ 'location\.replace\('/, 'the note comes before the forward');
 });

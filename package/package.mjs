@@ -35,6 +35,8 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const PAGE_SCRIPTS = ['credit.js', 'home-folder-sync.js', 'project-folder.js', 'boolean3d-folder.js', 'open-part-from-link.js',
   'home-bar.js', 'print-anywhere.js'];
 
+/** The forwarding page's note of where this tab came from (home-bar.js reads it; sessionStorage is this tab's only). */
+export const FWD_NOTE = 'try{sessionStorage.setItem("b3d-from",document.referrer);sessionStorage.setItem("b3d-arrived",String(history.length))}catch(e){}';
 // Every response from the slicer host. Threads need SharedArrayBuffer, which needs cross-origin isolation.
 const HEADERS = {
   'Cross-Origin-Opener-Policy': 'same-origin',
@@ -178,8 +180,10 @@ async function main() {
     fs.closeSync(data);
   }
 
-  // The address without a version: forwards to the current version, keeping ?arguments and #hash.
-  const fwd = '<!doctype html><meta charset=utf-8><title>' + a.app + '</title>' + ICON + '<script>location.replace('
+  // The address without a version: forwards to the current version, keeping ?arguments and #hash. First it writes down,
+  // for this tab, where the tab came from and how long its history is (the referrer is this page's own address once
+  // forwarded): the house in the bar goes back to the site's page when the tab came from there (home-bar.js).
+  const fwd = '<!doctype html><meta charset=utf-8><title>' + a.app + '</title>' + ICON + '<script>' + FWD_NOTE + 'location.replace('
     + JSON.stringify(a.version + '/') + '+location.search+location.hash)</script>';
   const top = path.join(out, a.app, 'index.html');
   fs.writeFileSync(top, fwd);

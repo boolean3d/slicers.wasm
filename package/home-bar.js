@@ -13,6 +13,14 @@
 // site opens a program in the tab it was pressed in, js/files/openInProgram.js). ?hub=<Boolean3d's address> (the app adds it to every link it makes) is kept, so a program
 // opened later from a bookmark still knows where Home is.
 //
+// When this tab came here FROM the site, the house goes BACK to the page it left (the editor with the part still
+// open), not to a fresh Home: the browser keeps that page in its back/forward cache, so it is on screen again in a
+// tenth of a second instead of loading the site, landing on Home and opening the part again (measured 11-09: 0.1 s
+// against 1-5 s). The app folder's index.html (package.mjs, never cached) writes down where the tab came from and how
+// long its history was on arrival (sessionStorage, this tab only); every entry the program added since (its web
+// views) is stepped over too. Came from anywhere else, or opened from a bookmark: the link to Home, as before. If the
+// page to go back to is gone from the browser's memory, Back loads the editor's own address, still the open part.
+//
 // In a slicer, when the open file is made from a CAD part saved since (project-folder.js, its 'b3d-part-update'
 // event), the row says so on the right: "<part> has a newer version (vN) · Update"; after Update, how to take it in
 // (the program's own Reload from disk, which keeps the plate and every setting).
@@ -49,6 +57,28 @@
   var home = document.createElement('a');
   home.className = 'home'; home.href = HUB;
   home.title = 'Home'; home.setAttribute('aria-label', 'Home'); home.setAttribute('data-testid', 'b3d-bar-home');
+  // Back to the site's page this tab left, when it came from the site (see the top).
+  var FROM_KEY = 'b3d-from', ARRIVED_KEY = 'b3d-arrived';
+  function session(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }
+  function origin(u) { try { return new URL(u).origin; } catch (e) { return null; } }
+  function stepsBack() {
+    var from = origin(session(FROM_KEY) || ''), arrived = parseInt(session(ARRIVED_KEY) || '', 10);
+    if (!from || from !== origin(HUB) || !(arrived > 0)) return 0;
+    var len = (window.history && history.length) || 0;
+    if (len < arrived) return 0;
+    return len - arrived + 1;   // what the program added to the history since arriving, and one more to leave
+  }
+  home.addEventListener('click', function (e) {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    var n = stepsBack();
+    if (!n) return;   // the link: Home
+    e.preventDefault();
+    // Going back did not leave this page (the entry is gone): Home, as the link would.
+    var gone = false;
+    window.addEventListener('pagehide', function () { gone = true; }, { once: true });
+    setTimeout(function () { if (!gone) location.href = HUB; }, 1500);
+    history.go(-n);
+  });
   // The house: the same outline the site draws for Home (stroke, round joins).
   home.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" '
     + 'stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"/></svg>';
