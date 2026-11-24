@@ -86,7 +86,7 @@
     + '.b3dd-main{flex:1;display:flex;flex-direction:column;min-width:0}'
     + '.b3dd-path{padding:8px 14px;color:#6b7375;border-bottom:1px solid #f0f1f1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
     + '.b3dd-path a{color:inherit;cursor:pointer;text-decoration:none}.b3dd-path a:hover{text-decoration:underline}'
-    + '.b3dd-grid{flex:1;overflow:auto;padding:12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;align-content:start}'
+    + '.b3dd-grid{flex:1;overflow:auto;padding:12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;align-content:start;grid-auto-rows:max-content}'   // rows as tall as their tiles: a tile clips (overflow:hidden), so an auto row in this fixed-height scroller squeezes it once the parts overflow
     + '.b3dd-item{border:1px solid #e3e5e6;border-radius:5px;cursor:pointer;overflow:hidden;background:#fff;user-select:none}'
     + '.b3dd-item:hover{border-color:#b9c0c2}.b3dd-item.on{outline:2px solid var(--b3dd-accent);border-color:transparent}'
     + '.b3dd-pic{height:112px;background:#eef0f0;display:flex;align-items:center;justify-content:center}'
