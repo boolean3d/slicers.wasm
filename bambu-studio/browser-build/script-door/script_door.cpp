@@ -52,6 +52,19 @@ void answer(const std::string &id, const json &a)
     MAIN_THREAD_EM_ASM({ B3DDoor.answer(UTF8ToString($0), UTF8ToString($1)); }, id.c_str(), a.dump().c_str());
 }
 
+// The tab asked for before start-up ended (door "tab"), shown when it ends.
+bool started = false;
+std::string wanted_tab, wanted_printer;
+
+void show_tab(const std::string &to, const std::string &printer)
+{
+    MainFrame *f = wxGetApp().mainframe;
+    if (!f) throw DoorError("there is no window yet");
+    if (to == "device") f->jump_to_monitor(printer); // printer: its serial; none = the last one
+    else if (to == "prepare") f->select_tab(size_t(MainFrame::tp3DEditor));
+    else f->select_tab(size_t(MainFrame::tpPreview));
+}
+
 Plater &plater()
 {
     Plater *p = wxGetApp().plater();
@@ -288,6 +301,15 @@ json run(const std::string &id, const std::string &what, const json &args)
     if (what == "results") return results();
     if (what == "add_part") return add_part(args);
     if (what == "new_project") { plater().new_project(true, true); return status(); }
+    if (what == "tab") { // the tab the window shows, as the person picks it on the bar: prepare, preview or device
+        const std::string to = args.value("to", "");
+        if (to != "device" && to != "prepare" && to != "preview") throw DoorError("tab is prepare, preview or device");
+        // Asked before the program's start-up is done (GUI_App::post_init, which ends on its Home tab): kept, and shown
+        // the moment start-up ends (b3d_door_started).
+        if (!started) { wanted_tab = to; wanted_printer = args.value("printer", ""); return json{{"tab", to}, {"when_started", true}}; }
+        show_tab(to, args.value("printer", ""));
+        return json{{"tab", to}};
+    }
     if (busy()) throw DoorError("the program is busy (slicing or a job); ask status until busy is false");
     if (what == "select") { select(args); return status(); }
     if (what == "clone") { // Clone: the selected object, then the number the person types in the box
@@ -386,6 +408,15 @@ json press(const json &args)
 }
 
 } // namespace
+
+// The program's start-up is done (GUI_App::post_init's last line, bambu-studio.patch): a tab asked for before is shown now.
+void b3d_door_started()
+{
+    started = true;
+    if (wanted_tab.empty()) return;
+    try { show_tab(wanted_tab, wanted_printer); } catch (const std::exception &) { /* no window: nothing to show */ }
+    wanted_tab.clear();
+}
 
 extern "C" {
 

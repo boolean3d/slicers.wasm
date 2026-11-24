@@ -592,6 +592,110 @@ var b3dKeyring = (function () {
     } catch (e) { /* no storage: the address alone */ }
   }
 
+  // ── The printer this tab was opened for (Boolean3d's Open in slicer: ?b3d-printer=<the account's printer id>) ──────
+  // Asked of the printer box through the program's own printer line (?bridge=): which printer that is (its serial).
+  // The program's settings then name it as the printer last used, with the code LINK_CODE, so the program links to it
+  // by itself as soon as the box announces it; the box puts in the printer's real access code, which never leaves home
+  // (farm-helper/bambu-home/tablink.mjs LINK_CODE).
+  var LINK_CODE = 'B3DLINK0';
+  var WANT = (function () { var q = new URLSearchParams(location.search); return { id: q.get('b3d-printer'), bridge: q.get('bridge') }; })();
+  function printerFor() {
+    var id = WANT.id, bridge = WANT.bridge;
+    if (!id || !bridge || !/^wss?:\/\//.test(bridge)) return Promise.resolve(null);
+    return new Promise(function (ok) {
+      var ws, done = function (v) { try { ws && ws.close(); } catch (e) {} ok(v); };
+      setTimeout(function () { done(null); }, 8000);
+      try { ws = new WebSocket(bridge); } catch (e) { return done(null); }
+      ws.onopen = function () {
+        ws.send(JSON.stringify({ op: 'hello', camera_acks: true, name: 'printer-pick' }));
+        ws.send(JSON.stringify({ op: 'printer', id: 'pick', printer: id }));
+      };
+      ws.onmessage = function (e) {
+        var m; try { m = JSON.parse(e.data); } catch (x) { return; }
+        if (m && m.id === 'pick' && m.ev === 'printer') done(m.printer || null);
+      };
+      ws.onerror = function () { done(null); };
+    });
+  }
+  function confPath() {
+    var dirs = ['.config/' + PRODUCT, '.' + PRODUCT];
+    for (var i = 0; i < dirs.length; i++) { try { Module.FS.stat(HOME + '/' + dirs[i]); return HOME + '/' + dirs[i] + '/' + PRODUCT + '.conf'; } catch (e) {} }
+    return null;
+  }
+  function pickPrinter(p) {
+    var at = confPath();
+    if (!p || !p.serial || !at) { console.log('b3d printer: ' + (p ? 'no settings folder yet' : 'the printer box did not name this printer')); return; }
+    var c = {};
+    try { c = JSON.parse(new TextDecoder().decode(Module.FS.readFile(at))) || {}; } catch (e) { c = {}; }
+    c.app = c.app || {};
+    c.app.user_last_selected_machine = p.serial;
+    c.app.last_monitor_machine = p.serial;
+    c.access_code = c.access_code || {};
+    if (!c.access_code[p.serial]) c.access_code[p.serial] = LINK_CODE;
+    c.user_access_code = c.user_access_code || {};
+    if (!c.user_access_code[p.serial]) c.user_access_code[p.serial] = LINK_CODE;
+    Module.FS.writeFile(at, JSON.stringify(c, null, 4) + '\n');
+    console.log('b3d printer: set to ' + (p.name || p.serial) + ' (' + p.serial + ')');
+    PICKED = p.serial;
+  }
+  var PICKED = '';   // the serial of the printer this tab was opened for, once the box named it
+
+  // ── The presets an empty plate starts on (Boolean3d's printer card Open slicer / Open device, 11-17) ─────────────
+  // ?b3d-machine=<printer preset>&b3d-process=&b3d-filament=a|b&b3d-colours=#..,#..&b3d-model=Bambu Lab H2S&b3d-nozzle=0.4
+  // The program starts on the presets its settings name (PresetBundle::load_selections: presets.machine, .process,
+  // .filament, .filament_01.., .filament_colors) for a printer model it has installed (the settings' "models" list).
+  // A file opened later brings its own settings, as always. Only a settings file already there is changed: the very
+  // first start of the program in a browser goes through its own setup.
+  var PRESETS = (function () {
+    var q = new URLSearchParams(location.search);
+    if (!q.get('b3d-machine')) return null;
+    return { machine: q.get('b3d-machine'), process: q.get('b3d-process'), filament: (q.get('b3d-filament') || '').split('|').filter(Boolean),
+      colours: q.get('b3d-colours') || '', model: q.get('b3d-model'), nozzle: q.get('b3d-nozzle') || '0.4' };
+  })();
+  function pickPresets() {
+    var at = confPath();
+    if (!PRESETS || !at) { if (PRESETS) console.log('b3d presets: no settings folder yet'); return; }
+    var c = {};
+    try { c = JSON.parse(new TextDecoder().decode(Module.FS.readFile(at))) || {}; } catch (e) { c = {}; }
+    var pr = c.presets = c.presets || {};
+    for (var k in pr) if (/^filament_\d\d$/.test(k)) delete pr[k];
+    pr.machine = PRESETS.machine;
+    if (PRESETS.process) pr.process = PRESETS.process;
+    if (PRESETS.filament.length) {
+      pr.filament = PRESETS.filament[0];
+      for (var i = 1; i < PRESETS.filament.length; i++) pr['filament_' + (i < 10 ? '0' : '') + i] = PRESETS.filament[i];
+    }
+    if (PRESETS.colours) pr.filament_colors = PRESETS.colours;
+    if (PRESETS.model) {
+      c.models = Array.isArray(c.models) ? c.models : [];
+      var m = c.models.filter(function (x) { return x && x.model === PRESETS.model; })[0];
+      if (!m) c.models.push({ vendor: 'BBL', model: PRESETS.model, nozzle_diameter: PRESETS.nozzle });
+      else if (String(m.nozzle_diameter || '').split(';').indexOf(PRESETS.nozzle) < 0) m.nozzle_diameter = (m.nozzle_diameter ? m.nozzle_diameter + ';' : '') + PRESETS.nozzle;
+    }
+    Module.FS.writeFile(at, JSON.stringify(c, null, 4) + '\n');
+    console.log('b3d presets: ' + PRESETS.machine + ' · ' + (PRESETS.process || '') + ' · ' + PRESETS.filament.join(', '));
+  }
+
+  // ── The tab the program starts on (?b3d-start=prepare, or device: the Device tab, set to the printer above) ──────
+  // With no file to open the program starts on its own Home page; a printer card's Open slicer wants Prepare.
+  // Asked of the program through its script door (B3DDoor, script_door.cpp "tab") once its window is up; a program
+  // whose door has no "tab" yet stays where it started.
+  function startTab() {
+    var want = new URLSearchParams(location.search).get('b3d-start');
+    if (want !== 'device' && want !== 'prepare') return;
+    var until = Date.now() + 180000;
+    (function again() {
+      if (Date.now() > until) { console.log('b3d start: the program did not come up in time'); return; }
+      if (typeof B3DDoor === 'undefined' || !Module.wxRunning || !Module.wxRunning()) { setTimeout(again, 1000); return; }
+      B3DDoor.act('tab', want === 'device' ? { to: 'device', printer: PICKED } : { to: 'prepare' }).then(function (a) {
+        if (a && a.ok) { console.log('b3d start: ' + want + (a.result && a.result.when_started ? ' once the program is up' : ' now')); return; }
+        var why = String(a && a.error || '');
+        if (/has no "tab"/.test(why)) { console.log('b3d start: this program has no tab door'); return; }
+        setTimeout(again, 1000);
+      }, function () { setTimeout(again, 1000); });
+    })();
+  }
+
   // ── Start ────────────────────────────────────────────────────────
   // Read now: open-part-from-link.js, next on the page, rewrites the address; the program reads ?bridge= when it starts.
   keepBridge();
@@ -627,6 +731,11 @@ var b3dKeyring = (function () {
       }, function (e) { console.error('b3d home: account: ' + e.message + '; the slicer starts with this browser\'s folder'); });
     }, function (e) { console.error('b3d home: no browser store (' + e + '); this tab forgets on reload'); })
       .then(function () {
+        try { pickPresets(); } catch (e) { console.error('b3d presets: ' + e); }
+        if (!WANT.id) return;
+        return printerFor().then(pickPrinter, function () {});
+      })
+      .then(function () {
         keyringIn();
         watch();
         started = true;
@@ -634,6 +743,7 @@ var b3dKeyring = (function () {
         Module.removeRunDependency('b3d-home');
         queue(function () { return later ? later() : null; });
         queue(save);
+        startTab();
       });
   });
   Module.b3dHome = {
