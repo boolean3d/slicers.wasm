@@ -148,9 +148,14 @@ CMD="python3 /w/browser-port/browser-build/presets-bundle/write-presets-bundle.p
 # Bambu Studio's resources/images, web and hms come from browser-build/remove-maker-branding.py's copy (made at configure time into
 # bgui/maker-free: no maker logo, no Bambu account sign-in, no store, no telemetry page), every other folder is the tree's.
 # OrcaSlicer's maker-free image edits are in patches/orcaslicer.patch, so its resources/ is the tree's.
+# Bambu Studio's Filament Manager tab is web/device_page/dist, a React bundle its CMake builds
+# with pnpm (src/slic3r/GUI/DeviceWeb/CMakeLists.txt, target device_page_build) and copies to ${CMAKE_SOURCE_DIR}/resources:
+# in this build the CMake root is browser-build/, so the copy misses the tree. Taken from where pnpm builds it instead;
+# without it the tab asks the host for a page the package does not have.
 if [ $APP = bambu ]; then
   RES='rm -rf /w/bgui/resources && mkdir /w/bgui/resources && for r in /w/bambu/resources/*; do n=$(basename $r);
-    if [ -d /w/bgui/maker-free/$n ]; then cp -r /w/bgui/maker-free/$n /w/bgui/resources/$n; else ln -s ../../bambu/resources/$n /w/bgui/resources/$n; fi; done'
+    if [ -d /w/bgui/maker-free/$n ]; then cp -r /w/bgui/maker-free/$n /w/bgui/resources/$n; else ln -s ../../bambu/resources/$n /w/bgui/resources/$n; fi; done &&
+    cp -r /w/bambu/src/slic3r/GUI/DeviceWeb/device_page/dist /w/bgui/resources/web/device_page/dist'
 elif [ $APP = creality ]; then
   # Creality Print's: a hard-linked copy of the tree's, its web pages kept on our host (no Creality cloud calls from the tab)
   RES="rm -rf /w/bgui/resources && cp -al /w/cp/resources /w/bgui/resources && python3 /w/browser-port/browser-build/web-pages-offline.py /w/bgui/resources"
