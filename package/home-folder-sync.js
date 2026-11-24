@@ -156,6 +156,50 @@ var b3dKeyring = (function () {
   return { merge: merge };
 })();
 
+// Bambu Studio's printer list holds the models of the person's printers in their Boolean3d account, as desktop's holds
+// the models picked in its setup. The program lists a system printer preset only for a model and nozzle its settings
+// name (BambuStudio.conf "models": [{vendor, model, nozzle_diameter: "0.4;0.6"}], AppConfig m_vendors, read by
+// PresetBundle::load_installed_printers). The site names the account's models in the address (?b3d-models=
+// Bambu Lab H2S:0.4|Bambu Lab X1 Carbon:0.4, js/share/SlicerHome.js slicerAddress). Models the person added with the
+// program's own Select/Remove printers stay: they are the Bambu Lab models in the list beyond the ones the account put
+// there last time (kept in the settings' own section "b3d", key "account_models": the program keeps a section it does
+// not know as it is). The first time, the account's models replace Bambu Lab's list. Other makers' models are untouched.
+var b3dAccountModels = (function () {
+  var VENDOR = 'BBL';
+  /** "Bambu Lab H2S:0.4|Bambu Lab X1 Carbon:0.4;0.6" -> [{model, nozzles: ['0.4']}], or null */
+  function read(word) {
+    var out = [];
+    String(word || '').split('|').forEach(function (part) {
+      var at = part.lastIndexOf(':'), model = (at < 0 ? part : part.slice(0, at)).trim();
+      var nozzles = (at < 0 ? '0.4' : part.slice(at + 1)).split(';').filter(function (n) { return /^\d+(\.\d+)?$/.test(n); });
+      if (model && !out.some(function (m) { return m.model === model; })) out.push({ model: model, nozzles: nozzles.length ? nozzles : ['0.4'] });
+    });
+    return out.length ? out : null;
+  }
+  /** The settings object with its model list set to the account's models plus the person's own. -> the same object */
+  function apply(conf, account) {
+    var before = Array.isArray(conf.models) ? conf.models.filter(function (m) { return m && m.model; }) : [];
+    var section = conf.b3d && typeof conf.b3d === 'object' && !Array.isArray(conf.b3d) ? conf.b3d : {};
+    var last = typeof section.account_models === 'string' && section.account_models ? section.account_models.split('|') : null;
+    var named = account.map(function (m) { return m.model; });
+    var models = account.map(function (m) {
+      var had = before.filter(function (x) { return x.vendor === VENDOR && x.model === m.model; })[0];
+      var nozzles = had ? String(had.nozzle_diameter || '').split(';').filter(Boolean) : [];
+      m.nozzles.forEach(function (n) { if (nozzles.indexOf(n) < 0) nozzles.push(n); });
+      return { vendor: VENDOR, model: m.model, nozzle_diameter: nozzles.join(';') };
+    });
+    before.forEach(function (x) {
+      if (x.vendor === VENDOR && (named.indexOf(x.model) >= 0 || !last || last.indexOf(x.model) >= 0)) return;
+      models.push(x);
+    });
+    conf.models = models;
+    section.account_models = named.join('|');
+    conf.b3d = section;
+    return conf;
+  }
+  return { read: read, apply: apply };
+})();
+
 (function () {
   if (typeof Module === 'undefined') return;   // loaded by the tests, not by a slicer page
   var HOME = '/home/web_user';
@@ -640,6 +684,23 @@ var b3dKeyring = (function () {
   }
   var PICKED = '';   // the serial of the printer this tab was opened for, once the box named it
 
+  // ── The printers the program lists (b3dAccountModels above; only Bambu Studio is told them) ─────────────────────
+  // Only a settings file already there is changed: the very first start of the program in a browser goes through its
+  // own setup. No ?b3d-models= (signed out, no Bambu Lab printer, a bookmark): the list stays as the program left it.
+  var MODELS = b3dAccountModels.read(new URLSearchParams(location.search).get('b3d-models'));
+  function pickModels() {
+    if (!MODELS || APP !== 'bambu') return;
+    var at = confPath();
+    if (!at) { console.log('b3d printers: no settings folder yet'); return; }
+    var c;
+    try { c = JSON.parse(new TextDecoder().decode(Module.FS.readFile(at))); } catch (e) { console.log('b3d printers: no settings file yet'); return; }
+    if (!c || typeof c !== 'object') return;
+    var was = JSON.stringify(c.models || []);
+    b3dAccountModels.apply(c, MODELS);
+    Module.FS.writeFile(at, JSON.stringify(c, null, 4) + '\n');
+    console.log('b3d printers: ' + c.models.map(function (m) { return m.model; }).join(', ') + (was === JSON.stringify(c.models) ? ' (as before)' : ''));
+  }
+
   // ── The presets an empty plate starts on (Boolean3d's printer card Open slicer / Open device, 11-17) ─────────────
   // ?b3d-machine=<printer preset>&b3d-process=&b3d-filament=a|b&b3d-colours=#..,#..&b3d-model=Bambu Lab H2S&b3d-nozzle=0.4
   // The program starts on the presets its settings name (PresetBundle::load_selections: presets.machine, .process,
@@ -731,6 +792,7 @@ var b3dKeyring = (function () {
       }, function (e) { console.error('b3d home: account: ' + e.message + '; the slicer starts with this browser\'s folder'); });
     }, function (e) { console.error('b3d home: no browser store (' + e + '); this tab forgets on reload'); })
       .then(function () {
+        try { pickModels(); } catch (e) { console.error('b3d printers: ' + e); }
         try { pickPresets(); } catch (e) { console.error('b3d presets: ' + e); }
         if (!WANT.id) return;
         return printerFor().then(pickPrinter, function () {});

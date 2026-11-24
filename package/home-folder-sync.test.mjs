@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 const ctx = {};
-vm.runInNewContext(fs.readFileSync(new URL('home-folder-sync.js', import.meta.url), 'utf8') + '\nthis.m = b3dConfMerge;', ctx);
+vm.runInNewContext(fs.readFileSync(new URL('home-folder-sync.js', import.meta.url), 'utf8') + '\nthis.m = b3dConfMerge; this.am = b3dAccountModels;', ctx);
 const { merge, test: isConf } = ctx.m;
 const j = (o) => JSON.stringify(o, null, 4);
 const agreed = {
@@ -112,4 +112,31 @@ test('password store at start: a fresh browser takes the file; a password saved 
   assert.deepEqual(merge({ a: '1' }, { a: '1' }, { a: '3' }), { a: '3' }, 'changed on another computer');
   assert.deepEqual(merge({ a: '1', b: '1' }, { a: '1', b: '1' }, { a: '1' }), { a: '1' }, 'removed on another computer');
   assert.deepEqual(merge({ a: '1' }, {}, { a: '1' }), {}, 'removed here');
+});
+
+// Bambu Studio's printer list = the account's printer models (+ the ones the person added with Select/Remove printers).
+const plain = (o) => JSON.parse(JSON.stringify(o));
+test('printer list: the first time the account\'s models replace Bambu Lab\'s list; other makers stay', () => {
+  const conf = { models: [
+    { vendor: 'BBL', model: 'Bambu Lab A1', nozzle_diameter: '0.4' }, { vendor: 'BBL', model: 'Bambu Lab X1 Carbon', nozzle_diameter: '0.2;0.4' },
+    { vendor: 'Custom', model: 'My printer', nozzle_diameter: '0.4' },
+  ] };
+  ctx.am.apply(conf, ctx.am.read('Bambu Lab H2S:0.4|Bambu Lab X1 Carbon:0.4'));
+  assert.deepEqual(plain(conf.models), [
+    { vendor: 'BBL', model: 'Bambu Lab H2S', nozzle_diameter: '0.4' }, { vendor: 'BBL', model: 'Bambu Lab X1 Carbon', nozzle_diameter: '0.2;0.4' },
+    { vendor: 'Custom', model: 'My printer', nozzle_diameter: '0.4' },
+  ]);
+  assert.equal(conf.b3d.account_models, 'Bambu Lab H2S|Bambu Lab X1 Carbon');
+});
+
+test('printer list: a model the person added later stays; a printer gone from the account goes', () => {
+  const conf = { b3d: { account_models: 'Bambu Lab H2S|Bambu Lab X1 Carbon' }, models: [
+    { vendor: 'BBL', model: 'Bambu Lab H2S', nozzle_diameter: '0.4' }, { vendor: 'BBL', model: 'Bambu Lab X1 Carbon', nozzle_diameter: '0.4' },
+    { vendor: 'BBL', model: 'Bambu Lab P1S', nozzle_diameter: '0.4' },
+  ] };
+  ctx.am.apply(conf, ctx.am.read('Bambu Lab H2S:0.4'));
+  assert.deepEqual(plain(conf.models.map((m) => m.model)),['Bambu Lab H2S', 'Bambu Lab P1S']);
+  assert.equal(conf.b3d.account_models, 'Bambu Lab H2S');
+  assert.equal(ctx.am.read(''), null, 'no models in the address: nothing to do');
+  assert.deepEqual(plain(ctx.am.read('Bambu Lab X1 Carbon')), [{ model: 'Bambu Lab X1 Carbon', nozzles: ['0.4'] }]);
 });
