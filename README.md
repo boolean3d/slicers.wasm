@@ -128,12 +128,19 @@ It runs seven steps and stops, by name, at the first that fails:
 | build | copies the repository to the build machine and runs `build.sh` there under your docker limits; a work dir from the older release is brought forward by itself |
 | package | `package/package.mjs`, version `<release>-<N>` (`--build N`) |
 | stage | uploads it beside the live one: it answers at `<site>/bambu/<version>/`, visitors stay on the old version |
-| walk | `walks/bambu-walk.mjs` in a real browser against the staged address: it starts, the new printers are in the list, a part opens and slices on each, the door's actions answer (settings, picture, export, tab), a window drags, the settings list scrolls, the Device tab opens |
+| walk | `walks/bambu-walk.mjs` in a real browser against the staged address: it starts, the new printers are in the list, a part opens and slices on each, it ends its start-up on the tab the address asked for, the door's actions answer (settings, picture, export, tab), a window drags, the settings list scrolls, the Device tab opens |
 | promote | only when every walk passed: the address without a version moves to the new one |
 
 `--from <step>` and `--to <step>` run a part of it (after fixing a patch: `--from check`). Where your build machine,
 host and browser machine are is read from `~/.config/slicers.conf`; the head of `slicers` lists what it sets.
-MEASURED_LINE
+
+Measured moving 2.8.2 to 2.9.2 (v02.09.02.62) on a 10-core, 8 GB docker limit: check 1 s, build 26 min from the new
+tag (17 min when only our own changes moved), package 4 min, stage 15 min (3,200 files), walks 2.5 min: about 50 min
+from the tag to a staged build, unattended. A walk that needs a real printer (the Device pages, the camera) is not in
+the command: it is run by hand before promoting.
+
+Known differences from the desktop 2.9.2: the mesh boolean falls back to MCUT (OpenMeshCraft is not built for the
+tab), and a dual-nozzle printer's first slice asks "watch a tutorial video?" as on the desktop (answer No).
 
 ## Print from the browser copy (optional)
 

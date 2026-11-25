@@ -111,7 +111,7 @@ async function partAndSlice(t, label) {
     await page.mouse.wheel(0, 100); await wait(900); const a2 = await sig(); await shot('scrolled');
     await page.mouse.wheel(0, -100); await wait(900); await page.mouse.wheel(0, -100); await wait(900); const a3 = await sig();
     walk('scroll', a1 !== a0 && a2 !== a1 && a3 !== a2, { moved1: a1 !== a0, moved2: a2 !== a1, movedBack: a3 !== a2 });
-    // Device start: the Device tab shows, the program stays up (camera on a printer: walks/README, CAMERA=)
+    // Device start: the Device tab shows, the program stays up (a connected printer's pages and camera: by hand)
     const dev = await door('tab', { to: 'device' }); await wait(6000); await shot('device');
     const alive = await door('status');
     walk('device-start', !!dev.ok && !!alive.ok && alive.result.tab === 'device', dev.ok ? { ...dev.result, tab: alive.result?.tab } : dev.error);

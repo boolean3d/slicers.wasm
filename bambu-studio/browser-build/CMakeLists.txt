@@ -178,6 +178,18 @@ orca_gui_patch(libslic3r_gui slic3r/GUI/DeviceWeb/DeviceWebHealth.cpp
            without_fragment(message_url) == without_fragment(current_url);
 #endif")
 
+# The program answers a Device page through window.__cppPush, which it defines when the page has LOADED. In the tab a
+# page's own scripts have run (and asked for their state) before "load": the answer found no __cppPush, the page never
+# said "ready", and it was replaced by "could not be loaded". Defined as the page starts instead.
+orca_gui_patch(libslic3r_gui slic3r/GUI/DeviceWeb/DeviceWebBridge.cpp
+    FIND "    m_web->Bind(wxEVT_WEBVIEW_LOADED, &DeviceWebBridge::OnWebLoaded, this);
+}"
+    REPLACE "    m_web->Bind(wxEVT_WEBVIEW_LOADED, &DeviceWebBridge::OnWebLoaded, this);
+#ifdef __EMSCRIPTEN__
+    m_web->AddUserScript(\"if (!window.__cppPush) window.__cppPush = function (pkt) { try { document.dispatchEvent(new CustomEvent('cpp:' + pkt.event, { detail: pkt })); } catch (e) { console.error(e); } };\"); // b3d
+#endif
+}")
+
 # A browser tab is one instance: there is no other one to hand the command line to. send_message
 # exists on Windows, macOS and Linux only; the wasm one says nobody received it.
 orca_gui_patch(libslic3r_gui slic3r/GUI/InstanceCheck.cpp
