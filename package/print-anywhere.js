@@ -214,6 +214,36 @@
     try { hub = localStorage.getItem('b3d-hub'); } catch (e) { /* the public site */ }
     return (hub || 'https://boolean3d.com/').replace(/\/*$/, '/') + '#/printers/' + encodeURIComponent(p.id);
   }
+  // The plate's picture for the print's history on the Printers page, as a data: address: Metadata/plate_1.png of a
+  // .gcode.3mf (stored or deflated), or the biggest PNG thumbnail in a plain G-code's comments. null when it has none.
+  function plateOf(bytes) {
+    function png(b) { var s = ''; for (var i = 0; i < b.length; i += 32768) s += String.fromCharCode.apply(null, b.subarray(i, i + 32768)); return 'data:image/png;base64,' + btoa(s); }
+    try {
+      if (bytes[0] === 0x50 && bytes[1] === 0x4b) {
+        var v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength), want = 'Metadata/plate_1.png';
+        for (var e = bytes.length - 22; e >= Math.max(0, bytes.length - 65557); e--) {
+          if (v.getUint32(e, true) !== 0x06054b50) continue;
+          for (var c = v.getUint32(e + 16, true), n = v.getUint16(e + 10, true); n-- > 0;) {
+            var nl = v.getUint16(c + 28, true), name = dec.decode(bytes.subarray(c + 46, c + 46 + nl));
+            if (name === want) {
+              var how = v.getUint16(c + 10, true), size = v.getUint32(c + 20, true), at = v.getUint32(c + 42, true);
+              var from = at + 30 + v.getUint16(at + 26, true) + v.getUint16(at + 28, true), raw = bytes.subarray(from, from + size);
+              if (how === 0) return Promise.resolve(png(raw));
+              if (how !== 8 || typeof DecompressionStream === 'undefined') return Promise.resolve(null);
+              return new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer()
+                .then(function (b) { return png(new Uint8Array(b)); }, function () { return null; });
+            }
+            c += 46 + nl + v.getUint16(c + 30, true) + v.getUint16(c + 32, true);
+          }
+          break;
+        }
+        return Promise.resolve(null);
+      }
+      var head = dec.decode(bytes.subarray(0, Math.min(bytes.length, 2000000))), best = null, m, re = /; thumbnail begin (\d+)x(\d+) \d+\r?\n([\s\S]*?); thumbnail end/g;
+      while ((m = re.exec(head))) if (!best || m[1] * m[2] > best.area) best = { area: m[1] * m[2], b64: m[3].replace(/^; ?/gm, '').replace(/\s+/g, '') };
+      return Promise.resolve(best ? 'data:image/png;base64,' + best.b64 : null);
+    } catch (err) { return Promise.resolve(null); }
+  }
   function upload(host, head, body) {
     var form = formParts(head, body);
     if (!form || !form.file) return { status: 400, body: 'No file came with the upload.' };
@@ -229,7 +259,9 @@
         var to = Module.b3dHome && Module.b3dHome.beside ? Module.b3dHome.beside(a.upload) : a.upload;
         return fetch(to, { method: 'PUT', headers: { 'Content-Type': 'application/octet-stream' }, body: bytes }).then(function (r) {
           if (!r.ok) return { status: 409, body: 'The file did not reach your Boolean3d account (' + r.status + '). Try again.' };
-          return call('POST', 'print-start', { printer: p.id, print: id, name: title }).then(function (s) {
+          return plateOf(bytes).then(function (picture) {
+            return call('POST', 'print-start', { printer: p.id, print: id, name: title, picture: picture });
+          }).then(function (s) {
             if (!s || !s.ok) return { status: 409, body: (s && s.error) || 'Boolean3d did not send it to ' + p.name + '.' };
             console.log('b3d print: ' + name + ' (' + bytes.length + ' bytes) sent to ' + p.name + ' through Boolean3d');
             if (Module.b3dNotice) Module.b3dNotice('Sent to ' + p.name, 'info', { label: 'Watch it', href: watchOf(p) });
