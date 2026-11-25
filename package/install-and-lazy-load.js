@@ -222,6 +222,8 @@
           + Math.round(left * sentPerRaw / 1e6) + ' MB');
       };
       show();
+      // A first visit (nothing kept from an earlier version): the screen says this wait is the only one.
+      if (!update && todo.length && window.SLICER_CREDIT && window.SLICER_CREDIT.first) window.SLICER_CREDIT.first(window.SLICER_FIRST_WORDS);
       var timer = setInterval(show, 250);
       function download(f, tries) {
         tries = tries || 0;

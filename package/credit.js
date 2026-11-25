@@ -68,6 +68,7 @@
     + '#credit .fill{height:100%;width:0;background:' + (t.accent || '#9aa0a6') + ';transition:width .2s}'
     + '#credit .state{font-size:13px;color:#9aa0a6;min-height:20px}'
     + '#credit .part{font-size:13px;color:#e8e8e8;min-height:20px}'
+    + '#credit .first{font-size:13px;color:#e8e8e8}'
     + '#credit .links{margin-top:20px;font-size:13px}'
     + '#credit a{color:#c4c4c4;margin-right:18px}'
     + '#progress-container{display:none}';
@@ -88,7 +89,9 @@
   var state = document.createElement('div'); state.className = 'state'; state.textContent = 'Downloading…';
   // The part being opened (project-folder.js, ?part=): fetched while the program downloads and starts, said here.
   var partLine = document.createElement('div'); partLine.className = 'part';
-  box.appendChild(bar); box.appendChild(state); box.appendChild(partLine);
+  // The first visit's own line (install-and-lazy-load.js, while the program downloads): this wait is the only one.
+  var firstLine = document.createElement('div'); firstLine.className = 'first';
+  box.appendChild(bar); box.appendChild(state); box.appendChild(firstLine); box.appendChild(partLine);
   var links = document.createElement('div'); links.className = 'links';
   [['Source code of this browser copy', cfg.source], ['Licence', 'LICENSE.txt']].forEach(function (l) {
     if (!l[1]) return;
@@ -103,11 +106,15 @@
   // the packed size the browser was sent. The package gives both sizes of the program's data file, so the share done is
   // got / unpacked, shown against the size actually downloaded.
   var mb = function (n) { return Math.round(n / 1e6); };
+  // Said while the program downloads for the first time; a later visit starts from the browser's own copy.
+  var FIRST = 'First time only. ' + t.name + ' is kept in this browser: next time it opens in seconds.';
+  window.SLICER_FIRST_WORDS = FIRST;
   // The install (install-and-lazy-load.js): share done (0..1, or null to keep the bar) and what it is doing, in its words.
   window.SLICER_CREDIT = { show: function (share, text) {
     if (share !== null && share !== undefined) fill.style.width = (100 * Math.min(1, share)) + '%';
     state.textContent = text;
-  }, part: function (text) { partLine.textContent = text || ''; } };
+  }, part: function (text) { partLine.textContent = text || ''; },
+    first: function (text) { firstLine.textContent = text || ''; } };
   var setStatus = Module.setStatus;
   Module.setStatus = function (s) {
     var m = /\((\d+(?:\.\d+)?)\/(\d+)\)/.exec(s || '');
@@ -118,6 +125,7 @@
       var sent = cfg.dataSent || m[2];
       fill.style.width = (100 * done) + '%';
       state.textContent = 'Downloading ' + mb(done * sent) + ' of ' + mb(sent) + ' MB';
+      firstLine.textContent = FIRST;
     } else if (s === '' || /complete|preparing|running/i.test(s || '')) {
       fill.style.width = '100%';
       state.textContent = 'Starting ' + t.name + '…';
