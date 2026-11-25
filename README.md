@@ -137,7 +137,9 @@ host and browser machine are is read from `~/.config/slicers.conf`; the head of 
 Measured moving 2.8.2 to 2.9.2 (v02.09.02.62) on a 10-core, 8 GB docker limit: check 1 s, build 26 min from the new
 tag (17 min when only our own changes moved), package 4 min, stage 15 min (3,200 files), walks 2.5 min: about 50 min
 from the tag to a staged build, unattended. A walk that needs a real printer (the Device pages, the camera) is not in
-the command: it is run by hand before promoting.
+the command: it is run by hand. The camera can be walked on the staged version; the Device tab's Control and AMS pages
+are shared files (`<app>/resources/`), which go up only on the promote, so they are checked on the live version right
+after it (the way back is one command, `publish.mjs <previous package> --apps <app>`).
 
 Known differences from the desktop 2.9.2: the mesh boolean falls back to MCUT (OpenMeshCraft is not built for the
 tab), and a dual-nozzle printer's first slice asks "watch a tutorial video?" as on the desktop (answer No).
