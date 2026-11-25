@@ -11,6 +11,7 @@
 #include <emscripten.h>
 #include <nlohmann/json.hpp>
 #include <boost/algorithm/string.hpp>
+#include <boost/filesystem.hpp>
 #include <wx/app.h>
 #include <wx/button.h>
 #include <wx/dialog.h>
@@ -23,6 +24,7 @@
 #include "libslic3r/PresetBundle.hpp"
 #include "libslic3r/Utils.hpp"
 #include "libslic3r/GCode/ThumbnailData.hpp"
+#include "libslic3r/Format/bbs_3mf.hpp"
 #include "slic3r/GUI/GUI_App.hpp"
 #include "slic3r/GUI/MainFrame.hpp"
 #include "slic3r/GUI/Plater.hpp"
@@ -340,6 +342,19 @@ json run(const std::string &id, const std::string &what, const json &args)
         return json{{"started", true}};
     }
     if (what == "picture") { picture(id); return json{{"later", true}}; }
+    if (what == "export") { // the sliced plate as the file a print sends (Plater::send_gcode's own), into the program's files
+        Plater &p = plater();
+        PartPlate *plate = p.get_partplate_list().get_curr_plate();
+        if (!plate || !plate->is_slice_result_valid()) throw DoorError("this plate is not sliced (or changed since): slice first");
+        const int idx = p.get_partplate_list().get_curr_plate_index();
+        const boost::filesystem::path path(args.value("path", "/tmp/door/plate.gcode.3mf"));
+        boost::system::error_code ec;
+        boost::filesystem::create_directories(path.parent_path(), ec);
+        boost::filesystem::remove(path, ec);
+        const SaveStrategy strategy = SaveStrategy::Silence | SaveStrategy::SkipModel | SaveStrategy::WithGcode | SaveStrategy::SkipAuxiliary;
+        if (p.export_3mf(path, strategy, idx) < 0 || !boost::filesystem::exists(path)) throw DoorError("the program could not write the sliced file");
+        return json{{"path", path.string()}, {"bytes", boost::filesystem::file_size(path)}, {"plate", idx + 1}};
+    }
     throw DoorError("the door has no \"" + what + "\"");
 }
 
