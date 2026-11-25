@@ -144,12 +144,10 @@ orca_gui_patch(libslic3r_gui slic3r/GUI/Widgets/WebView.cpp
     REPLACE "#elif defined(__EMSCRIPTEN__)
         return webView->RunScript(javascript);
 #else
-        WebKitWebView *wkWebView = (WebKitWebView *) webView->GetNativeBackend();")
-
-# The program's web pages are not in the tab's file system: the web view asks the host for them (file://<resources>/web/...
-# names the same path on the server), so "is the file there" cannot be answered by looking; 2.9's Device pages
-# (DeviceWebHost) refuse to load when it says no.
-orca_gui_patch(libslic3r_gui slic3r/GUI/Widgets/WebView.cpp
+        WebKitWebView *wkWebView = (WebKitWebView *) webView->GetNativeBackend();"
+    # The program's web pages are not in the tab's file system: the web view asks the host for them (file://<resources>/web/...
+    # names the same path on the server), so "is the file there" cannot be answered by looking; 2.9's Device pages
+    # (DeviceWebHost) refuse to load when it says no.
     FIND "    if (!url.StartsWith(\"file://\"))
         return false;
 
@@ -161,19 +159,6 @@ orca_gui_patch(libslic3r_gui slic3r/GUI/Widgets/WebView.cpp
 #endif
 
     wxString     clean = url;")
-
-# 2.9 ends its start-up later than post_init: it shows Home, waits for it to paint, then makes the 3D view and selects
-# Home again (run_deferred_gl_init). The door's "start-up is done" (a tab asked for at start is shown) moves there.
-orca_gui_patch(libslic3r_gui slic3r/GUI/GUI_App.cpp
-    FIND "    ::b3d_door_started(); // b3d"
-    REPLACE "    if (m_home_gl_wait == HomeGlWait::Idle || m_home_gl_init_ran) ::b3d_door_started(); // b3d"
-    FIND "    plater_->trigger_restore_project(1);
-    perf_mark(\"startup.post_init.gl_deferred_done\");"
-    REPLACE "    plater_->trigger_restore_project(1);
-    perf_mark(\"startup.post_init.gl_deferred_done\");
-#ifdef __EMSCRIPTEN__
-    ::b3d_door_started(); // b3d
-#endif")
 
 # A browser tab is one instance: there is no other one to hand the command line to. send_message
 # exists on Windows, macOS and Linux only; the wasm one says nobody received it.
@@ -309,6 +294,17 @@ target_sources(libslic3r_gui PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/printer-link/l
 # The slicer door (slicer-door): page scripts drive the plater (open, arrange, slice, export), never print.
 target_sources(libslic3r_gui PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/script-door/script_door.cpp")
 orca_gui_patch(libslic3r_gui slic3r/GUI/GUI_App.cpp
+    # 2.9 ends its start-up later than post_init: it shows Home, waits for it to paint, then makes the 3D view and selects
+    # Home again (run_deferred_gl_init). The door's "start-up is done" (a tab asked for at start is shown) moves there.
+    FIND "    ::b3d_door_started(); // b3d"
+    REPLACE "    if (m_home_gl_wait == HomeGlWait::Idle || m_home_gl_init_ran) ::b3d_door_started(); // b3d"
+    FIND "    plater_->trigger_restore_project(1);
+    perf_mark(\"startup.post_init.gl_deferred_done\");"
+    REPLACE "    plater_->trigger_restore_project(1);
+    perf_mark(\"startup.post_init.gl_deferred_done\");
+#ifdef __EMSCRIPTEN__
+    ::b3d_door_started(); // b3d
+#endif"
     FIND "    BOOST_LOG_TRIVIAL(info) << \"[download_plugin]: enter\";"
     REPLACE "    BOOST_LOG_TRIVIAL(info) << \"[download_plugin]: enter\";
 #ifdef __EMSCRIPTEN__

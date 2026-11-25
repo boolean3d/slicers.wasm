@@ -67,6 +67,8 @@ if want check; then
   done < "$FOLDER/patches/$SERIES/series"
   echo "$n source patches apply on $TAG"
   cmakes=$(grep -l -E "orca_gui_patch|orca_patch_source" $FOLDER/browser-build/CMakeLists.txt $FOLDER/browser-build/*.cmake 2>/dev/null || true)
+  twice=$(grep -h -o -E "orca_(gui_patch|patch_source)\([^ ]+ [^ ]+" $cmakes | sort | uniq -d)   # one call per file: a second is a configure error
+  [ -z "$twice" ] || fail check "a file has two text-patch calls (put the pairs in one): $twice"
   python3 tools/check-text-patches.py "$C" $cmakes || fail check "build-time text patches miss on $TAG (named above)"
   rm -rf "$C.res"; python3 $FOLDER/browser-build/remove-maker-branding.py "$C/resources" "$C.res" > /dev/null || fail check "remove-maker-branding.py no longer finds its text in $TAG's resources (named above)"
   rm -rf "$C.res"
