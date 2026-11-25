@@ -94,11 +94,21 @@
       FS.writeFile(path, bytes);
       return door('add_part', { path: path });
     }
+    // Its file as Open in slicer makes it for this printer (the Boolean3d tab parked it: jobs.js filed).
+    if (args.file) {
+      if (partBytes[args.fileKey]) return put(partBytes[args.fileKey]);
+      return fetch(args.file, { cache: 'no-store' }).then(function (r) {
+        if (!r.ok) return { ok: false, error: 'The part could not be fetched from Boolean3d (' + r.status + ').' };
+        return r.arrayBuffer().then(function (b) { partBytes[args.fileKey] = new Uint8Array(b); return put(partBytes[args.fileKey]); });
+      }).catch(function (e) { return { ok: false, error: 'The part could not be fetched: ' + (e && e.message || e) }; });
+    }
     function once() {
       return Module.b3dHome.ask('part', { id: args.part }).then(function (r) {
         if ((r.headers.get('content-type') || '').indexOf('json') >= 0) {
           return r.json().then(function (a) {
             if (a.code === 'not_ready' && Date.now() - t0 < 90000) return pause(2000).then(once);
+            // Nobody has it open: its file is made when it is opened in Boolean3d (open_file), a few seconds in.
+            if (a.code === 'not_ready') return { ok: false, error: name + '\'s file is not made from its last save yet. Open it in Boolean3d (open_file), wait some seconds, then ask again.' };
             return { ok: false, error: a.error || 'The part could not be opened.' };
           });
         }
@@ -126,12 +136,26 @@
   function lay(args) {
     var sets = args.presets || {}, items = args.items || [];
     var steps = [function () { return door('tab', { to: 'prepare' }); }, function () { return door('new_project'); }];
-    if (sets.printer) steps.push(function () { return door('pick_preset', { type: 'printer', name: sets.printer }); });
-    (sets.filaments || []).slice(0, 1).forEach(function (f) { steps.push(function () { return door('pick_preset', { type: 'filament', filament: 1, name: f }); }); });
+    if (sets.printer) steps.push(function () {
+      return door('pick_preset', { type: 'printer', name: sets.printer }).then(function (a) {
+        // Newer Bambu Studio lists the printer by model with the nozzle in a list of its own, which starts on 0.4.
+        var model = /^(.*) 0\.4 nozzle$/.exec(sets.printer);
+        return a.ok || !model ? a : door('pick_preset', { type: 'printer', name: model[1] });
+      });
+    });
+    (sets.filaments || []).slice(0, 1).forEach(function (f) {
+      steps.push(function () {
+        return door('pick_preset', { type: 'filament', filament: 1, name: f }).then(function (a) {
+          // The same list shows a maker's own filament by its short name ("PLA Basic").
+          var short = /^Bambu (.*?)( @.*)?$/.exec(f);
+          return a.ok || !short ? a : door('pick_preset', { type: 'filament', filament: 1, name: short[1] });
+        });
+      });
+    });
     if (sets.process) steps.push(function () { return door('pick_preset', { type: 'process', name: sets.process }); });
     (args.settings || []).forEach(function (s) { steps.push(function () { return door('settings', { tab: s.tab, set: s.set }); }); });
     items.forEach(function (it, i) {
-      steps.push(function () { return addPart({ part: it.part, name: it.name }); });
+      steps.push(function () { return addPart({ part: it.part, name: it.name, file: it.file, fileKey: it.fileKey }); });
       if (it.fill) steps.push(function () { return door('fill_bed', { object: i }); });
       else if (it.copies > 1) steps.push(function () { return door('clone', { object: i, copies: it.copies - 1 }); });
     });
@@ -143,7 +167,7 @@
         if (bad) return bad;
         return step().then(function (a) {
           // A box in the way (a part that wants a question answered) is the person's to answer.
-          if (!a.ok) return { ok: false, error: a.error, boxes: a.boxes };
+          if (!a.ok) return { ok: false, error: a.boxes ? a.error + '. It is theirs to answer or close in the slicer tab; then ask again.' : a.error, boxes: a.boxes };
           last = a; return null;
         });
       });
@@ -157,7 +181,7 @@
   function fit(args) {
     var items = args.items || [], most = Math.max(1, Math.min(200, args.most | 0 || 1));
     if (items.length === 1) {
-      return lay({ presets: args.presets, items: [{ part: items[0].part, name: items[0].name, fill: true }] }).then(function (a) {
+      return lay({ presets: args.presets, items: [{ part: items[0].part, name: items[0].name, file: items[0].file, fileKey: items[0].fileKey, fill: true }] }).then(function (a) {
         if (!a.ok) return a;
         var n = (a.result.objects || []).reduce(function (sum, o) { return sum + (o.copies || 0); }, 0);
         // Fill bed keeps to one plate; a part too big for the bed lands on a plate of its own making.
@@ -165,7 +189,7 @@
       });
     }
     function tryK(k) {
-      return lay({ presets: args.presets, items: items.map(function (it) { return { part: it.part, name: it.name, copies: k * (it.per || 1) }; }) })
+      return lay({ presets: args.presets, items: items.map(function (it) { return { part: it.part, name: it.name, file: it.file, fileKey: it.fileKey, copies: k * (it.per || 1) }; }) })
         .then(function (a) { return a.ok ? a.result.plates === 1 : Promise.reject(new Error(a.error)); });
     }
     var lo = 0, hi = most;
