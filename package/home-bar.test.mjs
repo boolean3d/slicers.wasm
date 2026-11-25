@@ -108,3 +108,26 @@ test('the forwarding page writes down where the tab came from before it forwards
   assert.match(note, /sessionStorage\.setItem\("b3d-arrived",String\(history\.length\)\)/);
   assert.match(src, /FWD_NOTE \+ 'location\.replace\('/, 'the note comes before the forward');
 });
+
+test('a tab Chrome put away and loaded again says once per browser how to keep the site running (Chrome only)', () => {
+  const said = [], store = new Map();
+  const load = ({ discarded = true, brand = 'Google Chrome' } = {}) => {
+    const p = page('https://slicers.boolean3d.com/bambu/2.09.02.62-5/');
+    p.window.localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)) };
+    p.window.document.wasDiscarded = discarded;
+    p.window.navigator = { userAgent: 'Mozilla/5.0 Chrome/131', userAgentData: { brands: [{ brand: 'Chromium' }, { brand }] } };
+    p.window.Module = { b3dNotice: (text, kind, link) => said.push({ text, kind, link }) };
+    vm.runInNewContext(fs.readFileSync(HERE + 'home-bar.js', 'utf8'), p.window);
+  };
+  load({ discarded: false });
+  load({ brand: 'Microsoft Edge' });
+  assert.equal(said.length, 0, 'not on a normal load, not in Edge');
+  load();
+  assert.equal(said.length, 1);
+  assert.match(said[0].text, /^Chrome paused this tab to save memory\. .*Memory Saver > Always keep these sites active > Add: boolean3d\.com and slicers\.boolean3d\.com$/);
+  assert.equal(said[0].kind, 'note', 'it stays until closed');
+  assert.deepEqual({ ...said[0].link }, { label: 'Got it' });
+  assert.ok(store.get('b3d.discardNote'), 'the same key as the site');
+  load();
+  assert.equal(said.length, 1, 'once per browser, ever');
+});

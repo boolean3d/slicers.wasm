@@ -216,5 +216,25 @@
   function mount() {
     document.body.appendChild(bar);
   }
+
+  // Chrome's Memory Saver puts away tabs nobody looked at for a while and loads them again when they come back
+  // (document.wasDiscarded): the program starts again. The first time that happens in a browser, one line says why and
+  // how to keep the site running (Chrome's own list of sites it never puts away). Once per browser, ever; Chrome only
+  // (Edge has its own "sleeping tabs"). The same words and key as the site's (js/ui/discardNote.js).
+  var DISCARD_KEY = 'b3d.discardNote';
+  var DISCARD_NOTE = 'Chrome paused this tab to save memory. To keep Boolean3d running, add it to Chrome\'s '
+    + '"Always keep these sites active": Settings > Performance > Memory Saver > Always keep these sites active > '
+    + 'Add: boolean3d.com and slicers.boolean3d.com';
+  function isChrome() {
+    var brands = navigator.userAgentData && navigator.userAgentData.brands;
+    if (Array.isArray(brands)) return brands.some(function (b) { return b.brand === 'Google Chrome'; });
+    return /Chrome\//.test(navigator.userAgent) && !/Edg\/|OPR\/|SamsungBrowser|Brave/.test(navigator.userAgent);
+  }
+  try {
+    if (document.wasDiscarded && isChrome() && !localStorage.getItem(DISCARD_KEY) && window.Module && Module.b3dNotice) {
+      Module.b3dNotice(DISCARD_NOTE, 'note', { label: 'Got it' });
+      localStorage.setItem(DISCARD_KEY, String(Date.now()));
+    }
+  } catch (e) { /* no storage: nothing said */ }
   if (document.body) mount(); else document.addEventListener('DOMContentLoaded', mount);
 })();

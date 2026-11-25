@@ -71,8 +71,9 @@
   function folderName(s) { return String(s || 'Project').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '').trim().slice(0, 120) || 'Project'; }
 
   // ── Telling the person ───────────────────────────────────────────
-  // One line over the program, in the account's words: kind 'refused' stays until closed, 'info' goes by itself.
-  // Module.b3dNotice(text, kind, link?) for the other scripts of the package; link {label, href} opens in a new tab.
+  // One line over the program, in the account's words: kind 'refused' stays until closed, 'info' goes by itself, 'note'
+  // stays until closed and looks like 'info'. Module.b3dNotice(text, kind, link?) for the other scripts of the package;
+  // link {label, href} opens in a new tab; a link without href is a button that only closes the line ("Got it").
   var noticeBox = null, noticeTimer = null;
   function notice(text, kind, link) {
     if (typeof document === 'undefined' || !document.body) { console.warn('b3d projects: ' + text); return; }
@@ -92,7 +93,7 @@
         + 'font:13px/1.4 "Segoe UI",system-ui,-apple-system,sans-serif';
       document.body.appendChild(noticeBox);
     }
-    var refused = kind === 'refused';
+    var refused = kind === 'refused', stays = refused || kind === 'note';
     noticeBox.style.background = refused ? '#fff4e5' : '#ffffff';
     noticeBox.style.color = '#262e30';
     noticeBox.style.border = '1px solid ' + (refused ? '#e8a33d' : '#c9cfd1');
@@ -107,8 +108,9 @@
     close.onclick = function () { noticeBox.style.display = 'none'; };
     noticeBox.appendChild(words);
     if (link) {
-      var go = document.createElement('a');
-      go.href = link.href; go.target = '_blank'; go.rel = 'noopener'; go.textContent = link.label;
+      var go = document.createElement(link.href ? 'a' : 'button');
+      if (link.href) { go.href = link.href; go.target = '_blank'; go.rel = 'noopener'; } else go.style.background = 'none';
+      go.textContent = link.label;
       go.setAttribute('data-testid', 'b3d-notice-link');
       go.style.cssText = 'align-self:center;white-space:nowrap;font-weight:600;color:#0a7a5c;text-decoration:none;'
         + 'border:1px solid #0a7a5c;border-radius:4px;padding:3px 10px';
@@ -121,7 +123,7 @@
     noticeBox.style.top = ((bar ? bar.getBoundingClientRect().bottom : 0) + 12) + 'px';
     noticeBox.style.display = 'flex';
     clearTimeout(noticeTimer);
-    if (!refused) noticeTimer = setTimeout(function () { noticeBox.style.display = 'none'; }, 12000);
+    if (!stays) noticeTimer = setTimeout(function () { noticeBox.style.display = 'none'; }, 12000);
     console.log('b3d projects: ' + text);
   }
   Module.b3dNotice = notice;
