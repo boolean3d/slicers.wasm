@@ -59,7 +59,8 @@ ENG_URL=https://github.com/Muon-3D/muon3d-slicer-engine.git
 IMAGE=b3d-emsdk:6.0.10-$(sha256sum "$HERE/docker/Dockerfile" | cut -c1-12)
 cd "$W"
 docker image inspect $IMAGE > /dev/null 2>&1 || docker build -t $IMAGE "$HERE/docker"
-run() { docker run --rm -e JOBS=$JOBS "$@" -v "$W":/w -w /w $IMAGE bash -c "$CMD" < /dev/null; }
+# BUILD_CAP: docker limits for a shared machine, e.g. BUILD_CAP="--memory=10g --memory-swap=10g --cpus=12"
+run() { docker run --rm ${BUILD_CAP:-} -e JOBS=$JOBS "$@" -v "$W":/w -w /w $IMAGE bash -c "$CMD" < /dev/null; }
 
 # Sources, at their pins, with this repository's changes.
 # A fresh copy (the container sees only /w); removed in the container, since earlier runs leave its files in there.
