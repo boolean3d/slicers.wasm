@@ -160,6 +160,24 @@ orca_gui_patch(libslic3r_gui slic3r/GUI/Widgets/WebView.cpp
 
     wxString     clean = url;")
 
+# 2.9's Device pages say "ready" with their own address, and the program takes it only when that is the page it loaded.
+# In the tab the page's address is the host's (https://.../resources/web/...) and the program's is the file:// one:
+# the two are compared from /resources/web/ on. Without it every Device page is replaced by "could not be loaded".
+orca_gui_patch(libslic3r_gui slic3r/GUI/DeviceWeb/DeviceWebHealth.cpp
+    FIND "    return !message_url.empty() && !current_url.empty() &&
+           without_fragment(message_url) == without_fragment(current_url);"
+    REPLACE "#ifdef __EMSCRIPTEN__
+    auto tail = [](const std::string &url) { // b3d
+        const std::string u = without_fragment(url);
+        const size_t at = u.find(\"/resources/web/\");
+        return at == std::string::npos ? u : u.substr(at);
+    };
+    return !message_url.empty() && !current_url.empty() && tail(message_url) == tail(current_url);
+#else
+    return !message_url.empty() && !current_url.empty() &&
+           without_fragment(message_url) == without_fragment(current_url);
+#endif")
+
 # A browser tab is one instance: there is no other one to hand the command line to. send_message
 # exists on Windows, macOS and Linux only; the wasm one says nobody received it.
 orca_gui_patch(libslic3r_gui slic3r/GUI/InstanceCheck.cpp
