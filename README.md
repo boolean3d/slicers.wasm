@@ -90,7 +90,7 @@ again after a failure: it keeps what is already downloaded and built.
 Pack the build (about two minutes), then serve it:
 
 ```bash
-node package/package.mjs --app bambu --src ~/slicers-work/bambu/bgui --version 2.08.02.61-1 \
+node package/package.mjs --app bambu --src ~/slicers-work/bambu/bgui --version 2.09.02.62-1 \
   --out ~/slicers-pkg --licence LICENSE --start package/bambu-start.txt --source https://github.com/boolean3d/slicers.wasm
 node package/serve-package.mjs ~/slicers-pkg 8800
 ```

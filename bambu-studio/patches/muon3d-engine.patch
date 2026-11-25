@@ -1196,7 +1196,7 @@ index 8182907..27b0bae 100644
      profiles/BBL/cli_config.json
  )
 diff --git a/engine/cmake/Libslic3r.cmake b/engine/cmake/Libslic3r.cmake
-index 2d27a6c..4a155eb 100644
+index 2d27a6c..6f3c14b 100644
 --- a/engine/cmake/Libslic3r.cmake
 +++ b/engine/cmake/Libslic3r.cmake
 @@ -12,6 +12,10 @@ set(LIBSLIC3R_GEN_DIR "${CMAKE_BINARY_DIR}/libslic3r")
@@ -1210,7 +1210,25 @@ index 2d27a6c..4a155eb 100644
  include("${ORCA_SRC}/version.inc")
  if (NOT DEFINED ORCA_CHECK_GCODE_PLACEHOLDERS)
      set(ORCA_CHECK_GCODE_PLACEHOLDERS "0")
-@@ -60,9 +64,9 @@ set_source_files_properties(${ORCA_GUI_SOURCES_NEEDED} PROPERTIES
+@@ -23,6 +27,17 @@ orca_generate_drainhole_source("${LIBSLIC3R_GEN_DIR}/stubs/SLA/Hollowing.cpp")
+ 
+ # --- Sources ---------------------------------------------------------------------------------------------------
+ orca_libslic3r_sources(ORCA_LIBSLIC3R_ALL)
++# Bambu Studio 2.9 lists a generated source, "${CMAKE_CURRENT_BINARY_DIR}/BuildInfo.cpp" (build time and commit, out of
++# the widely included version header): read from the list as "/BuildInfo.cpp". Generated here the way Bambu does.
++set(ENGINE_GENERATED_SOURCES)
++list(FIND ORCA_LIBSLIC3R_ALL "/BuildInfo.cpp" index)
++if (NOT index EQUAL -1)
++    list(REMOVE_ITEM ORCA_LIBSLIC3R_ALL "/BuildInfo.cpp")
++    configure_file("${LIBSLIC3R_DIR}/BuildInfo.cpp.in" "${LIBSLIC3R_GEN_DIR}/BuildInfo.cpp" @ONLY)
++    list(APPEND ENGINE_GENERATED_SOURCES "${LIBSLIC3R_GEN_DIR}/BuildInfo.cpp")
++    set_source_files_properties("${LIBSLIC3R_GEN_DIR}/BuildInfo.cpp" PROPERTIES
++        INCLUDE_DIRECTORIES "${LIBSLIC3R_DIR}" SKIP_PRECOMPILE_HEADERS ON)
++endif ()
+ set(ORCA_LIBSLIC3R_KEPT ${ORCA_LIBSLIC3R_ALL})
+ foreach (excluded IN LISTS ORCA_LIBSLIC3R_EXCLUDED)
+     list(FIND ORCA_LIBSLIC3R_ALL "${excluded}" index)
+@@ -60,9 +75,9 @@ set_source_files_properties(${ORCA_GUI_SOURCES_NEEDED} PROPERTIES
  
  set(ENGINE_STUB_SOURCES
      "${ENGINE_DIR}/stubs/Format/AssimpImport.cpp"
@@ -1221,7 +1239,25 @@ index 2d27a6c..4a155eb 100644
      "${ENGINE_DIR}/stubs/Platform.cpp"
      "${ENGINE_DIR}/stubs/pthread_name.c"
      "${LIBSLIC3R_GEN_DIR}/stubs/SLA/Hollowing.cpp"
-@@ -118,7 +122,7 @@ target_include_directories(libslic3r
+@@ -82,7 +97,7 @@ add_library(libslic3r_cgal STATIC
+     "${LIBSLIC3R_DIR}/TryCatchSignal.cpp"
+     "${LIBSLIC3R_DIR}/Triangulation.cpp"
+ )
+-target_include_directories(libslic3r_cgal PRIVATE "${LIBSLIC3R_GEN_DIR}")
++target_include_directories(libslic3r_cgal PRIVATE "${LIBSLIC3R_DIR}" "${LIBSLIC3R_GEN_DIR}")   # as Bambu Studio 2.9's own list
+ # MeshBoolean.cpp -> libigl's copyleft/cgal/assign_scalar.h needs CGAL's Epeck_with_sqrt, which a GMP-free
+ # CGAL cannot provide; shims/cgal supplies a compile-only placeholder (see the header). It must be searched
+ # before CGAL's own include directory, hence BEFORE.
+@@ -108,7 +123,7 @@ endif ()
+ target_link_libraries(libslic3r_cgal PRIVATE ${_cgal_tgt} admesh libigl mcut boost_libs TBB::tbb engine_shims)
+ 
+ # --- libslic3r -----------------------------------------------------------------------------------------------------
+-add_library(libslic3r STATIC ${ORCA_LIBSLIC3R_KEPT} ${ORCA_GUI_SOURCES_NEEDED} ${ENGINE_STUB_SOURCES})
++add_library(libslic3r STATIC ${ORCA_LIBSLIC3R_KEPT} ${ENGINE_GENERATED_SOURCES} ${ORCA_GUI_SOURCES_NEEDED} ${ENGINE_STUB_SOURCES})
+ 
+ target_compile_definitions(libslic3r PUBLIC USE_TBB TBB_USE_CAPTURED_EXCEPTION=0)
+ target_compile_features(libslic3r PUBLIC cxx_std_17)   # its headers need C++17; consumers inherit it
+@@ -118,7 +133,7 @@ target_include_directories(libslic3r
  target_include_directories(libslic3r SYSTEM PUBLIC ${EXPAT_INCLUDE_DIRS})
  # Orca puts src/ on every target's include path (a directory property); consumers of the library (the
  # bridge, tests) get it from the target here as well, for <libslic3r/...> includes.
@@ -1230,7 +1266,7 @@ index 2d27a6c..4a155eb 100644
  
  # Orca's link list without the desktop-only libraries (opencv_world, assimp, OCCT, draco, OpenSSL,
  # freetype/fontconfig, dl).
-@@ -143,7 +147,7 @@ target_link_libraries(libslic3r
+@@ -143,7 +158,7 @@ target_link_libraries(libslic3r
          noise::noise
          PNG::PNG
          qhull
@@ -1421,18 +1457,26 @@ index 0000000..f92d507
 +} // namespace muon_parity
 diff --git a/engine/stubs/LogSink.cpp b/engine/stubs/LogSink.cpp
 new file mode 100644
-index 0000000..09772be
+index 0000000..c5b2c50
 --- /dev/null
 +++ b/engine/stubs/LogSink.cpp
-@@ -0,0 +1,44 @@
+@@ -0,0 +1,64 @@
 +// Stand-in for Bambu Studio's src/libslic3r/LogSink.cpp in the browser engine. Bambu's file encrypts its log
 +// files with OpenSSL AES-256 using a key fetched over HTTP (slic3r/Utils/Http.hpp, libcurl); the browser engine
 +// has neither, and writes no log files (its log goes to the job's messages, bridge/log_capture.cpp). The class
 +// keeps Bambu's declarations (LogSink.hpp) and behaves as a plain text log, with no encryption.
 +#include "LogSink.hpp"
 +
++#include <boost/filesystem.hpp>
++
 +namespace Slic3r
 +{
++
++namespace {
++thread_local bool t_consuming = false;
++}
++
++bool LogSinkBackend::is_consuming_on_this_thread() { return t_consuming; }
 +
 +LogSinkBackend::LogSinkBackend(const std::string& base_path, const LogEncOptions& options)
 +    : m_log_enc_options(options)
@@ -1453,7 +1497,9 @@ index 0000000..09772be
 +void LogSinkBackend::consume(const boost::log::record_view& rec, const std::string& formatted_message)
 +{
 +    std::lock_guard<std::mutex> lock(m_log_mutex);
-+    boost::log::sinks::text_file_backend::consume(rec, formatted_message);
++    t_consuming = true;
++    try { boost::log::sinks::text_file_backend::consume(rec, formatted_message); } catch (...) { t_consuming = false; throw; }
++    t_consuming = false;
 +}
 +
 +void LogSinkBackend::try_record_new_log_file(const boost::log::record_view&) {}
@@ -1466,7 +1512,17 @@ index 0000000..09772be
 +    return false;
 +}
 +
-+std::string LogSinkUtil::get_log_filaname_format(const LogEncOptions&) { return "%Y-%m-%d_%H-%M-%S.log"; }
++// Bambu Studio 2.9: the name comes with its folder, which this also makes (Log.cpp, set_log_path_and_level).
++std::string LogSinkUtil::get_log_filename_format(const std::string& log_dir, const LogEncOptions&)
++{
++    const std::string name = "%Y-%m-%d_%H-%M-%S.log";
++    try {
++        const boost::filesystem::path folder(log_dir);
++        if (!boost::filesystem::exists(folder)) boost::filesystem::create_directories(folder);
++        return (folder / name).string();
++    } catch (const std::exception&) {}
++    return name;
++}
 +
 +} // namespace Slic3r
 diff --git a/engine/thirdparty/expat/CMakeLists.txt b/engine/thirdparty/expat/CMakeLists.txt

@@ -1,0 +1,13 @@
+diff --git a/resources/web/flush/WipingDialog.html b/resources/web/flush/WipingDialog.html
+index 4269d393..f5c3094b 100644
+--- a/resources/web/flush/WipingDialog.html
++++ b/resources/web/flush/WipingDialog.html
+@@ -432,6 +432,8 @@
+         window.wipingDialog.postMessage(data);
+       }
+ 
++      document.addEventListener('keydown', function (e) { if (e.key === 'Escape') quit(); }); // b3d z38: Esc = Cancel
++
+       function quit() {
+         var data = JSON.stringify({
+           msg: 'quit'

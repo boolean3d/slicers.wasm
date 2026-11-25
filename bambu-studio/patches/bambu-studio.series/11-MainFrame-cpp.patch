@@ -1,0 +1,97 @@
+diff --git a/src/slic3r/GUI/MainFrame.cpp b/src/slic3r/GUI/MainFrame.cpp
+index 26f83f29..ba9da6ca 100644
+--- a/src/slic3r/GUI/MainFrame.cpp
++++ b/src/slic3r/GUI/MainFrame.cpp
+@@ -90,6 +90,17 @@
+ #include "libslic3r/Utils.hpp"
+ 
+ 
++#ifdef __EMSCRIPTEN__
++#include <emscripten/em_asm.h>
++#endif
++namespace Slic3r {
++// b3d z49: the person asked for their printer: the page may now reach the home network (agent/b3d-lan.js)
++#ifdef __EMSCRIPTEN__
++static void b3d_lan_person_asks() { MAIN_THREAD_ASYNC_EM_ASM({ if (typeof B3DLan !== 'undefined' && B3DLan.asked) B3DLan.asked(); }); }
++#else
++static void b3d_lan_person_asks() {}
++#endif
++}
+ namespace Slic3r {
+ namespace GUI {
+ 
+@@ -1423,8 +1434,10 @@ void MainFrame::show_option(bool show)
+             m_print_btn->Show();
+             m_slice_option_btn->Show();
+             m_print_option_btn->Show();
++#ifndef __WXWASM__
+             split_line_icon->Show();
+             expand_program_holder->Show();
++#endif
+             Layout();
+         }
+     }
+@@ -1553,6 +1566,7 @@ void MainFrame::init_tabpanel()
+         int sel = m_tabpanel->GetSelection();
+         //wxString page_text = m_tabpanel->GetPageText(sel);
+         m_last_selected_tab = m_tabpanel->GetSelection();
++        if (sel == tpMonitor) b3d_lan_person_asks(); // b3d z49
+         if (panel == m_plater) {
+             if (sel == tp3DEditor) {
+                 wxPostEvent(m_plater, SimpleEvent(EVT_GLVIEWTOOLBAR_3D));
+@@ -1692,7 +1706,11 @@ void MainFrame::init_tabpanel()
+         PERF_TRACE("startup.mainframe.project_panel");
+         m_project = new ProjectPanel(m_tabpanel, wxID_ANY, wxDefaultPosition, wxDefaultSize);
+         m_project->SetBackgroundColour(*wxWHITE);
++#ifdef __WXWASM__
++        m_project->Hide(); // (feel-1125) no Project tab in the browser build: the panel is made (others call it), never shown
++#else
+         m_tabpanel->AddPage(m_project, _L("Project"), std::string("tab_auxiliary_avtice"), std::string("tab_auxiliary_avtice"), false);
++#endif
+     }
+ 
+     {
+@@ -2227,6 +2245,10 @@ wxBoxSizer* MainFrame::create_side_tools()
+     m_slice_option_btn->Enable();
+     m_print_option_btn->Enable();
+     sizer->Add( 0, 0, 1, wxEXPAND, 0);
++#ifdef __WXWASM__
++    expand_program_holder->Hide(); // Helio Additive / plug-ins: third-party cloud, not in the browser build
++    split_line_icon->Hide();
++#endif
+     sizer->Add(expand_program_holder, 0, wxALIGN_CENTER, 0);
+     sizer->Add(FromDIP(4), 0, 0, 0, 0);
+     sizer->Add(split_line_icon, 0, wxALIGN_CENTER, 0);
+@@ -3305,6 +3327,7 @@ void MainFrame::init_menubar_as_editor()
+         append_submenu(fileMenu, export_menu, wxID_ANY, _L("Export"), "");
+ 
+         // Publish to MakerWorld
++#ifndef __WXWASM__ // maker cloud: not in the browser build
+         append_menu_item(
+             fileMenu, wxID_ANY, _L("Publish to MakerWorld"), _L("Publish to MakerWorld"),
+             [this](wxCommandEvent &) {
+@@ -3324,6 +3347,7 @@ void MainFrame::init_menubar_as_editor()
+             },
+             "", nullptr,
+             [this](){ return wxGetApp().has_model_mall(); }, this);
++#endif // z41 end publish
+ 
+         append_menu_item(
+             fileMenu, wxID_ANY, _L("Batch Preset Management"), wxString::Format(_L("Batch Preset Management")),
+@@ -3333,12 +3357,14 @@ void MainFrame::init_menubar_as_editor()
+             },
+             "", nullptr);
+ 
++#ifdef __WXWASM__
++        // (feel-1125) no Quit in a browser tab: the program ending left the tab empty; the tab's own close is the way out
++#elif !defined(__APPLE__)
+         fileMenu->AppendSeparator();
+-
+-#ifndef __APPLE__
+         append_menu_item(fileMenu, wxID_EXIT, _L("Quit"), wxString::Format(_L("Quit")),
+             [this](wxCommandEvent&) { Close(false); }, "menu_exit", nullptr);
+ #else
++        fileMenu->AppendSeparator();
+         append_menu_item(fileMenu, wxID_EXIT, _L("Quit"), wxString::Format(_L("Quit")),
+             [this](wxCommandEvent&) { Close(false); }, "", nullptr);
+ #endif

@@ -1,0 +1,43 @@
+diff --git a/src/slic3r/GUI/GUI_App.cpp b/src/slic3r/GUI/GUI_App.cpp
+index a1e1bebd..d52e1835 100644
+--- a/src/slic3r/GUI/GUI_App.cpp
++++ b/src/slic3r/GUI/GUI_App.cpp
+@@ -195,6 +195,9 @@ struct StaticBambuLib
+     static void release();
+ };
+ 
++#ifdef __EMSCRIPTEN__
++void b3d_door_started(); // b3d: script_door.cpp, the start-up is done (a tab asked for before is shown now)
++#endif
+ namespace Slic3r {
+ namespace GUI {
+ 
+@@ -1625,6 +1628,9 @@ void GUI_App::post_init()
+     }
+     BOOST_LOG_TRIVIAL(info) << "finished post_init";
+     perf_mark("startup.post_init done");
++#ifdef __EMSCRIPTEN__
++    ::b3d_door_started(); // b3d
++#endif
+ #ifdef _WIN32
+     // Sets window property to mainframe so other instances can indentify it.
+     OtherInstanceMessageHandler::init_windows_properties(mainframe, m_instance_hash_int);
+@@ -3823,6 +3829,9 @@ bool GUI_App::on_init_inner()
+ #endif
+     m_disable_fila_manager = is_fila_manager_disabled_by_config(
+         app_config->get(FilaManagerEnabledConfigKey), is_macos);
++#ifdef __WXWASM__
++    m_disable_fila_manager = true; // (feel-1125) no Filament Manager in the browser build: its page hung the tab
++#endif
+     if (m_disable_fila_manager) {
+         BOOST_LOG_TRIVIAL(info) << "Filament Manager disabled by " << FilaManagerEnabledConfigKey;
+     } else {
+@@ -3853,6 +3862,8 @@ bool GUI_App::on_init_inner()
+         }
+     }
+ 
++    // b3d: the 3D view's text atlas (~0.6 s) is built on a helper thread while the main window is made (ImGuiWrapper::prebuild_font_atlas)
++    m_imgui->prebuild_font_atlas(em_unit() * 1.5f);
+     BOOST_LOG_TRIVIAL(info) << "create the main window";
+     // Defer Plater::on_config_change across MainFrame + load_current_presets.
+     // Released before Show() so the first paint does not see printer_model

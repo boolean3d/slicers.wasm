@@ -64,8 +64,8 @@ for d in (('homepage3', 'img'), ('image',)):
 # ── Setup wizard: no "Customer Experience Improvement Program" page. The tab answers it as "No" (the desktop's skip
 # button: nothing is collected) and goes on; Back from the next pages returns to the region page before it. ──
 edit('web/guide/3/index.html', '<body onLoad="OnInit()">', '<body onLoad="OnInit()" style="visibility:hidden">')
-edit('web/guide/3/3.js', "\t\tm_Region=strRegion.toLowerCase();\n}",
-     "\t\tm_Region=strRegion.toLowerCase();\n\n\tGotoSkipPage();   // browser build: never asks to join the program\n}")
+edit('web/guide/3/3.js', "\t\tm_Region=strRegion.toLowerCase();\n\t}\n}",
+     "\t\tm_Region=strRegion.toLowerCase();\n\t}\n\n\tGotoSkipPage();   // browser build: never asks to join the program\n}")
 edit('web/guide/21/index.html', "onclick=\"window.open('../3/index.html','_self')\"", "onclick=\"window.open('../11/index.html','_self')\"")
 edit('web/guide/22/22.js', 'document.location.href="../3/index.html";', 'document.location.href="../11/index.html";')
 

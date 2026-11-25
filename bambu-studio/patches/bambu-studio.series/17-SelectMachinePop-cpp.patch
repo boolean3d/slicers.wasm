@@ -1,0 +1,49 @@
+diff --git a/src/slic3r/GUI/SelectMachinePop.cpp b/src/slic3r/GUI/SelectMachinePop.cpp
+index f71ab2b6..31a83791 100644
+--- a/src/slic3r/GUI/SelectMachinePop.cpp
++++ b/src/slic3r/GUI/SelectMachinePop.cpp
+@@ -31,6 +31,17 @@
+ #include "DeviceCore/DevManager.h"
+ #include "libslic3r/Log.hpp"
+ 
++#ifdef __EMSCRIPTEN__
++#include <emscripten/em_asm.h>
++#endif
++namespace Slic3r {
++// b3d z49: the person asked for their printer: the page may now reach the home network (agent/b3d-lan.js)
++#ifdef __EMSCRIPTEN__
++static void b3d_lan_person_asks() { MAIN_THREAD_ASYNC_EM_ASM({ if (typeof B3DLan !== 'undefined' && B3DLan.asked) B3DLan.asked(); }); }
++#else
++static void b3d_lan_person_asks() {}
++#endif
++}
+ namespace Slic3r { namespace GUI {
+ 
+ wxDEFINE_EVENT(EVT_UPDATE_WINDOWS_POSITION, wxCommandEvent);
+@@ -357,6 +368,9 @@ SelectMachinePopup::SelectMachinePopup(wxWindow *parent)
+     m_sizxer_scrolledWindow->Add(own_title, 0, wxEXPAND | wxLEFT, FromDIP(15));
+     m_sizxer_scrolledWindow->Add(m_sizer_my_devices, 0, wxEXPAND, 0);
+     m_sizxer_scrolledWindow->Add(m_panel_ping_code, 0, wxEXPAND, 0);
++#ifdef __WXWASM__
++    m_panel_ping_code->Hide(); // cloud account bind: not in the browser build
++#endif
+     m_sizxer_scrolledWindow->Add(m_panel_direct_connection, 0, wxEXPAND, 0);
+     m_sizxer_scrolledWindow->Add(other_title, 0, wxEXPAND | wxLEFT, FromDIP(15));
+     m_sizxer_scrolledWindow->Add(m_sizer_other_devices, 0, wxEXPAND, 0);
+@@ -384,6 +398,7 @@ void SelectMachinePopup::Popup(wxWindow *WXUNUSED(focus))
+ {
+     BOOST_LOG_TRIVIAL(trace) << "get_print_info: start";
+     start_ssdp(true);
++    b3d_lan_person_asks(); // b3d z49
+     if (m_refresh_timer) {
+         m_refresh_timer->Stop();
+         m_refresh_timer->Start(MACHINE_LIST_REFRESH_INTERVAL);
+@@ -849,7 +864,7 @@ void SelectMachinePopup::OnLeftUp(wxMouseEvent &event)
+ 
+         //pin code
+         auto pc_rect = m_panel_ping_code->ClientToScreen(wxPoint(0, 0));
+-        if (mouse_pos.x > pc_rect.x && mouse_pos.y > pc_rect.y && mouse_pos.x < (pc_rect.x + m_panel_ping_code->GetSize().x) && mouse_pos.y < (pc_rect.y + m_panel_ping_code->GetSize().y)) {
++        if (m_panel_ping_code->IsShown() && mouse_pos.x > pc_rect.x && mouse_pos.y > pc_rect.y && mouse_pos.x < (pc_rect.x + m_panel_ping_code->GetSize().x) && mouse_pos.y < (pc_rect.y + m_panel_ping_code->GetSize().y)) {
+             wxGetApp().popup_ping_bind_dialog();
+         }
+ 

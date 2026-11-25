@@ -1,0 +1,38 @@
+diff --git a/src/slic3r/GUI/ImGuiWrapper.hpp b/src/slic3r/GUI/ImGuiWrapper.hpp
+index c2962abd..91f36018 100644
+--- a/src/slic3r/GUI/ImGuiWrapper.hpp
++++ b/src/slic3r/GUI/ImGuiWrapper.hpp
+@@ -5,6 +5,8 @@
+ #include <map>
+ 
+ #include <imgui/imgui.h>
++#include <thread>
++#include <mutex>
+ 
+ #include <wx/string.h>
+ 
+@@ -55,6 +57,16 @@ class ImGuiWrapper
+     bool m_is_thai{ false };
+     float m_font_size{ 18.0 };
+     unsigned m_font_texture{ 0 };
++    // b3d (off-thread phase 2k): the font atlas is built on a helper thread while the main window is made (prebuild_font_atlas);
++    // init_font() joins it and only uploads the texture. Built for m_atlas_font_size / m_atlas_ranges; anything else: built again.
++    std::thread m_atlas_thread;
++    std::mutex m_atlas_mutex;
++    bool m_atlas_ready{ false };
++    float m_atlas_font_size{ 0 };
++    const ImWchar* m_atlas_ranges{ nullptr };
++    unsigned char* m_atlas_pixels{ nullptr };
++    int m_atlas_w{ 0 }, m_atlas_h{ 0 };
++    void build_font_atlas();
+     unsigned m_font_another_texture{ 0 };
+     float m_style_scaling{ 1.0 };
+     unsigned m_mouse_buttons{ 0 };
+@@ -67,6 +79,7 @@ class ImGuiWrapper
+     std::string m_clipboard_text;
+ 
+ public:
++    void prebuild_font_atlas(float font_size);   // b3d: start building the atlas now, on a helper thread
+     struct LastSliderStatus {
+         bool hovered{false};
+         bool edited{false};

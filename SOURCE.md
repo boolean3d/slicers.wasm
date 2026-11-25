@@ -8,7 +8,7 @@ This file says what that source is. `build.sh` fetches and builds all of it.
 
 | Part | Version | Where |
 |---|---|---|
-| Bambu Studio | tag `v02.08.02.61` (926a719) | https://github.com/bambulab/BambuStudio, our change: `bambu-studio/patches/bambu-studio.patch` (2 lines) |
+| Bambu Studio | tag `v02.09.02.62` (23a3375) | https://github.com/bambulab/BambuStudio, our change: `bambu-studio/patches/bambu-studio.series/` (one patch per file, applied in order) |
 | OrcaSlicer | tag `v2.3.2` (c724a3f5) | https://github.com/OrcaSlicer/OrcaSlicer, unchanged in the tree; build-time edits in `orcaslicer/browser-build/CMakeLists.txt` (the `orca_gui_patch` lines) and `orcaslicer/patches/orcaslicer.patch` |
 | wxWidgets (OrcaSlicer's fork) | commit `139e4f2` | https://github.com/SoftFever/Orca-deps-wxWidgets, our change (with Adam Hilss's wasm port in it): `<slicer>/patches/wxwidgets.patch` |
 | Muon3D slicer engine (Bambu build) | tag `v0.6.1` = `adaee71fcc81a851075867792bacd234d6bede35` | https://github.com/Muon-3D/muon3d-slicer-engine, our change: `bambu-studio/patches/muon3d-engine.patch` |

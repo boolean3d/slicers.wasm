@@ -30,8 +30,8 @@ WX33_COMMIT=5b7e8c0cde; ORCA_ENG=cdd8195
 # PROG: the program's file name; BUNDLE_ENV: where the program finds its presets bundle; WX_ENV: where its wx build goes
 BASE=$APP; SRC_PATCH=; PROG=; BUNDLE_ENV=; WX_ENV=; TARGET=${APP}_app
 case $APP in
-  bambu) FOLDER=bambu-studio; SRC_URL=https://github.com/bambulab/BambuStudio.git; SRC_TAG=v02.08.02.61; SRC_DIR=bambu; ENG_DIR=eng
-         ENG_COMMIT=adaee71fcc81a851075867792bacd234d6bede35; OUT=bgui; SRC_PATCH=bambu-studio.patch; PROG=bambustudio ;;
+  bambu) FOLDER=bambu-studio; SRC_URL=https://github.com/bambulab/BambuStudio.git; SRC_TAG=${SLICER_TAG:-v02.09.02.62}; SRC_DIR=bambu; ENG_DIR=eng
+         ENG_COMMIT=adaee71fcc81a851075867792bacd234d6bede35; OUT=bgui; SRC_PATCH=bambu-studio.series; PROG=bambustudio ;;
   orca)  FOLDER=orcaslicer; SRC_URL=https://github.com/OrcaSlicer/OrcaSlicer.git; SRC_TAG=v2.3.2; SRC_DIR=orca; ENG_DIR=eng-orca
          ENG_COMMIT=$ORCA_ENG; OUT=bgui; SRC_PATCH=orcaslicer.patch; PROG=orcaslicer ;;
   prusa) FOLDER=prusaslicer; SRC_URL=https://github.com/prusa3d/PrusaSlicer.git; SRC_TAG=version_2.9.6; SRC_DIR=prusa; ENG_DIR=eng
@@ -79,7 +79,13 @@ at() {  # url ref dir
 }
 if [ ! -d $SRC_DIR ]; then
   at $SRC_URL $SRC_TAG $SRC_DIR
-  if [ -n "$SRC_PATCH" ]; then git -C $SRC_DIR apply --whitespace=nowarn "$HERE/$FOLDER/patches/$SRC_PATCH"; fi
+  if [ -d "$HERE/$FOLDER/patches/$SRC_PATCH" ]; then
+    # a series: one patch per file, applied in the order of its "series" file; the first that no longer applies stops the build by name
+    while read -r p; do
+      git -C $SRC_DIR apply --whitespace=nowarn "$HERE/$FOLDER/patches/$SRC_PATCH/$p" ||
+        { echo "PATCH NO LONGER APPLIES: $FOLDER/patches/$SRC_PATCH/$p (on $SRC_TAG)" >&2; rm -rf $SRC_DIR; exit 3; }
+    done < "$HERE/$FOLDER/patches/$SRC_PATCH/series"
+  elif [ -n "$SRC_PATCH" ]; then git -C $SRC_DIR apply --whitespace=nowarn "$HERE/$FOLDER/patches/$SRC_PATCH"; fi
 fi
 if [ $APP = anycubic ] && [ ! -d open-plugins ]; then
   at $OP_URL $OP_COMMIT open-plugins && git -C open-plugins apply --whitespace=nowarn "$HERE/$FOLDER/patches/open-plugins.patch"
@@ -151,11 +157,13 @@ CMD="python3 /w/browser-port/browser-build/presets-bundle/write-presets-bundle.p
 # Bambu Studio's Filament Manager tab is web/device_page/dist, a React bundle its CMake builds
 # with pnpm (src/slic3r/GUI/DeviceWeb/CMakeLists.txt, target device_page_build) and copies to ${CMAKE_SOURCE_DIR}/resources:
 # in this build the CMake root is browser-build/, so the copy misses the tree. Taken from where pnpm builds it instead;
-# without it the tab asks the host for a page the package does not have.
+# without it the tab asks the host for a page the package does not have. Same for 2.9's web/device_page_html (plain files,
+# target device_page_html_build).
 if [ $APP = bambu ]; then
   RES='rm -rf /w/bgui/resources && mkdir /w/bgui/resources && for r in /w/bambu/resources/*; do n=$(basename $r);
     if [ -d /w/bgui/maker-free/$n ]; then cp -r /w/bgui/maker-free/$n /w/bgui/resources/$n; else ln -s ../../bambu/resources/$n /w/bgui/resources/$n; fi; done &&
-    cp -r /w/bambu/src/slic3r/GUI/DeviceWeb/device_page/dist /w/bgui/resources/web/device_page/dist'
+    cp -r /w/bambu/src/slic3r/GUI/DeviceWeb/device_page/dist /w/bgui/resources/web/device_page/dist &&
+    cp -r /w/bambu/src/slic3r/GUI/DeviceWeb/DeviceWebHtml/web /w/bgui/resources/web/device_page_html'
 elif [ $APP = creality ]; then
   # Creality Print's: a hard-linked copy of the tree's, its web pages kept on our host (no Creality cloud calls from the tab)
   RES="rm -rf /w/bgui/resources && cp -al /w/cp/resources /w/bgui/resources && python3 /w/browser-port/browser-build/web-pages-offline.py /w/bgui/resources"

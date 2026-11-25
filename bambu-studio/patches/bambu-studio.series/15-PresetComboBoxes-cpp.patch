@@ -1,0 +1,20 @@
+diff --git a/src/slic3r/GUI/PresetComboBoxes.cpp b/src/slic3r/GUI/PresetComboBoxes.cpp
+index ddf298d1..870dd9d2 100644
+--- a/src/slic3r/GUI/PresetComboBoxes.cpp
++++ b/src/slic3r/GUI/PresetComboBoxes.cpp
+@@ -1700,6 +1700,7 @@ void PlaterPresetComboBox::update()
+         if (m_filament_idx < bitmaps.size()) {
+             clr_picker->SetBitmap(*bitmaps[m_filament_idx]);
+         } else {
++            Thaw();
+             return;
+         }
+ #ifdef __WXOSX__
+@@ -1709,6 +1710,7 @@ void PlaterPresetComboBox::update()
+         selected_filament_preset = m_collection->find_preset(m_preset_bundle->filament_presets[m_filament_idx]);
+         if (!selected_filament_preset) {
+             //can not find this filament, should be caused by project embedded presets, will be updated later
++            Thaw();
+             return;
+         }
+         //assert(selected_filament_preset);

@@ -1,4 +1,4 @@
-# Bambu Studio v02.08.02.61's own GUI (src/slic3r, unchanged but for the patched copies below) compiled to
+# Bambu Studio v02.09.02.62's own GUI (src/slic3r, unchanged but for the patched copies below) compiled to
 # WebAssembly over the wasm wx port. Same recipe as the OrcaSlicer v2.3.2 browser build (orcaslicer/browser-build).
 # libslic3r comes from the Muon3D engine's out-of-tree build, the same tree our Bambu engine (js/lib/slicer)
 # is built from (engine 0.6.1 + bambu-engine fork/engine-cmake-stubs.patch).
@@ -8,7 +8,7 @@ cmake_minimum_required(VERSION 3.24)
 project(bambu_gui_wasm C CXX)
 
 # ORCA_SRC is the engine's name for the source tree it reads; here it is Bambu Studio.
-set(ORCA_SRC "/w/bambu" CACHE PATH "Bambu Studio v02.08.02.61 source")
+set(ORCA_SRC "/w/bambu" CACHE PATH "Bambu Studio v02.09.02.62 source")
 set(ENGINE_SRC "/w/eng/engine" CACHE PATH "Muon3D engine (engine/ folder)")
 set(WX_PREFIX "/w/prefix6" CACHE PATH "wasm wx prefix")
 set(WX_SRC "/w/owx" CACHE PATH "wasm wx source (its build/wasm page template and wx.js)")
@@ -216,11 +216,8 @@ orca_gui_patch(libslic3r_gui slic3r/GUI/GLShadersManager.cpp
     const std::string glsl_version_prefix = gl31 ? \"140/\" : \"110/\";
 #endif // __EMSCRIPTEN__")
 
-# Bambu's test for the transfer-progress callback (curl 7.32+) reads "MAJOR >= 7 && MINOR >= 32", false for
-# curl 8.10. curl's own LIBCURL_VERSION_NUM is the right test (same fix as the Orca spike).
+# (2.9: Bambu's own test for the transfer-progress callback now reads LIBCURL_VERSION_NUM, so our fix for it is gone.)
 orca_gui_patch(libslic3r_gui slic3r/Utils/Http.cpp
-    FIND "#if LIBCURL_VERSION_MAJOR >= 7 && LIBCURL_VERSION_MINOR >= 32"
-    REPLACE "#if LIBCURL_VERSION_NUM >= 0x072000"
     FIND "	::curl_easy_setopt(curl, CURLOPT_USERAGENT, SLIC3R_APP_NAME \"/\" SLIC3R_VERSION);"
     REPLACE "#ifdef __EMSCRIPTEN__
 	// not Bambu Studio's own name: this is Boolean3d's browser build of it
@@ -354,8 +351,7 @@ orca_gui_patch(libslic3r_gui slic3r/Utils/PresetUpdater.cpp
 # desktop's own "plug-in not detected" box, without its download link (the plug-in is never downloaded).
 orca_gui_patch(libslic3r_gui slic3r/GUI/WebViewDialog.cpp
     FIND "void WebViewPanel::SwitchWebContent(std::string modelname, int refresh)
-{
-    m_contentname = modelname;"
+{"
     REPLACE "void WebViewPanel::SwitchWebContent(std::string modelname, int refresh)
 {
 #ifdef __EMSCRIPTEN__
@@ -382,8 +378,7 @@ orca_gui_patch(libslic3r_gui slic3r/GUI/WebViewDialog.cpp
         SwitchLeftMenu(m_contentname.empty() ? std::string(\"home\") : m_contentname);
         return;
     }
-#endif // __EMSCRIPTEN__
-    m_contentname = modelname;")
+#endif // __EMSCRIPTEN__")
 orca_gui_patch(libslic3r_gui slic3r/GUI/WebUserLoginDialog.cpp
     FIND "    SetBackgroundColour(*wxWHITE);
     // Url
@@ -413,8 +408,8 @@ orca_gui_patch(libslic3r_gui slic3r/GUI/WebUserLoginDialog.cpp
 # for, once, and keeps it: the same pictures on screen, fetched as they are shown.
 # X1C (00M) and P1S (01P) printer messages are shipped too (remove-maker-branding.py, printer-messages/): read from the program's files.
 orca_gui_patch(libslic3r_gui slic3r/GUI/HMS.cpp
-    FIND "static unordered_set<string> package_dev_id_types {\"094\", \"239\", \"093\", \"20P\", \"22E\", \"31B\", \"26A\"};"
-    REPLACE "static unordered_set<string> package_dev_id_types {\"094\", \"239\", \"093\", \"20P\", \"22E\", \"31B\", \"26A\", \"00M\", \"01P\"};"
+    FIND "static unordered_set<string> package_dev_id_types { \"093\", \"094\", \"239\", \"20P\", \"22E\", \"31B\", \"32X\", \"331\"};"
+    REPLACE "static unordered_set<string> package_dev_id_types { \"093\", \"094\", \"239\", \"20P\", \"22E\", \"31B\", \"32X\", \"331\", \"26A\", \"00M\", \"01P\"};"
     FIND "    if (m_hms_local_images.empty())
     {
         const fs::path& local_img_dir = fs::path(Slic3r::data_dir()) / HMS_LOCAL_IMG_PATH;"
@@ -444,14 +439,12 @@ orca_gui_patch(libslic3r_gui slic3r/GUI/wxMediaCtrl3.cpp
     FIND "#include \"wxMediaCtrl3.h\""
     REPLACE "#include \"wxMediaCtrl3.h\"
 #include <functional>"
-    FIND "    Bind(wxEVT_MOUSEWHEEL, &wxMediaCtrl3::mouseWheelEvent, this);
-}"
+    FIND "    Bind(wxEVT_MOUSEWHEEL, &wxMediaCtrl3::mouseWheelEvent, this);"
     REPLACE "    Bind(wxEVT_MOUSEWHEEL, &wxMediaCtrl3::mouseWheelEvent, this);
 #ifdef __EMSCRIPTEN__
     void b3d_camera_host_add(wxWindow *, std::function<void *()>, const double *);
     b3d_camera_host_add(this, [this] { return (void *) m_tunnel.load(); }, &m_zoom);
-#endif // __EMSCRIPTEN__
-}"
+#endif // __EMSCRIPTEN__"
     FIND "wxMediaCtrl3::~wxMediaCtrl3()
 {"
     REPLACE "wxMediaCtrl3::~wxMediaCtrl3()
@@ -523,7 +516,7 @@ foreach (r IN LISTS BAMBU_RESOURCES_PRELOAD)
 endforeach ()
 # the vendor presets bundle (off-thread write-presets-bundle.py): one file the worker serves the preset files from
 list(APPEND _preload "SHELL:--preload-file ${ORCA_SRC}/resources/b3d-bundle@/bambu/resources/b3d-bundle")
-add_executable(bambu_app EXCLUDE_FROM_ALL "${ORCA_SRC}/src/BambuStudio.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/stand-ins/gl_compat.c" "${CMAKE_CURRENT_SOURCE_DIR}/stand-ins/web_console_log.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/stand-ins/web_debug.cpp"
+add_executable(bambu_app EXCLUDE_FROM_ALL "${ORCA_SRC}/src/BambuStudio.cpp" "${ORCA_SRC}/src/CLIUtils.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/stand-ins/gl_compat.c" "${CMAKE_CURRENT_SOURCE_DIR}/stand-ins/web_console_log.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/stand-ins/web_debug.cpp"
     "${ENGINE_SRC}/allocator/scalable_malloc.c" "${ENGINE_SRC}/allocator/mimalloc_options.c")
 set_source_files_properties("${ENGINE_SRC}/allocator/mimalloc_options.c" PROPERTIES
     INCLUDE_DIRECTORIES "${EMSCRIPTEN_ROOT_PATH}/system/lib/mimalloc/include")

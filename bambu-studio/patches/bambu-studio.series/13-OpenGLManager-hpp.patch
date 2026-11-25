@@ -1,0 +1,15 @@
+diff --git a/src/slic3r/GUI/OpenGLManager.hpp b/src/slic3r/GUI/OpenGLManager.hpp
+index 9b6e885e..f2039b5e 100644
+--- a/src/slic3r/GUI/OpenGLManager.hpp
++++ b/src/slic3r/GUI/OpenGLManager.hpp
+@@ -295,7 +295,9 @@ public:
+     static bool use_manually_generated_mipmaps() { return m_use_manually_generated_mipmaps; }
+     static void       set_cut_plane_color(ColorRGBA);
+     static const ColorRGBA &get_cut_plane_color();
+-    static bool get_cancle_glmultidraw() { return s_cancle_glmultidraw; }
++    // b3d z47: a browser GL context without WEBGL_multi_draw draws path by path too
++    static bool      s_no_multidraw;
++    static bool get_cancle_glmultidraw() { return s_cancle_glmultidraw || s_no_multidraw; }
+     static void set_cancle_glmultidraw(bool flag) { s_cancle_glmultidraw = flag; }
+     static unsigned int get_draw_primitive_type(EDrawPrimitiveType type);
+ 

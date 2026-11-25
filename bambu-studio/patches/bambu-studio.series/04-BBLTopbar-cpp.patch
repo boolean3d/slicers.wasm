@@ -1,0 +1,78 @@
+diff --git a/src/slic3r/GUI/BBLTopbar.cpp b/src/slic3r/GUI/BBLTopbar.cpp
+index c398c63b..b3d10193 100644
+--- a/src/slic3r/GUI/BBLTopbar.cpp
++++ b/src/slic3r/GUI/BBLTopbar.cpp
+@@ -271,18 +271,25 @@ void BBLTopbar::Init(wxFrame* parent)
+     AddDipSpacer(10);
+     this->AddStretchSpacer(1);
+ 
++#ifndef __WXWASM__
+     m_publish_bitmap = create_scaled_bitmap("topbar_publish", nullptr, TOPBAR_ICON_SIZE);
+     m_publish_item = this->AddTool(ID_PUBLISH, "", m_publish_bitmap);
+     m_publish_disable_bitmap = create_scaled_bitmap("topbar_publish_disable", nullptr, TOPBAR_ICON_SIZE);
+     m_publish_item->SetDisabledBitmap(m_publish_disable_bitmap);
+     this->EnableTool(m_publish_item->GetId(), false);
+     AddDipSpacer(4);
++#else
++    m_publish_item = nullptr; // maker cloud: not in the browser build
++#endif
+ 
+     /*wxBitmap model_store_bitmap = create_scaled_bitmap("topbar_store", nullptr, TOPBAR_ICON_SIZE);
+     m_model_store_item = this->AddTool(ID_MODEL_STORE, "", model_store_bitmap);
+     this->AddSpacer(12);
+     */
+ 
++#ifdef __WXWASM__
++    maximize_btn = nullptr; // the browser tab is the window: no minimize / maximize / close
++#else
+     wxBitmap iconize_bitmap = create_scaled_bitmap("topbar_min", nullptr, TOPBAR_ICON_SIZE);
+     wxAuiToolBarItem* iconize_btn = this->AddTool(wxID_ICONIZE_FRAME, "", iconize_bitmap);
+ 
+@@ -301,6 +308,7 @@ void BBLTopbar::Init(wxFrame* parent)
+ 
+     wxBitmap close_bitmap = create_scaled_bitmap("topbar_close", nullptr, TOPBAR_ICON_SIZE);
+     wxAuiToolBarItem* close_btn = this->AddTool(wxID_CLOSE_FRAME, "", close_bitmap);
++#endif
+ 
+     Realize();
+     // m_toolbar_h = this->GetSize().GetHeight();
+@@ -351,7 +359,7 @@ void BBLTopbar::OnOpenProject(wxAuiToolBarEvent& event)
+ 
+ void BBLTopbar::show_publish_button(bool show)
+ {
+-    this->EnableTool(m_publish_item->GetId(), show);
++    if (m_publish_item) this->EnableTool(m_publish_item->GetId(), show);
+     Refresh();
+ }
+ 
+@@ -492,12 +500,12 @@ void BBLTopbar::SetTitle(wxString title)
+ 
+ void BBLTopbar::SetMaximizedSize()
+ {
+-    maximize_btn->SetBitmap(maximize_bitmap);
++    if (maximize_btn) maximize_btn->SetBitmap(maximize_bitmap);
+ }
+ 
+ void BBLTopbar::SetWindowSize()
+ {
+-    maximize_btn->SetBitmap(window_bitmap);
++    if (maximize_btn) maximize_btn->SetBitmap(window_bitmap);
+ }
+ 
+ void BBLTopbar::UpdateToolbarWidth(int width)
+@@ -547,6 +555,7 @@ void BBLTopbar::Rescale() {
+     item->SetBitmap(create_scaled_bitmap("topbar_store", this, TOPBAR_ICON_SIZE));
+     */
+ 
++#ifndef __WXWASM__
+     item = this->FindTool(wxID_ICONIZE_FRAME);
+     item->SetBitmap(create_scaled_bitmap("topbar_min", this, TOPBAR_ICON_SIZE));
+ 
+@@ -562,6 +571,7 @@ void BBLTopbar::Rescale() {
+ 
+     item = this->FindTool(wxID_CLOSE_FRAME);
+     item->SetBitmap(create_scaled_bitmap("topbar_close", this, TOPBAR_ICON_SIZE));
++#endif
+ 
+     // Pixel widths fixed at creation keep the old monitor's scale; left stale, the toolbar's
+     // minimum width can exceed the frame and push the window buttons out of view.

@@ -1,0 +1,12 @@
+diff --git a/src/libslic3r/Print.hpp b/src/libslic3r/Print.hpp
+index 0079c90a..2876370f 100644
+--- a/src/libslic3r/Print.hpp
++++ b/src/libslic3r/Print.hpp
+@@ -1158,6 +1158,7 @@ public:
+     bool is_support_used() const {return m_support_used;}
+     bool is_BBL_Printer() const { return m_isBBLPrinter;}
+     void set_BBL_Printer(const bool isBBL) { m_isBBLPrinter = isBBL;}
++    const ConflictResultOpt &get_conflict_result() const { return m_conflict_result; }
+     std::string get_conflict_string() const
+     {
+         std::string result;

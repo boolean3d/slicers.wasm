@@ -29,7 +29,7 @@ APP=$1; WB=$(cd "$2" && pwd)
 HERE=$(cd "$(dirname "$0")" && pwd)
 WX_DIR=owx; WX_COMMIT=139e4f2; DIRS="gui wxgl wxweb wxgc"
 case $APP in
-  bambu) FOLDER=bambu-studio; SRC_DIR=bambu; SRC_TAG=v02.08.02.61; SRC_PATCH=bambustudio.patch; ENG_DIR=eng
+  bambu) FOLDER=bambu-studio; SRC_DIR=bambu; SRC_TAG=v02.09.02.62; SRC_PATCH=bambustudio.patch; ENG_DIR=eng
          ENG_COMMIT=adaee71fcc81a851075867792bacd234d6bede35; NOT_THIS_APP=gui/orca-pre.js ;;
   orca)  FOLDER=orcaslicer; SRC_DIR=orca; SRC_TAG=v2.3.2; SRC_PATCH=orcaslicer.patch; ENG_DIR=eng-orca; ENG_COMMIT=cdd8195; NOT_THIS_APP=gui/bambu-pre.js ;;
   prusa) FOLDER=prusaslicer; SRC_DIR=prusa; SRC_TAG=version_2.9.6; SRC_PATCH=; ENG_DIR=; WX_DIR=pwx; WX_COMMIT=5462e7d7cf; NOT_THIS_APP=gui/bambu-pre.js

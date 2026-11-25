@@ -1,0 +1,13 @@
+diff --git a/src/slic3r/GUI/Widgets/DropDown.cpp b/src/slic3r/GUI/Widgets/DropDown.cpp
+index f75cfb5c..ab46c9f0 100644
+--- a/src/slic3r/GUI/Widgets/DropDown.cpp
++++ b/src/slic3r/GUI/Widgets/DropDown.cpp
+@@ -822,7 +822,7 @@ void DropDown::mouseCaptureLost(wxMouseCaptureLostEvent &event)
+ void DropDown::mouseMove(wxMouseEvent &event)
+ {
+     wxPoint pt  = event.GetPosition();
+-#ifdef __WXOSX__
++#if defined(__WXOSX__) || defined(__WXWASM__) // the popup has the mouse capture: moves over the main list come here
+     if (mainDropDown) {
+         auto size = GetSize();
+         if (pt.x < 0 || pt.y < 0 || pt.x >= size.x || pt.y >= size.y) {

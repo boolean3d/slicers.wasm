@@ -1,0 +1,47 @@
+diff --git a/src/slic3r/GUI/ImGuiWrapper.cpp b/src/slic3r/GUI/ImGuiWrapper.cpp
+index aeff6d0b..56d5efa0 100644
+--- a/src/slic3r/GUI/ImGuiWrapper.cpp
++++ b/src/slic3r/GUI/ImGuiWrapper.cpp
+@@ -2700,9 +2700,18 @@ void ImGuiWrapper::pop_radio_style() {
+     ImGui::PopStyleColor(1);
+ }
+ 
+-void ImGuiWrapper::init_font(bool compress)
++void ImGuiWrapper::prebuild_font_atlas(float font_size)
++{
++    // b3d: GLCanvas3D::_resize() will ask for this font size (em_unit * 1.5); set_scaling() then finds it equal and keeps the build
++    std::lock_guard<std::mutex> lock(m_atlas_mutex);
++    if (m_atlas_thread.joinable() || m_atlas_ready) return;
++    m_font_size = font_size;
++    m_atlas_thread = std::thread([this] { build_font_atlas(); });
++}
++
++// The CPU part of init_font(), unchanged: fonts, glyph ranges, icon rectangles, the atlas pixels and the icons drawn into them.
++void ImGuiWrapper::build_font_atlas()
+ {
+-    destroy_font();
+ 
+     ImGuiIO& io = ImGui::GetIO();
+     io.Fonts->Clear();
+@@ -2855,6 +2864,21 @@ void ImGuiWrapper::init_font(bool compress)
+         rect_id++;
+     }
+ 
++    m_atlas_pixels = pixels; m_atlas_w = width; m_atlas_h = height;
++    m_atlas_font_size = m_font_size; m_atlas_ranges = m_glyph_ranges;
++    m_atlas_ready = true;
++}
++
++void ImGuiWrapper::init_font(bool compress)
++{
++    destroy_font();
++    if (m_atlas_thread.joinable()) m_atlas_thread.join();
++    if (!m_atlas_ready || m_atlas_font_size != m_font_size || m_atlas_ranges != m_glyph_ranges) build_font_atlas();
++    m_atlas_ready = false;
++    ImGuiIO& io = ImGui::GetIO();
++    unsigned char* pixels = m_atlas_pixels;
++    int width = m_atlas_w, height = m_atlas_h;
++
+     // Upload texture to graphics system
+     GLint last_texture;
+     glsafe(::glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture));

@@ -1,0 +1,14 @@
+diff --git a/src/slic3r/GUI/WipeTowerDialog.cpp b/src/slic3r/GUI/WipeTowerDialog.cpp
+index 23fe6696..91eb91cb 100644
+--- a/src/slic3r/GUI/WipeTowerDialog.cpp
++++ b/src/slic3r/GUI/WipeTowerDialog.cpp
+@@ -304,6 +304,9 @@ WipingDialog::WipingDialog(wxWindow* parent, const int max_flush_volume) :
+     //        });
+     //    });
+ 
++#ifdef __WXWASM__
++    Bind(wxEVT_CHAR_HOOK, [this](wxKeyEvent& e) { if (e.GetKeyCode() == WXK_ESCAPE) Close(); else e.Skip(); });
++#endif
+     m_webview->Bind(wxEVT_WEBVIEW_SCRIPT_MESSAGE_RECEIVED, [this](wxWebViewEvent& evt) {
+         std::string message = evt.GetString().ToStdString();
+         BOOST_LOG_TRIVIAL(debug) << "Received message: " << message;

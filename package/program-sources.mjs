@@ -37,7 +37,7 @@ const ORCA_FORK = { wx: 'SoftFever/Orca-deps-wxWidgets commit 139e4f2', engine: 
 
 export const PROGRAMS = {
   bambu: { name: 'Bambu Studio', maker: 'Bambu Lab', folder: 'bambu-studio',
-    upstream: ['Bambu Studio, tag v02.08.02.61 (commit 926a719): https://github.com/bambulab/BambuStudio',
+    upstream: ['Bambu Studio, tag v02.09.02.62 (commit 23a3375): https://github.com/bambulab/BambuStudio',
       'Muon3D slicer engine, tag v0.6.1: https://github.com/Muon-3D/muon3d-slicer-engine', ORCA_FORK.wx],
     libs: [...ENGINE_LIBS, 'draco', 'ffmpeg', 'libharu'] },
   orca: { name: 'OrcaSlicer', maker: 'SoftFever and the OrcaSlicer contributors', folder: 'orcaslicer',

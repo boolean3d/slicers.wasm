@@ -1,0 +1,28 @@
+diff --git a/src/slic3r/GUI/Preferences.cpp b/src/slic3r/GUI/Preferences.cpp
+index dff8ae0c..9807d345 100644
+--- a/src/slic3r/GUI/Preferences.cpp
++++ b/src/slic3r/GUI/Preferences.cpp
+@@ -1527,7 +1527,11 @@ wxWindow *PreferencesDialog::create_general_tab()
+     auto flags = row_flags();
+ 
+     sizer->Add(wrap_option_row(scrolled, item_language), flags);
++#ifdef __WXWASM__
++    sizer->Add(wrap_option_row(scrolled, item_region), flags)->Show(false); // maker cloud / telemetry: not in the browser build
++#else
+     sizer->Add(wrap_option_row(scrolled, item_region), flags);
++#endif
+     sizer->Add(wrap_option_row(scrolled, item_currency), flags);
+     sizer->Add(wrap_option_row(scrolled, item_auto_flush), flags);
+ #ifdef _WIN32
+@@ -1540,7 +1544,11 @@ wxWindow *PreferencesDialog::create_general_tab()
+     auto *priv_row = wrap_option_row(scrolled, item_priv_policy);
+     if (wxGetApp().is_uep_force_disabled())
+         priv_row->SetToolTip(minor_restricted_tip());
++#ifdef __WXWASM__
++    sizer->Add(priv_row, flags)->Show(false); // maker cloud / telemetry: not in the browser build
++#else
+     sizer->Add(priv_row, flags);
++#endif
+     sizer->Add(wrap_option_row(scrolled, item_downloads), flags);
+     scrolled->SetSizer(sizer);
+     scrolled->FitInside();

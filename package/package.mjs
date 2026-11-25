@@ -1,7 +1,7 @@
 // Makes the public package of one slicer build: the files a static host (an object store behind a CDN) serves, each
 // already compressed, with the headers it must be served with written in manifest.json.
 //
-//   node package.mjs --app bambu --src <build dir> --version 2.08.02.61-1 --out <dir> [--source-rev <commit of this repository>]
+//   node package.mjs --app bambu --src <build dir> --version 2.09.02.62-1 --out <dir> [--source-rev <commit of this repository>]
 //                    [--start bambu-start.txt]
 //
 // <build dir> holds what the build makes: <program>.html, <program>.js, <program>.wasm, <program>.data (program =
