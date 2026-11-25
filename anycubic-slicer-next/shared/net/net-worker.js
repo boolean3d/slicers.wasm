@@ -267,6 +267,7 @@ var B3DHelper = (typeof document === 'undefined' || (typeof ENVIRONMENT_IS_PTHRE
     let opened = false;   // the link opened at least once (Printer Link is there)
     let helper = null;    // {id, name, version, paired} from Printer Link's hello answer
     let wants = false;    // the person asked for a printer (connect, Connect by IP, send, print): the box may show
+    let failedOnce = false; // the line closed before it ever opened: nothing answers at its address
     function token() { try { return localStorage.getItem(TOKEN) || ''; } catch (e) { return ''; } }
     function lineUrl() {
       const t = token();
@@ -690,7 +691,11 @@ var B3DHelper = (typeof document === 'undefined' || (typeof ENVIRONMENT_IS_PTHRE
       let r; try { r = JSON.parse(m); } catch (e) { return; }
       if (!r || (o.quiet && o.quiet(r))) return;
       wants = true;
-      if (!opened) showHelperBox(secret() ? 'open' : 'download');
+      // Not linked yet is not "not there": the line may still be opening (the program asks for its last printer the
+      // moment it starts, through a relay or a helper that is running). The box offers Printer Link only once the line
+      // failed to open (onclose below), never while the program is still starting (reported 11-25: it offered "Download
+      // Printer Link" while it loaded).
+      if (!opened && failedOnce) showHelperBox(secret() ? 'open' : 'download');
       else if (helper && !helper.paired && hstep !== 'linking') showHelperBox('code');
     }
 
@@ -719,6 +724,7 @@ var B3DHelper = (typeof document === 'undefined' || (typeof ENVIRONMENT_IS_PTHRE
       };
       ws.onclose = function () {
         helper = null;
+        if (!opened && !failedOnce) { failedOnce = true; if (wants && !boxUp()) showHelperBox(secret() ? 'open' : 'download'); }
         clearTimeout(retry);
         console.log('b3d-lan: helper link closed, retrying');
         // blocked by Chrome: say so and how to undo it, never sit on "looking"
