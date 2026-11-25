@@ -422,6 +422,21 @@ json press(const json &args)
     throw DoorError("no open box has a button \"" + want + "\"; open boxes: " + boxes().dump());
 }
 
+// Closes a box by its X (a box with no button to press, like a tip): { title } picks one by its title, without it the
+// newest open box. The close is posted, as the X posts it; the box's own handler decides what closing means.
+json close_box(const json &args)
+{
+    const std::string want = args.value("title", "");
+    std::vector<wxDialog *> open = open_boxes();
+    for (auto it = open.rbegin(); it != open.rend(); ++it) {
+        wxDialog *w = *it;
+        if (!want.empty() && !boost::iequals(utf8(w->GetTitle()), want)) continue;
+        wxCloseEvent e(wxEVT_CLOSE_WINDOW, w->GetId()); e.SetEventObject(w); e.SetCanVeto(true); wxPostEvent(w, e);
+        return json{{"closed", utf8(w->GetTitle())}};
+    }
+    throw DoorError(want.empty() ? "no box is open" : "no open box is titled \"" + want + "\"; open boxes: " + boxes().dump());
+}
+
 } // namespace
 
 // The program's start-up is done (GUI_App::post_init's last line, bambu-studio.patch): a tab asked for before is shown now.
@@ -454,7 +469,7 @@ EMSCRIPTEN_KEEPALIVE void b3d_door_call(const char *text)
     });
 }
 
-// Answers at once, also under an open box: { do: "boxes" } or { do: "press", args: { button } }. Returns a JSON
+// Answers at once, also under an open box: { do: "boxes" }, { do: "press", args: { button } } or { do: "close", args: { title } }. Returns a JSON
 // string the page frees.
 EMSCRIPTEN_KEEPALIVE char *b3d_door_now(const char *text)
 {
@@ -465,7 +480,8 @@ EMSCRIPTEN_KEEPALIVE char *b3d_door_now(const char *text)
         const json args = m.contains("args") ? m["args"] : json::object();
         if (what == "boxes") a = json{{"ok", true}, {"result", boxes()}};
         else if (what == "press") a = json{{"ok", true}, {"result", press(args)}};
-        else a = json{{"ok", false}, {"error", "now answers boxes and press"}};
+        else if (what == "close") a = json{{"ok", true}, {"result", close_box(args)}};
+        else a = json{{"ok", false}, {"error", "now answers boxes, press and close"}};
     } catch (const std::exception &e) {
         a = json{{"ok", false}, {"error", e.what()}};
     }

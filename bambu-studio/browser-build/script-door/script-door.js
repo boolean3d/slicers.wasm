@@ -2,7 +2,8 @@
 // test computer, or a page script) calls  await B3DDoor.act(name, args)  and gets { ok, error, result }.
 // Long actions (slice, arrange, fill_bed, clone) are waited for here: the program is asked "status" until it is idle.
 // While a box is open the program's loop waits for the person; then any action answers with the box (title, words,
-// buttons) and B3DDoor.act('press', { button }) answers it as a person would.
+// buttons) and B3DDoor.act('press', { button }) answers it as a person would; B3DDoor.act('close', { title }) closes one
+// by its X (a tip with no button).
 // No send-to-printer and no print here, on purpose.
 // main() runs in a worker: the program's exports are not called here but posted to its thread with Module.wxCall
 // (bulk/page-extras.js: { wx: 'call', fn, args, free, reply }); the program's answers (B3DDoor.answer, B3DDoor.picture)
@@ -92,7 +93,7 @@ var B3DDoor = (function () {
   async function act(what, args) {
     args = args || {};
     if (!running()) return { ok: false, error: 'the program is still loading' };
-    if (what === 'boxes' || what === 'press') return now(what, args);
+    if (what === 'boxes' || what === 'press' || what === 'close') return now(what, args);
     if (what === 'add_part') {
       const a = await part(args);
       if (!a.ok) return a;
