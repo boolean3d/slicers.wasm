@@ -1214,12 +1214,12 @@ index 2d27a6c..6f3c14b 100644
  
  # --- Sources ---------------------------------------------------------------------------------------------------
  orca_libslic3r_sources(ORCA_LIBSLIC3R_ALL)
-+# Bambu Studio 2.9 lists a generated source, "${CMAKE_CURRENT_BINARY_DIR}/BuildInfo.cpp" (build time and commit, out of
-+# the widely included version header): read from the list as "/BuildInfo.cpp". Generated here the way Bambu does.
++# Bambu Studio 2.9 has a generated source, BuildInfo.cpp (build time and commit, out of the widely included version
++# header), which its add_library names beside the source list, so the list read above does not hold it.
++# Generated here the way Bambu does, whenever the release has its template (SLIC3R_BUILD_TIME: the fixed one above).
++# Before 2.9 there is no template and nothing is added.
 +set(ENGINE_GENERATED_SOURCES)
-+list(FIND ORCA_LIBSLIC3R_ALL "/BuildInfo.cpp" index)
-+if (NOT index EQUAL -1)
-+    list(REMOVE_ITEM ORCA_LIBSLIC3R_ALL "/BuildInfo.cpp")
++if (EXISTS "${LIBSLIC3R_DIR}/BuildInfo.cpp.in")
 +    configure_file("${LIBSLIC3R_DIR}/BuildInfo.cpp.in" "${LIBSLIC3R_GEN_DIR}/BuildInfo.cpp" @ONLY)
 +    list(APPEND ENGINE_GENERATED_SOURCES "${LIBSLIC3R_GEN_DIR}/BuildInfo.cpp")
 +    set_source_files_properties("${LIBSLIC3R_GEN_DIR}/BuildInfo.cpp" PROPERTIES

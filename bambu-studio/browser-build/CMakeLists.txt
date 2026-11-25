@@ -205,6 +205,15 @@ orca_gui_patch(libslic3r_gui slic3r/GUI/OpenGLManager.cpp
             s_framebuffers_type = EFramebufferType::Unknown;
 #endif // __EMSCRIPTEN__")
 
+# 2.9's texture import window (a model with a picture on it) draws its preview with OpenGL 1 calls. The browser's
+# stand-ins cover all of them but glShadeModel, which only picks smooth shading (the default): left out here.
+# The preview itself needs OpenGL 1 drawing, which a browser does not have (README, "Moving to a new release").
+orca_gui_patch(libslic3r_gui slic3r/GUI/TextureImportDialog.cpp
+    FIND "        glShadeModel(GL_SMOOTH);"
+    REPLACE "#ifndef __EMSCRIPTEN__
+        glShadeModel(GL_SMOOTH);
+#endif // __EMSCRIPTEN__")
+
 # WebGL2 = OpenGL ES 3.0, below Bambu's 3.1 line: Bambu takes its own pre-3.1 path everywhere (legacy G-code
 # renderer, no texture-buffer shaders). Its shader files for that path are GLSL 1.10; the browser compiles
 # GLSL ES only, so the shaders come from shaders/ES (see below) instead of shaders/110.
