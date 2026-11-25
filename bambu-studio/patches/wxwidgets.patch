@@ -2351,10 +2351,10 @@ index 0000000..d37002c
 +</html>
 diff --git a/build/wasm/wx.js b/build/wasm/wx.js
 new file mode 100644
-index 0000000..6a4dfc3
+index 0000000..1dacdb4
 --- /dev/null
 +++ b/build/wasm/wx.js
-@@ -0,0 +1,1616 @@
+@@ -0,0 +1,1626 @@
 +if (typeof navigator !== 'undefined') {
 +  var browserInfo = (function () {
 +    var ua = navigator.userAgent;
@@ -2793,8 +2793,17 @@ index 0000000..6a4dfc3
 +    if (canvas) {
 +      // (z59) the device pixels the browser shows this window at (a rounded scale stretched it: soft at 1.25)
 +      var scaleFactor = wxDevScale();
-+      windowData.devScale = scaleFactor;
 +      var wxTop = wxInWorker ? wxPageMainTop : 0;
++      // (feel-1125) a move that keeps the device size and the pixel phase keeps the canvas and its pixels: setting
++      // canvas.width clears it, and the whole window would have to paint again for every mouse move of a drag
++      var keepW = wxDevSpan(x, width, scaleFactor), keepH = wxDevSpan(y + wxTop, height, scaleFactor);
++      var phase = function (p) { return Math.round(p * scaleFactor) - p * scaleFactor; };
++      if (windowData.context && windowData.devScale === scaleFactor && canvas.width === keepW && canvas.height === keepH &&
++          windowData.phase && windowData.phase[0] === phase(x) && windowData.phase[1] === phase(y + wxTop)) {
++        return 0;
++      }
++      windowData.phase = [phase(x), phase(y + wxTop)];
++      windowData.devScale = scaleFactor;
 +
 +      canvas.width = wxDevSpan(x, width, scaleFactor);
 +      canvas.height = wxDevSpan(y + wxTop, height, scaleFactor);
@@ -2822,6 +2831,7 @@ index 0000000..6a4dfc3
 +
 +      windowData.context = ctx;
 +    }
++    return 1;
 +  };
 +
 +  var setWindowZIndex = function (id, zIndex) {
@@ -11233,6 +11243,24 @@ index 4b3bb6c..66bad90 100644
      dc->SetBrush(m_hasFocus ? brush : *wxTRANSPARENT_BRUSH);
  
      // VZ: unfortunately, the rectangle comes out a pixel smaller when this is
+diff --git a/src/generic/datavgen.cpp b/src/generic/datavgen.cpp
+index 164e2a6..12778d1 100644
+--- a/src/generic/datavgen.cpp
++++ b/src/generic/datavgen.cpp
+@@ -2853,7 +2853,13 @@ void wxDataViewMainWindow::OnPaint( wxPaintEvent &WXUNUSED(event) )
+                 wxSize expSize = wxRendererNative::Get().GetExpanderSize(this);
+ 
+                 // draw expander if needed
++#ifdef __WXWASM__
++                // (feel-1125) as GTK's tree: no expander on a container with nothing in it
++                wxDataViewItemArray feelKids;
++                if ( node->HasChildren() && GetModel()->GetChildren(node->GetItem(), feelKids) > 0 )
++#else
+                 if ( node->HasChildren() )
++#endif
+                 {
+                     wxRect rect = cell_rect;
+                     rect.x += indent;
 diff --git a/src/generic/filedlgg.cpp b/src/generic/filedlgg.cpp
 index 5929901..f70f5f7 100644
 --- a/src/generic/filedlgg.cpp
@@ -11414,7 +11442,7 @@ index b379503..0ad95d3 100644
 +
  #endif // wxUSE_MSGDLG
 diff --git a/src/generic/renderg.cpp b/src/generic/renderg.cpp
-index 8425f08..42f5622 100644
+index 8425f08..de7a7c2 100644
 --- a/src/generic/renderg.cpp
 +++ b/src/generic/renderg.cpp
 @@ -260,7 +260,7 @@ wxRendererGeneric* wxRendererGeneric::sm_rendererGeneric = NULL;
@@ -11447,7 +11475,38 @@ index 8425f08..42f5622 100644
  
      return DrawHeaderButtonContents(win, dc, rect, flags, sortArrow, params);
  }
-@@ -814,7 +816,7 @@ wxRendererGeneric::DrawItemSelectionRect(wxWindow * WXUNUSED(win),
+@@ -529,6 +531,30 @@ wxRendererGeneric::DrawTreeItemButton(wxWindow * WXUNUSED(win),
+                                       const wxRect& rect,
+                                       int flags)
+ {
++#ifdef __WXWASM__
++    // (feel-1125) the desktop's expander (GTK): a small filled triangle, right when closed, down when open
++    {
++        wxDCPenChanger penChanger(dc, *wxTRANSPARENT_PEN);
++        wxDCBrushChanger brushChanger(dc, wxBrush(wxColour(0x6b, 0x6b, 0x6b)));
++        const double cx = rect.x + rect.width / 2.0, cy = rect.y + rect.height / 2.0;
++        const double h = wxMax(3.0, wxMin(rect.width, rect.height) * 0.30);   // half the triangle's long side
++        wxPoint pts[3];
++        if ( flags & wxCONTROL_EXPANDED )
++        {
++            pts[0] = wxPoint(wxRound(cx - h), wxRound(cy - h / 2));
++            pts[1] = wxPoint(wxRound(cx + h), wxRound(cy - h / 2));
++            pts[2] = wxPoint(wxRound(cx), wxRound(cy + h / 2 + 1));
++        }
++        else
++        {
++            pts[0] = wxPoint(wxRound(cx - h / 2), wxRound(cy - h));
++            pts[1] = wxPoint(wxRound(cx - h / 2), wxRound(cy + h));
++            pts[2] = wxPoint(wxRound(cx + h / 2 + 1), wxRound(cy));
++        }
++        dc.DrawPolygon(3, pts);
++        return;
++    }
++#endif // __WXWASM__
+     // store settings
+     wxDCPenChanger penChanger(dc, *wxGREY_PEN);
+     wxDCBrushChanger brushChanger(dc, *wxWHITE_BRUSH);
+@@ -814,7 +840,7 @@ wxRendererGeneric::DrawItemSelectionRect(wxWindow * WXUNUSED(win),
          }
          else // !focused
          {
@@ -11456,7 +11515,7 @@ index 8425f08..42f5622 100644
          }
      }
      else // !selected
-@@ -826,7 +828,8 @@ wxRendererGeneric::DrawItemSelectionRect(wxWindow * WXUNUSED(win),
+@@ -826,7 +852,8 @@ wxRendererGeneric::DrawItemSelectionRect(wxWindow * WXUNUSED(win),
      bool drawFocusRect = (flags & wxCONTROL_CURRENT) && (flags & wxCONTROL_FOCUSED);
  
      if ( drawFocusRect && !(flags & wxCONTROL_CELL) )
@@ -11466,6 +11525,35 @@ index 8425f08..42f5622 100644
      else
          dc.SetPen( *wxTRANSPARENT_PEN );
  
+diff --git a/src/generic/scrlwing.cpp b/src/generic/scrlwing.cpp
+index d25b983..edd481a 100644
+--- a/src/generic/scrlwing.cpp
++++ b/src/generic/scrlwing.cpp
+@@ -1013,7 +1013,14 @@ void wxScrollHelperBase::HandleOnMouseLeave(wxMouseEvent& event)
+ 
+ void wxScrollHelperBase::HandleOnMouseWheel(wxMouseEvent& event)
+ {
++#ifdef __WXWASM__
++    // (feel-1125) counted line by line (a notch, 120 units, is still the lines per action): a trackpad's small steps
++    // scroll a line as soon as they add up to one, instead of 3 lines at once every 120 units
++    const int perAction = event.IsPageScroll() ? 1 : wxMax(1, event.GetLinesPerAction());
++    m_wheelRotation += event.GetWheelRotation() * perAction;
++#else
+     m_wheelRotation += event.GetWheelRotation();
++#endif
+     int lines = m_wheelRotation / event.GetWheelDelta();
+     m_wheelRotation -= lines * event.GetWheelDelta();
+ 
+@@ -1040,7 +1047,9 @@ void wxScrollHelperBase::HandleOnMouseWheel(wxMouseEvent& event)
+         }
+         else
+         {
++#ifndef __WXWASM__ // (feel-1125) already counted in lines
+             lines *= event.GetLinesPerAction();
++#endif
+             if (lines > 0)
+                 newEvent.SetEventType(wxEVT_SCROLLWIN_LINEUP);
+             else
 diff --git a/src/generic/spinctlg.cpp b/src/generic/spinctlg.cpp
 index 28393d3..b04cf8f 100644
 --- a/src/generic/spinctlg.cpp
@@ -25537,10 +25625,10 @@ index 0000000..fcf814a
 +}
 diff --git a/src/wasm/nonownedwnd.cpp b/src/wasm/nonownedwnd.cpp
 new file mode 100644
-index 0000000..6e24431
+index 0000000..4d19577
 --- /dev/null
 +++ b/src/wasm/nonownedwnd.cpp
-@@ -0,0 +1,246 @@
+@@ -0,0 +1,248 @@
 +/////////////////////////////////////////////////////////////////////////////
 +// Name:        wx/wasm/nonownedwnd.cpp
 +// Purpose:     wxNonOwnedWindow implementation
@@ -25670,9 +25758,11 @@ index 0000000..6e24431
 +
 +    if (newRect != oldRect)
 +    {
-+        EM_ASM({
-+            return setWindowRect($0, $1, $2, $3, $4);
-+        }, GetCSSId(), newRect.x, newRect.y, newRect.width, newRect.height);
++        // (feel-1125) 1: the canvas was made anew (cleared), so the window paints again; 0: it kept its pixels
++        if (EM_ASM_INT({
++            return setWindowRect($0, $1, $2, $3, $4) ? 1 : 0;
++        }, GetCSSId(), newRect.x, newRect.y, newRect.width, newRect.height))
++            Refresh();
 +        wxpage_set_window_rect(GetCSSId(), newRect.x, newRect.y, newRect.width, newRect.height);
 +    }
 +}
@@ -27574,10 +27664,10 @@ index 0000000..383fbf0
 +#endif // wxUSE_WEBVIEW && __WXWASM__
 diff --git a/src/wasm/window.cpp b/src/wasm/window.cpp
 new file mode 100644
-index 0000000..496980e
+index 0000000..2a670c5
 --- /dev/null
 +++ b/src/wasm/window.cpp
-@@ -0,0 +1,852 @@
+@@ -0,0 +1,865 @@
 +/////////////////////////////////////////////////////////////////////////////
 +// Name:        wx/wasm/window.cpp
 +// Purpose:     wxWasmWindow implementation
@@ -28233,15 +28323,27 @@ index 0000000..496980e
 +
 +    if (x != currentX || y != currentY || width != currentW || height != currentH)
 +    {
-+        Invalidate(true);
++        // (feel-1125) a top-level window that only moves keeps its pixels and hears a move, as on the desktop
++        const bool onlyMoved = IsTopLevel() && width == currentW && height == currentH;
++        if (!onlyMoved)
++            Invalidate(true);
 +
 +        AdjustForParentClientOrigin(x, y, sizeFlags);
 +        DoMoveWindow(x, y, width, height);
 +
-+        wxSize newSize(width, height);
-+        wxSizeEvent event(newSize, GetId());
-+        event.SetEventObject(this);
-+        HandleWindowEvent(event);
++        if (onlyMoved)
++        {
++            wxMoveEvent event(wxPoint(x, y), GetId());
++            event.SetEventObject(this);
++            HandleWindowEvent(event);
++        }
++        else
++        {
++            wxSize newSize(width, height);
++            wxSizeEvent event(newSize, GetId());
++            event.SetEventObject(this);
++            HandleWindowEvent(event);
++        }
 +    }
 +    else if (sizeFlags & wxSIZE_FORCE_EVENT)
 +    {
@@ -28289,7 +28391,8 @@ index 0000000..496980e
 +
 +        wxWindow *parent = GetParent();
 +
-+        if (parent != NULL)
++        // (feel-1125) a top-level window is a canvas of its own: moving it uncovers nothing in its parent's canvas
++        if (parent != NULL && !IsTopLevel())
 +        {
 +            parent->RefreshRect(oldPos);
 +            parent->RefreshRect(newPos);

@@ -1,4 +1,5 @@
-// node --test package/home-bar.test.mjs: the row over every program is a house back to Boolean3d's Home and nothing
+// node --test package/home-bar.test.mjs: our corner over every program holds a house back to Boolean3d's Home (plus Full
+// screen, and Install when the browser offers it), no row of its own since 11-25; nothing
 // else (no Design / Electronics / Make strip since 11-03), loaded under a new name so cached pages pick it up.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -33,27 +34,32 @@ function page(address) {
     history: { length: 1, go: (n) => went.push(n) },
     addEventListener() {}, dispatchEvent() {}, Event: class {},
   };
-  const document = { body, head, createElement: make, getElementById: (id) => (id === 'main-window' ? main : null), addEventListener() {} };
-  Object.assign(window, { window, document, URLSearchParams, URL, setTimeout: () => 0, Module: undefined });
+  const html = make('html'); html.requestFullscreen = () => Promise.resolve();
+  const document = { body, head, documentElement: html, createElement: make, getElementById: (id) => (id === 'main-window' ? main : null),
+    querySelectorAll: () => [], addEventListener() {} };
+  Object.assign(window, { window, document, URLSearchParams, URL, setTimeout: () => 0, setInterval: () => 0, clearInterval() {}, Module: undefined });
   return { window, body, tab, went, all: () => {
     const out = []; const walk = (n) => { out.push(n); n.children.forEach(walk); }; walk(body); return out;
   } };
 }
 
-test('the row over a program holds a house to Home and no workspace links', () => {
+test('the corner over a program holds a house to Home and no workspace links, and no row of its own', () => {
   const p = page('https://slicers.boolean3d.com/bambu/2.08.02.61-b58/?hub=https%3A%2F%2Fboolean3d.com%2F&project=abc');
   vm.runInNewContext(fs.readFileSync(HERE + 'home-bar.js', 'utf8'), p.window);
   const bar = p.all().find((n) => n.id === 'b3d-bar');
-  assert.ok(bar, 'the row is on the page');
-  assert.equal(p.body.children[0], bar, 'above the program (#main-window)');
+  assert.ok(bar, 'the corner is on the page');
+  assert.equal(bar.parentNode, p.body);
+  assert.ok(!bar.classList.names.has('header'), 'no header: the program keeps the whole height');
   const links = p.all().filter((n) => n.tagName === 'A');
   assert.equal(links.length, 1, 'one link: the house');
   assert.equal(links[0].href, 'https://boolean3d.com/', 'it goes to Boolean3d, which takes a signed-in person to Home');
   assert.equal(links[0].getAttribute('aria-label'), 'Home');
   assert.match(links[0].innerHTML, /<svg/, 'a house, not a word');
   const words = p.all().map((n) => n.textContent ?? '').join(' ');
-  for (const w of ['Design', 'Electronics', 'Make', 'Boolean3d']) assert.ok(!words.includes(w), `no "${w}" in the row`);
-  assert.ok(bar.classList.names.has('header'), 'the port moves the program under it (class header)');
+  for (const w of ['Design', 'Electronics', 'Make', 'Boolean3d']) assert.ok(!words.includes(w), `no "${w}" in the corner`);
+  const tools = p.all().filter((n) => n.tagName === 'BUTTON').map((n) => n.getAttribute('data-testid'));
+  assert.ok(tools.includes('b3d-bar-fullscreen'), 'one press to full screen');
+  assert.ok(tools.includes('b3d-bar-install'), 'install, shown when the browser offers it');
 });
 
 test('every program page loads the home row, under a name never cached before', () => {

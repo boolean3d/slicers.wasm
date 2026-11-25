@@ -77,7 +77,7 @@ async function main() {
     '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.ico': 'image/x-icon', '.webp': 'image/webp',
     '.json': 'application/json', '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.otf': 'font/otf',
     '.txt': 'text/plain; charset=utf-8', '.xml': 'application/xml', '.mp4': 'video/mp4', '.webm': 'video/webm',
-    '.map': 'application/json', '.md': 'text/plain; charset=utf-8' };
+    '.map': 'application/json', '.md': 'text/plain; charset=utf-8', '.webmanifest': 'application/manifest+json' };
   // Already-compressed formats are stored as they are.
   const PACKED = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.woff', '.woff2', '.mp4', '.webm']);
   const YEAR = 'public, max-age=31536000, immutable, no-transform';
@@ -150,6 +150,18 @@ async function main() {
   add('LICENSE.txt', stageFile('LICENSE.txt', licenceText(a.app)));
   add('SOURCE.txt', stageFile('SOURCE.txt', sourceText(a.app, a.version, rev)));
   add('NOTICES.txt', stageFile('NOTICES.txt', noticesText(a.app)));
+  // Installable as an app (slicer-feel-1125): the browser's Install opens the program in a window of its own, without
+  // the browser's bar (more height). The manifest and its icons (the tab icon's three layers, never a maker's logo) sit
+  // in the app folder, so the installed app starts at the address without a version, which forwards to the current one.
+  const NAME = { bambu: 'Bambu Studio', orca: 'OrcaSlicer', prusa: 'PrusaSlicer', snapmaker: 'Snapmaker Orca', elegoo: 'ElegooSlicer',
+    anycubic: 'Anycubic Slicer Next', creality: 'Creality Print' }[a.app];
+  add('app.webmanifest', stageFile('app.webmanifest', JSON.stringify({
+    name: NAME + ' (browser copy, unofficial)', short_name: NAME, description: NAME + ' running in a browser tab. Not made or endorsed by its maker.',
+    start_url: './', scope: './', display: 'standalone', background_color: '#1f2124', theme_color: '#26282b',
+    icons: [{ src: 'app-icon-192.png', sizes: '192x192', type: 'image/png' }, { src: 'app-icon-512.png', sizes: '512x512', type: 'image/png' }],
+  }, null, 1)), HOUR, true);
+  add('app-icon-192.png', path.join(HERE, 'app-icons', 'icon-192.png'), HOUR, true);
+  add('app-icon-512.png', path.join(HERE, 'app-icons', 'icon-512.png'), HOUR, true);
   const walk = (d, rel) => {
     for (const e of fs.readdirSync(d, { withFileTypes: true })) {
       const p = path.join(d, e.name), r = rel + '/' + e.name;
@@ -245,7 +257,7 @@ async function main() {
   if (pageHtml.split('</head>').length !== 2) throw new Error(PROGRAM + '.html: no single "</head>"');
   // The backdrop is asked for with the page's first bytes, ahead of the program's script and data, so it paints at once.
   const PRELOAD = page.backdrop ? '<link rel=preload as=image href=backdrop.webp fetchpriority=high>' : '';
-  fs.writeFileSync(pageFile, pageHtml.replace('</head>', ICON + PRELOAD + '</head>'));
+  fs.writeFileSync(pageFile, pageHtml.replace('</head>', ICON + '<link rel=manifest href=../app.webmanifest>' + PRELOAD + '</head>'));
   for (const f of files) {
     if (f.stored !== undefined) continue;
     const to = f.to;

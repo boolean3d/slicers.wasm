@@ -171,8 +171,94 @@ index 1d1d93d..42e6696 100644
          // Contrary to intuition, the `scale` argument isn't "please scale this to such and such"
          // but rather "the wxImage is sized for backing scale such and such".
          // So, We need to let the Mac OS wxBitmap implementation
+diff --git a/src/slic3r/GUI/GLCanvas3D.cpp b/src/slic3r/GUI/GLCanvas3D.cpp
+index ea897dd..81dc163 100644
+--- a/src/slic3r/GUI/GLCanvas3D.cpp
++++ b/src/slic3r/GUI/GLCanvas3D.cpp
+@@ -31,6 +31,9 @@
+ #include "slic3r/Utils/UndoRedo.hpp"
+ #include "slic3r/GUI/Gizmos/GLGizmoPainterBase.hpp"
+ #include "slic3r/GUI/BitmapCache.hpp"
++#ifdef __EMSCRIPTEN__
++#include "slic3r/GUI/MeshUtils.hpp" // (feel-1125) MeshRaycaster: the point under the cursor without a depth read
++#endif
+ #include "slic3r/Utils/MacDarkMode.hpp"
+ #include "slic3r/GUI/GuiColor.hpp"
+ 
+@@ -11186,6 +11189,56 @@ void GLCanvas3D::_perform_layer_editing_action(wxMouseEvent* evt)
+     _start_timer();
+ }
+ 
++#ifdef __EMSCRIPTEN__
++// (feel-1125) WebGL 2 cannot read a depth buffer (glReadPixels with DEPTH_COMPONENT is refused): the point the desktop
++// takes from the depth under the cursor is where the cursor's ray (a at the near plane, b at the far plane) first meets
++// a volume of the scene, by Bambu's MeshRaycaster, as its gizmos find points on a mesh; on the main frame the bed plane
++// (z = 0) behind them; the far plane (b) when nothing is hit, as the desktop's cleared depth gives.
++static Vec3d b3d_point_under_cursor(const GLVolumeCollection &volumes, const Model *model, const Vec3d &a, const Vec3d &b, bool bed)
++{
++    // one raycaster per mesh, kept while the mesh lives (the cache holds it); a new mesh after an edit gets its own
++    static std::map<const TriangleMesh *, std::pair<std::shared_ptr<const TriangleMesh>, std::unique_ptr<MeshRaycaster>>> cache;
++    const Vec3d dir = (b - a).normalized();
++    double best = std::numeric_limits<double>::max();
++    Vec3d out = b;
++    if (model != nullptr) {
++        for (const GLVolume *v : volumes.volumes) {
++            if (v == nullptr || !v->is_active || v->is_wipe_tower || v->is_extrusion_path)
++                continue;
++            const int o = v->object_idx(), i = v->volume_idx();
++            if (o < 0 || o >= int(model->objects.size()) || i < 0 || i >= int(model->objects[o]->volumes.size()))
++                continue;
++            const std::shared_ptr<const TriangleMesh> &mesh = model->objects[o]->volumes[i]->get_mesh_shared_ptr();
++            if (!mesh || mesh->its.indices.empty())
++                continue;
++            auto it = cache.find(mesh.get());
++            if (it == cache.end()) {
++                if (cache.size() > 64)
++                    cache.clear();
++                it = cache.emplace(mesh.get(), std::make_pair(mesh, std::make_unique<MeshRaycaster>(*mesh))).first;
++            }
++            const Transform3d trafo = v->world_matrix();
++            const Transform3d inv = trafo.inverse();
++            const Vec3d s = inv * a;
++            const Vec3d d = (inv * b - s).normalized();
++            for (const auto &h : it->second.second->get_aabb_mesh().query_ray_hits(s, d)) {
++                if (!h.is_hit())
++                    continue;
++                const Vec3d p = trafo * h.position();
++                const double t = (p - a).dot(dir);
++                if (t >= 0. && t < best) { best = t; out = p; }
++            }
++        }
++    }
++    if (best == std::numeric_limits<double>::max() && bed && std::abs(dir.z()) > 1e-12) {
++        const double t = -a.z() / dir.z();
++        if (t >= 0.)
++            out = a + t * dir;
++    }
++    return out;
++}
++#endif // __EMSCRIPTEN__
++
+ Vec3d GLCanvas3D::_mouse_to_3d(const Camera& camera, const Point& mouse_pos, float* z, const std::string& frame_name)
+ {
+     if (m_canvas == nullptr)
+@@ -11195,6 +11248,14 @@ Vec3d GLCanvas3D::_mouse_to_3d(const Camera& camera, const Point& mouse_pos, flo
+     Vec4i viewport(camera.get_viewport().data());
+     GLint y = viewport[3] - (GLint)mouse_pos(1);
+     GLfloat mouse_z;
++#ifdef __EMSCRIPTEN__
++    if (z == nullptr) { // (feel-1125) no depth read in WebGL 2: the cursor's ray, cast at the scene
++        Vec3d a, b;
++        igl::unproject(Vec3d(mouse_pos(0), y, 0.), modelview, projection, viewport, a);
++        igl::unproject(Vec3d(mouse_pos(0), y, 1.), modelview, projection, viewport, b);
++        return b3d_point_under_cursor(m_volumes, m_model, a, b, frame_name.empty());
++    }
++#endif // __EMSCRIPTEN__
+     if (z == nullptr) {
+         const auto& p_ogl_manager = wxGetApp().get_opengl_manager();
+         p_ogl_manager->read_pixel(frame_name, (GLint)mouse_pos(0), y, 1, 1, EPixelFormat::DepthComponent, EPixelDataType::Float, (void*)&mouse_z);
 diff --git a/src/slic3r/GUI/GUI_App.cpp b/src/slic3r/GUI/GUI_App.cpp
-index a87793f..720237d 100644
+index a87793f..c65451d 100644
 --- a/src/slic3r/GUI/GUI_App.cpp
 +++ b/src/slic3r/GUI/GUI_App.cpp
 @@ -182,6 +182,9 @@ struct StaticBambuLib
@@ -195,7 +281,17 @@ index a87793f..720237d 100644
  #ifdef _WIN32
      // Sets window property to mainframe so other instances can indentify it.
      OtherInstanceMessageHandler::init_windows_properties(mainframe, m_instance_hash_int);
-@@ -3499,6 +3505,8 @@ bool GUI_App::on_init_inner()
+@@ -3470,6 +3476,9 @@ bool GUI_App::on_init_inner()
+ #endif
+     m_disable_fila_manager = is_fila_manager_disabled_by_config(
+         app_config->get(FilaManagerEnabledConfigKey), is_macos);
++#ifdef __WXWASM__
++    m_disable_fila_manager = true; // (feel-1125) no Filament Manager in the browser build: its page hung the tab
++#endif
+     if (m_disable_fila_manager) {
+         BOOST_LOG_TRIVIAL(info) << "Filament Manager disabled by " << FilaManagerEnabledConfigKey;
+     } else {
+@@ -3499,6 +3508,8 @@ bool GUI_App::on_init_inner()
          }
      }
  
@@ -204,6 +300,19 @@ index a87793f..720237d 100644
      BOOST_LOG_TRIVIAL(info) << "create the main window";
      mainframe = new MainFrame();
      // hide settings tabs after first Layout
+diff --git a/src/slic3r/GUI/GUI_Utils.hpp b/src/slic3r/GUI/GUI_Utils.hpp
+index 21f7af8..3fd49fd 100644
+--- a/src/slic3r/GUI/GUI_Utils.hpp
++++ b/src/slic3r/GUI/GUI_Utils.hpp
+@@ -144,7 +144,7 @@ public:
+ 
+         // Linux specific issue : get_dpi_for_window(this) still doesn't responce to the Display's scale in new wxWidgets(3.1.3).
+         // So, calculate the m_em_unit value from the font size, as before
+-#if !defined(__WXGTK__)
++#if !defined(__WXGTK__) && !defined(__WXWASM__) // (feel-1125) the browser build takes em from the font, as GTK
+         m_em_unit = std::max<size_t>(10, 10.0f * m_scale_factor);
+ #else
+         // initialize default width_unit according to the width of the one symbol ("m") of the currently active font of this window.
 diff --git a/src/slic3r/GUI/ImGuiWrapper.cpp b/src/slic3r/GUI/ImGuiWrapper.cpp
 index 9206682..787d835 100644
 --- a/src/slic3r/GUI/ImGuiWrapper.cpp
@@ -290,7 +399,7 @@ index c27a245..b2e2da6 100644
          bool hovered{false};
          bool edited{false};
 diff --git a/src/slic3r/GUI/MainFrame.cpp b/src/slic3r/GUI/MainFrame.cpp
-index a46aa32..0e1e052 100644
+index a46aa32..8c5603a 100644
 --- a/src/slic3r/GUI/MainFrame.cpp
 +++ b/src/slic3r/GUI/MainFrame.cpp
 @@ -79,6 +79,17 @@
@@ -330,7 +439,19 @@ index a46aa32..0e1e052 100644
          if (panel == m_plater) {
              if (sel == tp3DEditor) {
                  wxPostEvent(m_plater, SimpleEvent(EVT_GLVIEWTOOLBAR_3D));
-@@ -2012,6 +2026,10 @@ wxBoxSizer* MainFrame::create_side_tools()
+@@ -1533,7 +1547,11 @@ void MainFrame::init_tabpanel()
+ 
+     m_project = new ProjectPanel(m_tabpanel, wxID_ANY, wxDefaultPosition, wxDefaultSize);
+     m_project->SetBackgroundColour(*wxWHITE);
++#ifdef __WXWASM__
++    m_project->Hide(); // (feel-1125) no Project tab in the browser build: the panel is made (others call it), never shown
++#else
+     m_tabpanel->AddPage(m_project, _L("Project"), std::string("tab_auxiliary_avtice"), std::string("tab_auxiliary_avtice"), false);
++#endif
+ 
+     m_calibration = new CalibrationPanel(m_tabpanel, wxID_ANY, wxDefaultPosition, wxDefaultSize);
+     m_calibration->SetBackgroundColour(*wxWHITE);
+@@ -2012,6 +2030,10 @@ wxBoxSizer* MainFrame::create_side_tools()
      m_slice_option_btn->Enable();
      m_print_option_btn->Enable();
      sizer->Add( 0, 0, 1, wxEXPAND, 0);
@@ -341,7 +462,7 @@ index a46aa32..0e1e052 100644
      sizer->Add(expand_program_holder, 0, wxALIGN_CENTER, 0);
      sizer->Add(FromDIP(4), 0, 0, 0, 0);
      sizer->Add(split_line_icon, 0, wxALIGN_CENTER, 0);
-@@ -3049,6 +3067,7 @@ void MainFrame::init_menubar_as_editor()
+@@ -3049,6 +3071,7 @@ void MainFrame::init_menubar_as_editor()
          append_submenu(fileMenu, export_menu, wxID_ANY, _L("Export"), "");
  
          // Publish to MakerWorld
@@ -349,7 +470,7 @@ index a46aa32..0e1e052 100644
          append_menu_item(
              fileMenu, wxID_ANY, _L("Publish to MakerWorld"), _L("Publish to MakerWorld"),
              [this](wxCommandEvent &) {
-@@ -3068,6 +3087,7 @@ void MainFrame::init_menubar_as_editor()
+@@ -3068,6 +3091,7 @@ void MainFrame::init_menubar_as_editor()
              },
              "", nullptr,
              [this](){ return wxGetApp().has_model_mall(); }, this);
@@ -357,6 +478,23 @@ index a46aa32..0e1e052 100644
  
          append_menu_item(
              fileMenu, wxID_ANY, _L("Batch Preset Management"), wxString::Format(_L("Batch Preset Management")),
+@@ -3077,12 +3101,14 @@ void MainFrame::init_menubar_as_editor()
+             },
+             "", nullptr);
+ 
++#ifdef __WXWASM__
++        // (feel-1125) no Quit in a browser tab: the program ending left the tab empty; the tab's own close is the way out
++#elif !defined(__APPLE__)
+         fileMenu->AppendSeparator();
+-
+-#ifndef __APPLE__
+         append_menu_item(fileMenu, wxID_EXIT, _L("Quit"), wxString::Format(_L("Quit")),
+             [this](wxCommandEvent&) { Close(false); }, "menu_exit", nullptr);
+ #else
++        fileMenu->AppendSeparator();
+         append_menu_item(fileMenu, wxID_EXIT, _L("Quit"), wxString::Format(_L("Quit")),
+             [this](wxCommandEvent&) { Close(false); }, "", nullptr);
+ #endif
 diff --git a/src/slic3r/GUI/OpenGLManager.cpp b/src/slic3r/GUI/OpenGLManager.cpp
 index cefef78..fd1d67c 100644
 --- a/src/slic3r/GUI/OpenGLManager.cpp
