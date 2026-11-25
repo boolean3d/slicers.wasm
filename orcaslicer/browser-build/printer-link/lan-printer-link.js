@@ -8,6 +8,13 @@
 // lan_printer_agent.cpp speaks it.
 var B3DLan = typeof B3DHelper === 'undefined' || !B3DHelper ? null : (function () {
   function deliver(text) {
+    // A printer linked: the page's start (home-folder-sync.js) shows the Device tab only then, never "No printer" first.
+    if (text.indexOf('"ev":"connect"') >= 0) {
+      try {
+        const r = JSON.parse(text);
+        if (r.status === 0 && r.dev_id) { (window.b3dLinked = window.b3dLinked || {})[r.dev_id] = true; dispatchEvent(new CustomEvent('b3d-printer-linked', { detail: r.dev_id })); }
+      } catch (e) { /* not ours to read */ }
+    }
     const p = stringToNewUTF8(text);
     // posted to the program's thread, which frees p after the call (page-extras.js); before main runs: dropped
     if (!Module.wxCall || !Module.wxCall('_b3d_lan_incoming', [p], { free: [0] })) Module._free(p);
@@ -101,6 +108,10 @@ var B3DCam = (function () {
     function lost(dev, p, e) {
       postMessage({ op: 'log', text: 'camera video of ' + dev + ': ' + (e && e.message || e) });
       p.decoder = null; p.codec = ''; p.waitKey = true;
+      // This browser cannot play the printer's video (no H.264 decoder for it: a browser built without one, or a
+      // profile its decoder refuses): it said so for every picture and the program gave up after 15 s ("Loading
+      // failed"), then asked for the IP and access code. The page asks the helper for pictures instead (below).
+      if (e && e.name === 'NotSupportedError' && !p.refused) { p.refused = true; postMessage({ op: 'nodecode', dev: dev, why: e.message }); }
     }
     function draw(dev, p, frame) {
       try {
@@ -155,6 +166,16 @@ var B3DCam = (function () {
       else if (m.op === 'remove') { if (p.decoder && p.decoder.state !== 'closed') p.decoder.close(); ps.delete(m.dev); }
     };
   }
+  // No video here: the camera goes on as pictures (JPEG, ~3 a second) that the helper makes from the printer's video
+  // and the program's own camera view draws (lan_printer_camera.cpp b3d_lan_camera_frame), as for a build without video.
+  function pictures(dev, why) {
+    const p = players.get(dev);
+    if (!p) return;
+    console.log('b3d-lan: camera of ' + dev + ': this browser cannot play the video (' + why + '); pictures instead');
+    p.users = 1;
+    B3DCam.stop(dev);
+    if (B3DLan) B3DLan.send(JSON.stringify({ op: 'camera', dev_id: dev, on: true }));
+  }
   function workerOf() {
     if (worker) return worker;
     worker = new Worker(URL.createObjectURL(new Blob(['(' + workerMain.toString() + ')()'], { type: 'text/javascript' })));
@@ -162,6 +183,7 @@ var B3DCam = (function () {
       const m = e.data;
       if (m.op === 'log') console.log('b3d-lan: ' + m.text);
       else if (m.op === 'stats') { const r = asked.get(m.id); asked.delete(m.id); if (r) r(m); }
+      else if (m.op === 'nodecode') pictures(m.dev, m.why);
       else if (m.op === 'size' && players.has(m.dev)) {
         const d = stringToNewUTF8(m.dev);
         if (!Module.wxCall || !Module.wxCall('_b3d_lan_camera_size', [d, m.w, m.h], { free: [0] })) Module._free(d);
@@ -213,7 +235,8 @@ var B3DCam = (function () {
     },
     feed: function (dev, b) {
       const p = players.get(dev);
-      if (!p || typeof VideoDecoder === 'undefined') return;
+      if (!p) return;
+      if (typeof VideoDecoder === 'undefined') return pictures(dev, 'no WebCodecs');
       const data = b.slice().buffer, at = performance.timeOrigin + performance.now();
       worker.postMessage({ op: 'chunk', dev: dev, data: data, at: at }, [data]);
     },

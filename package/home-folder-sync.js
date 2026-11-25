@@ -741,13 +741,28 @@ var b3dAccountModels = (function () {
   // With no file to open the program starts on its own Home page; a printer card's Open slicer wants Prepare.
   // Asked of the program through its script door (B3DDoor, script_door.cpp "tab") once its window is up; a program
   // whose door has no "tab" yet stays where it started.
+  // The Device tab waits for the program to link to the printer (lan-printer-link.js: b3d-printer-linked): shown before,
+  // it said "No printer" until the link came (reported 11-24: "No printer" for a second). The program stays on
+  // its Home page meanwhile; a link that does not come in LINK_WAIT_MS shows the Device tab anyway.
+  var LINK_WAIT_MS = 15000;
+  function linked(serial) { return !serial || !!(window.b3dLinked && window.b3dLinked[serial]); }
   function startTab() {
     var want = new URLSearchParams(location.search).get('b3d-start');
     if (want !== 'device' && want !== 'prepare') return;
-    var until = Date.now() + 180000;
+    var until = Date.now() + 180000, upAt = 0;
     (function again() {
       if (Date.now() > until) { console.log('b3d start: the program did not come up in time'); return; }
       if (typeof B3DDoor === 'undefined' || !Module.wxRunning || !Module.wxRunning()) { setTimeout(again, 1000); return; }
+      if (want === 'device' && !linked(PICKED)) {
+        upAt = upAt || Date.now();
+        if (Date.now() - upAt < LINK_WAIT_MS) {
+          var go = function () { removeEventListener('b3d-printer-linked', go); clearTimeout(t); again(); };
+          var t = setTimeout(go, Math.max(0, LINK_WAIT_MS - (Date.now() - upAt)));
+          addEventListener('b3d-printer-linked', go);
+          return;
+        }
+        console.log('b3d start: the printer did not link in ' + LINK_WAIT_MS / 1000 + ' s; Device tab anyway');
+      }
       B3DDoor.act('tab', want === 'device' ? { to: 'device', printer: PICKED } : { to: 'prepare' }).then(function (a) {
         if (a && a.ok) { console.log('b3d start: ' + want + (a.result && a.result.when_started ? ' once the program is up' : ' now')); return; }
         var why = String(a && a.error || '');
