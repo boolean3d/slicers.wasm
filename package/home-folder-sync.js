@@ -714,6 +714,7 @@ var b3dAccountModels = (function () {
       colours: q.get('b3d-colours') || '', model: q.get('b3d-model'), nozzle: q.get('b3d-nozzle') || '0.4' };
   })();
   function pickPresets() {
+    if (APP === 'prusa') return;   // PrusaSlicer's settings are an INI file: pickHosted below
     var at = confPath();
     if (!PRESETS || !at) { if (PRESETS) console.log('b3d presets: no settings folder yet'); return; }
     var c = {};
@@ -730,11 +731,105 @@ var b3dAccountModels = (function () {
     if (PRESETS.model) {
       c.models = Array.isArray(c.models) ? c.models : [];
       var m = c.models.filter(function (x) { return x && x.model === PRESETS.model; })[0];
-      if (!m) c.models.push({ vendor: 'BBL', model: PRESETS.model, nozzle_diameter: PRESETS.nozzle });
+      if (!m) c.models.push({ vendor: (HOSTED && HOSTED.vendor) || 'BBL', model: PRESETS.model, nozzle_diameter: PRESETS.nozzle });
       else if (String(m.nozzle_diameter || '').split(';').indexOf(PRESETS.nozzle) < 0) m.nozzle_diameter = (m.nozzle_diameter ? m.nozzle_diameter + ';' : '') + PRESETS.nozzle;
     }
     Module.FS.writeFile(at, JSON.stringify(c, null, 4) + '\n');
     console.log('b3d presets: ' + PRESETS.machine + ' · ' + (PRESETS.process || '') + ' · ' + PRESETS.filament.join(', '));
+  }
+
+  // ── A Klipper or Prusa printer of the account (Boolean3d's Open in slicer for it, 11-25) ──────────────────────────
+  // ?b3d-vendor=<the maker's profile set>&b3d-model=&b3d-nozzle=&b3d-machine=<its printer preset>&b3d-printer-name=<its
+  // name in the account>. The program starts set to that printer with its print host already filled in,
+  // <printer name>.boolean3d (print-anywhere.js answers it), so Print sends to it and nobody types an address:
+  //   OrcaSlicer   a printer preset of the person's own, named as the printer, that inherits the maker's preset and
+  //                adds the host (user/default/machine/<name>.json, as "Save as" in the program writes it)
+  //   PrusaSlicer  a physical printer named as the printer on the maker's preset (physical_printer/<name>.ini)
+  // Here the settings folder is made when the program never ran in this browser: the program then starts on this
+  // printer and skips its own setup, whose only question is which printer. A preset or physical printer of that name
+  // already there is the person's: it is selected, never rewritten.
+  var HOSTED = (function () {
+    var q = new URLSearchParams(location.search);
+    if (!q.get('b3d-vendor') || !q.get('b3d-machine') || !q.get('b3d-model')) return null;
+    return { vendor: q.get('b3d-vendor'), model: q.get('b3d-model'), nozzle: q.get('b3d-nozzle') || '0.4', machine: q.get('b3d-machine'),
+      name: (q.get('b3d-printer-name') || '').replace(/[\\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim() };
+  })();
+  var hostSlug = function (n) { return String(n || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'printer'; };
+  function isFile(at) { try { Module.FS.stat(at); return true; } catch (e) { return false; } }
+  function text(at) { try { return new TextDecoder().decode(Module.FS.readFile(at)); } catch (e) { return null; } }
+  /** The settings folder and an empty settings file, when the program never ran here (Orca and its kin). */
+  function hostedFolder() {
+    if (!HOSTED || APP === 'prusa' || APP === 'bambu' || confPath()) return;
+    var dir = HOME + '/.' + PRODUCT;   // where the browser builds of this family keep their settings
+    Module.FS.mkdirTree(dir);
+    Module.FS.writeFile(dir + '/' + PRODUCT + '.conf', '{}\n');
+  }
+  function hostedOrca() {
+    var at = confPath();
+    if (!at || !HOSTED.name) return;
+    var name = HOSTED.name === HOSTED.machine ? HOSTED.name + ' (Boolean3d)' : HOSTED.name;
+    var dir = at.replace(/\/[^\/]+$/, '') + '/user/default/machine', file = dir + '/' + name + '.json';
+    Module.FS.mkdirTree(dir);
+    if (!isFile(file)) {
+      Module.FS.writeFile(file, JSON.stringify({ from: 'User', inherits: HOSTED.machine, name: name, print_host: hostSlug(HOSTED.name) + '.boolean3d',
+        host_type: 'octoprint', printer_settings_id: name, version: '2.3.1.0' }, null, 4) + '\n');
+      Module.FS.writeFile(dir + '/' + name + '.info', 'sync_info = \nuser_id = \nsetting_id = \nbase_id = \nupdated_time = ' + Math.floor(Date.now() / 1000) + '\n');
+    }
+    var c = {};
+    try { c = JSON.parse(text(at)) || {}; } catch (e) { c = {}; }
+    (c.presets = c.presets || {}).machine = name;
+    Module.FS.writeFile(at, JSON.stringify(c, null, 4) + '\n');
+    Module.b3dHostSet = hostSlug(HOSTED.name) + '.boolean3d';
+    console.log('b3d printer: ' + name + ' on ' + HOSTED.machine + ', print host ' + Module.b3dHostSet);
+  }
+  /** INI text with `key = value` under [section] (the section and the key added when missing). */
+  function iniSet(ini, section, key, value) {
+    var lines = ini.split('\n'), from = -1, to = lines.length;
+    for (var i = 0; i < lines.length; i++) {
+      var m = /^\s*\[(.+)\]\s*$/.exec(lines[i]);
+      if (!m) continue;
+      if (from >= 0) { to = i; break; }
+      if (m[1] === section) from = i;
+    }
+    if (from < 0) { while (lines.length && !lines[lines.length - 1].trim()) lines.pop(); return lines.concat(['', '[' + section + ']', key + ' = ' + value, '']).join('\n'); }
+    for (var j = from + 1; j < to; j++) if (lines[j].split('=')[0].trim() === key) { lines[j] = key + ' = ' + value; return lines.join('\n'); }
+    while (to > from + 1 && !lines[to - 1].trim()) to--;
+    lines.splice(to, 0, key + ' = ' + value);
+    return lines.join('\n');
+  }
+  function hostedPrusa() {
+    var dir = HOME + '/.config/' + PRODUCT, at = dir + '/' + PRODUCT + '.ini';
+    var bundle = '/' + APP + '/resources/profiles/' + HOSTED.vendor + '.ini', mine = dir + '/vendor/' + HOSTED.vendor + '.ini';
+    // The maker's profile set comes with the program's own files, which may still be arriving: waited for a while.
+    return new Promise(function (ok) {
+      var until = Date.now() + 30000;
+      (function again() { if (isFile(mine) || isFile(bundle) || Date.now() > until) return ok(); setTimeout(again, 250); })();
+    }).then(function () {
+      if (!isFile(mine)) {
+        if (!isFile(bundle)) { console.log('b3d printer: this program has no ' + HOSTED.vendor + ' printers'); return; }
+        Module.FS.mkdirTree(dir + '/vendor');
+        Module.FS.writeFile(mine, Module.FS.readFile(bundle));
+      }
+      var ini = text(at) || '';
+      var variants = (new RegExp('^model:' + HOSTED.model.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*=\\s*(.*)$', 'm').exec(ini) || ['', ''])[1].split(';').map(function (v) { return v.trim(); }).filter(Boolean);
+      if (variants.indexOf(HOSTED.nozzle) < 0) variants.push(HOSTED.nozzle);
+      ini = iniSet(ini, 'vendor:' + HOSTED.vendor, 'model:' + HOSTED.model, variants.join(';'));
+      ini = iniSet(ini, 'presets', 'printer', HOSTED.machine);
+      if (HOSTED.name) {
+        var file = dir + '/physical_printer/' + HOSTED.name + '.ini', host = hostSlug(HOSTED.name) + '.boolean3d';
+        Module.FS.mkdirTree(dir + '/physical_printer');
+        if (!isFile(file)) Module.FS.writeFile(file, ['host_type = octoprint', 'preset_names = "' + HOSTED.machine.replace(/"/g, '\\"') + '"', 'print_host = ' + host, 'printer_technology = FFF',
+          'printhost_apikey = ', 'printhost_authorization_type = key', 'printhost_cafile = ', 'printhost_password = ', 'printhost_port = ', 'printhost_ssl_ignore_revoke = 0', 'printhost_user = ', ''].join('\n'));
+        ini = iniSet(ini, 'presets', 'physical_printer', HOSTED.name + ' * ' + HOSTED.machine);
+        Module.b3dHostSet = host;
+      }
+      Module.FS.writeFile(at, ini);
+      console.log('b3d printer: ' + (HOSTED.name || HOSTED.model) + ' on ' + HOSTED.machine + (HOSTED.name ? ', print host ' + Module.b3dHostSet : ''));
+    });
+  }
+  function pickHosted() {
+    if (!HOSTED || APP === 'bambu') return null;
+    return APP === 'prusa' ? hostedPrusa() : hostedOrca();
   }
 
   // ── The tab the program starts on (?b3d-start=prepare, or device: the Device tab, set to the printer above) ──────
@@ -808,9 +903,12 @@ var b3dAccountModels = (function () {
     }, function (e) { console.error('b3d home: no browser store (' + e + '); this tab forgets on reload'); })
       .then(function () {
         try { pickModels(); } catch (e) { console.error('b3d printers: ' + e); }
-        try { pickPresets(); } catch (e) { console.error('b3d presets: ' + e); }
-        if (!WANT.id) return;
-        return printerFor().then(pickPrinter, function () {});
+        try { hostedFolder(); pickPresets(); } catch (e) { console.error('b3d presets: ' + e); }
+        return Promise.resolve().then(pickHosted).catch(function (e) { console.error('b3d printer: ' + e); }).then(function () {
+          // A Klipper or Prusa printer is reached through the account (print-anywhere.js), not the program's printer line.
+          if (!WANT.id || HOSTED) return;
+          return printerFor().then(pickPrinter, function () {});
+        });
       })
       .then(function () {
         keyringIn();

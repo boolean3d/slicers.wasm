@@ -210,7 +210,8 @@
   // device view: http://<printer name>.localhost:8770/, the helper on this computer passes it from the printer whole
   // (farm-helper/bambu-home/tablink.mjs; the Printers page's Open Mainsail). One tab per printer, used again next time.
   var HELPER_PORT = 8770;
-  function pageOf(p) { return p.kind === 'klipper' ? 'http://' + slug(p.name) + '.localhost:' + HELPER_PORT + '/' : null; }
+  // A Prusa (PrusaLink) is in the account as that kind too and has no such page: its print shows on Boolean3d's Printers.
+  function pageOf(p) { return p.kind === 'klipper' && !/^prusa-/.test(p.model || '') ? 'http://' + slug(p.name) + '.localhost:' + HELPER_PORT + '/' : null; }
   function opened(url, p) {
     try { return !!(typeof window !== 'undefined' && window.open && window.open(url, 'b3d-printer-' + slug(p.name))); }
     catch (e) { return false; }
@@ -263,7 +264,8 @@
   function tell() {
     var told = {};
     try { told = JSON.parse(localStorage.getItem('b3d-printers-told') || '{}'); } catch (e) { /* none */ }
-    var fresh = printers.filter(function (p) { return p.paired && !told[p.id]; });
+    // A printer the program was opened for has its address filled in already (home-folder-sync.js, b3dHostSet).
+    var fresh = printers.filter(function (p) { return p.paired && !told[p.id] && hostOf(p) !== Module.b3dHostSet; });
     if (!fresh.length || !Module.b3dNotice) return;
     fresh.forEach(function (p) { told[p.id] = 1; });
     try { localStorage.setItem('b3d-printers-told', JSON.stringify(told)); } catch (e) { /* this tab only */ }
