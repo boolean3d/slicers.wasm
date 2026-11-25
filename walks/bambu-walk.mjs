@@ -41,9 +41,15 @@ async function partAndSlice(t, label) {
   const add = await t.door('add_part', { name: 'cube.stl', base64: cube });
   walk(label + ':open-a-part', !!add.ok && add.result?.objects?.length >= 1, add.ok ? { objects: add.result.objects.length } : add.error);
   await wait(3000); await t.shot('part');
-  const s0 = Date.now(); const sl = await t.door('slice');
+  const s0 = Date.now(); let sl = await t.door('slice');
   let st = null;
-  while (Date.now() - s0 < 240000) { await wait(2000); st = await t.door('status'); if (st.ok && st.result.sliced && !st.result.busy) break; }
+  // a dual-nozzle printer's first slice ever asks "watch a tutorial video?" (Bambu's own box): answer No, slice again
+  let guide = false;
+  while (Date.now() - s0 < 240000) {
+    await wait(2000); st = await t.door('status'); if (st.ok && st.result.sliced && !st.result.busy) break;
+    const bx = await t.door('boxes');
+    if (!guide && bx.ok && JSON.stringify(bx.result).includes('First Guide')) { guide = true; await t.shot('first-guide'); await t.door('press', { button: 'No' }); await wait(2500); sl = await t.door('slice'); }
+  }
   const res = await t.door('results');
   walk(label + ':slice', !!sl.ok && !!res.ok && res.result.layers > 0 && res.result.grams > 0, res.ok ? { secs: ((Date.now() - s0) / 1000).toFixed(0), ...res.result } : (sl.error || res.error));
   await wait(2000); await t.shot('sliced');
@@ -60,10 +66,14 @@ async function partAndSlice(t, label) {
   if (t.up) {
     const { page, door, shot } = t;
     await shot('start');
+    // the address asked for Prepare: the program ends its start-up there, not on its Home tab
+    const at = await door('status');
+    walk('start-tab', !!at.ok && at.result.tab === 'prepare', at.ok ? { tab: at.result.tab } : at.error);
     // the printer list: every printer asked for is a row, and the picked one is this one
     const pr = await door('presets', { type: 'printer' });
     const rows = pr.ok ? JSON.stringify(pr.result.printer) : '';
-    walk('printer-list', pr.ok && rows.includes('Bambu Lab ' + first + ' 0.4 nozzle'), pr.ok ? rows.slice(0, 260) : pr.error);
+    const picked = (model) => pr.ok && (pr.result.printer || []).some((r) => r.selected && (r.name === 'Bambu Lab ' + model || r.name === 'Bambu Lab ' + model + ' 0.4 nozzle'));
+    walk('printer-list', picked(first), pr.ok ? rows.slice(0, 260) : pr.error);
     // the tabs the bar has: no Filament Manager / Project (our build), by picture
     await page.mouse.click(36, 14); await wait(1500); await shot('file-menu'); await page.keyboard.press('Escape'); await wait(800);
     // door: a setting read and written, a list
@@ -96,7 +106,7 @@ async function partAndSlice(t, label) {
     // scroll: the settings list under the pointer moves with the wheel, and comes back
     const crop = { x: 0, y: Math.round(H * 0.6), width: 420, height: Math.round(H * 0.4) - 2 };
     const sig = async () => { const b = await page.screenshot({ clip: crop }); let h = 0; for (let i = 0; i < b.length; i += 7) h = (h * 31 + b[i]) >>> 0; return h; };
-    await page.mouse.move(200, Math.round(H * 0.8)); await wait(500);
+    await page.mouse.move(200, Math.round(H * (Number(process.env.SCROLL_AT || 0.9)))); await wait(500);
     const a0 = await sig(); await page.mouse.wheel(0, 100); await wait(900); const a1 = await sig();
     await page.mouse.wheel(0, 100); await wait(900); const a2 = await sig(); await shot('scrolled');
     await page.mouse.wheel(0, -100); await wait(900); await page.mouse.wheel(0, -100); await wait(900); const a3 = await sig();
@@ -104,7 +114,7 @@ async function partAndSlice(t, label) {
     // Device start: the Device tab shows, the program stays up (camera on a printer: walks/README, CAMERA=)
     const dev = await door('tab', { to: 'device' }); await wait(6000); await shot('device');
     const alive = await door('status');
-    walk('device-start', !!dev.ok && !!alive.ok, dev.ok ? dev.result : dev.error);
+    walk('device-start', !!dev.ok && !!alive.ok && alive.result.tab === 'device', dev.ok ? { ...dev.result, tab: alive.result?.tab } : dev.error);
     walk('no-page-errors', t.errors.length === 0, t.errors.slice(0, 4));
   }
   await t.context.close();
@@ -116,7 +126,7 @@ for (const p of PRINTERS.slice(1)) {
   if (t.up) {
     const pr = await t.door('presets', { type: 'printer' });
     const rows = pr.ok ? JSON.stringify(pr.result.printer) : '';
-    walk(p + ':printer-list', rows.includes('Bambu Lab ' + p + ' 0.4 nozzle'), pr.ok ? rows.slice(0, 260) : pr.error);
+    walk(p + ':printer-list', pr.ok && (pr.result.printer || []).some((r) => r.selected && r.name.startsWith('Bambu Lab ' + p)), pr.ok ? rows.slice(0, 260) : pr.error);
     await t.shot('start');
     await partAndSlice(t, p);
   }

@@ -27,6 +27,7 @@
 #include "libslic3r/Format/bbs_3mf.hpp"
 #include "slic3r/GUI/GUI_App.hpp"
 #include "slic3r/GUI/MainFrame.hpp"
+#include "slic3r/GUI/Notebook.hpp"
 #include "slic3r/GUI/Plater.hpp"
 #include "slic3r/GUI/PartPlate.hpp"
 #include "slic3r/GUI/GLCanvas3D.hpp"
@@ -243,7 +244,12 @@ json status()
 {
     Plater &p = plater();
     PartPlate *plate = p.get_partplate_list().get_curr_plate();
+    // the tab on screen, by the door's own names ("tab" takes the last three)
+    static const char *const tabs[] = {"home", "prepare", "preview", "device"};
+    MainFrame *f = wxGetApp().mainframe;
+    const int sel = f && f->m_tabpanel ? f->m_tabpanel->GetSelection() : -1;
     return json{{"busy", busy()},
+                {"tab", sel >= 0 && sel < 4 ? std::string(tabs[sel]) : std::to_string(sel)},
                 {"jobs", p.is_any_job_running()},
                 {"slicing", p.is_background_process_slicing()},
                 {"sliced", plate && plate->is_slice_result_valid()},
