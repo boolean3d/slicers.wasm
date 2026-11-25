@@ -797,6 +797,19 @@ var b3dAccountModels = (function () {
     lines.splice(to, 0, key + ' = ' + value);
     return lines.join('\n');
   }
+  /** A key of a printer preset in a maker's profile set (PrusaResearch.ini), looked up through what it inherits. */
+  function prusaPrinterKey(ini, name, key, depth) {
+    if ((depth || 0) > 8) return '';
+    var from = ini.indexOf('\n[printer:' + name + ']');
+    if (from < 0) return '';
+    var to = ini.indexOf('\n[', from + 2), body = ini.slice(from, to < 0 ? ini.length : to);
+    var esc = function (s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); };
+    var own = new RegExp('^' + esc(key) + '\\s*=\\s*(.*)$', 'm').exec(body);
+    if (own) return own[1].trim();
+    var parents = (/^inherits\s*=\s*(.*)$/m.exec(body) || ['', ''])[1].split(';').map(function (s) { return s.trim(); }).filter(Boolean);
+    for (var i = parents.length - 1; i >= 0; i--) { var got = prusaPrinterKey(ini, parents[i], key, (depth || 0) + 1); if (got) return got; }
+    return '';
+  }
   function hostedPrusa() {
     var dir = HOME + '/.config/' + PRODUCT, at = dir + '/' + PRODUCT + '.ini';
     var bundle = '/' + APP + '/resources/profiles/' + HOSTED.vendor + '.ini', mine = dir + '/vendor/' + HOSTED.vendor + '.ini';
@@ -815,6 +828,16 @@ var b3dAccountModels = (function () {
       if (variants.indexOf(HOSTED.nozzle) < 0) variants.push(HOSTED.nozzle);
       ini = iniSet(ini, 'vendor:' + HOSTED.vendor, 'model:' + HOSTED.model, variants.join(';'));
       ini = iniSet(ini, 'presets', 'printer', HOSTED.machine);
+      // The maker's own print settings and filament for this printer, as the program's setup picks them: without
+      // them a first visit starts on "- default -" filament. A choice the person made since stays.
+      var maker = text(mine) || '';
+      [['print', 'default_print_profile'], ['filament', 'default_filament_profile']].forEach(function (pair) {
+        var has = (new RegExp('^\\[presets\\][^\\[]*?^' + pair[0] + '\\s*=\\s*(.*)$', 'm').exec(ini) || ['', ''])[1].trim();
+        var own = prusaPrinterKey(maker, HOSTED.machine, pair[1]);
+        if (!own || (has && !/^- default/.test(has))) return;
+        ini = iniSet(ini, 'presets', pair[0], own);
+        if (pair[0] === 'filament') ini = iniSet(ini, 'filaments', own, '1');   // the program lists only filaments its setup added
+      });
       if (HOSTED.name) {
         var file = dir + '/physical_printer/' + HOSTED.name + '.ini', host = hostSlug(HOSTED.name) + '.boolean3d';
         Module.FS.mkdirTree(dir + '/physical_printer');
