@@ -111,6 +111,30 @@ Open **http://localhost:8800/bambu/** in Chrome or Edge. For OrcaSlicer: `--app 
   `manifest.json`); `package/cloudflare/` holds the rules for Cloudflare R2 as an example. The relay then needs its own
   small Node server at the same address.
 
+## Moving to a new release
+
+One command takes Bambu Studio to a new upstream tag and puts it online:
+
+```bash
+./slicers update bambu v02.09.02.62
+```
+
+It runs seven steps and stops, by name, at the first that fails:
+
+| Step | What it does |
+|---|---|
+| pin | writes the tag where this repository records it |
+| check | fetches the tag and tries every change we carry, without building: the 19 source patches one by one (`bambu-studio/patches/bambu-studio.series/`; it names the first that no longer applies) and the build-time text patches (`tools/check-text-patches.py` names each miss) |
+| build | copies the repository to the build machine and runs `build.sh` there under your docker limits; a work dir from the older release is brought forward by itself |
+| package | `package/package.mjs`, version `<release>-<N>` (`--build N`) |
+| stage | uploads it beside the live one: it answers at `<site>/bambu/<version>/`, visitors stay on the old version |
+| walk | `walks/bambu-walk.mjs` in a real browser against the staged address: it starts, the new printers are in the list, a part opens and slices on each, the door's actions answer (settings, picture, export, tab), a window drags, the settings list scrolls, the Device tab opens |
+| promote | only when every walk passed: the address without a version moves to the new one |
+
+`--from <step>` and `--to <step>` run a part of it (after fixing a patch: `--from check`). Where your build machine,
+host and browser machine are is read from `~/.config/slicers.conf`; the head of `slicers` lists what it sets.
+MEASURED_LINE
+
 ## Print from the browser copy (optional)
 
 A browser page cannot find a printer or talk to it. The **helper** does that for the tab: it runs on any computer
