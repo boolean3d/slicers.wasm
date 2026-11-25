@@ -106,12 +106,12 @@ var B3DCam = (function () {
       return out;
     }
     function lost(dev, p, e) {
-      postMessage({ op: 'log', text: 'camera video of ' + dev + ': ' + (e && e.message || e) });
+      postMessage({ op: 'log', text: 'camera video of ' + dev + ': ' + (e && e.name ? e.name + ': ' : '') + (e && e.message || e) });
       p.decoder = null; p.codec = ''; p.waitKey = true;
       // This browser cannot play the printer's video (no H.264 decoder for it: a browser built without one, or a
       // profile its decoder refuses): it said so for every picture and the program gave up after 15 s ("Loading
       // failed"), then asked for the IP and access code. The page asks the helper for pictures instead (below).
-      if (e && e.name === 'NotSupportedError' && !p.refused) { p.refused = true; postMessage({ op: 'nodecode', dev: dev, why: e.message }); }
+      if (e && (e.name === 'NotSupportedError' || /unsupported|not supported/i.test(e.message || '')) && !p.refused) { p.refused = true; postMessage({ op: 'nodecode', dev: dev, why: e.message }); }
     }
     function draw(dev, p, frame) {
       try {
