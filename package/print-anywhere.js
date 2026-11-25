@@ -206,15 +206,13 @@
     var h = Array.prototype.map.call(b, function (x) { return (x + 256).toString(16).slice(1); }).join('');
     return h.slice(0, 8) + '-' + h.slice(8, 12) + '-' + h.slice(12, 16) + '-' + h.slice(16, 20) + '-' + h.slice(20);
   }
-  // After Print, a Klipper printer's own page (Mainsail or Fluidd) opens in a tab of its own, as Bambu Studio shows its
-  // device view: http://<printer name>.localhost:8770/, the helper on this computer passes it from the printer whole
-  // (farm-helper/bambu-home/tablink.mjs; the Printers page's Open Mainsail). One tab per printer, used again next time.
-  var HELPER_PORT = 8770;
-  // A Prusa (PrusaLink) is in the account as that kind too and has no such page: its print shows on Boolean3d's Printers.
-  function pageOf(p) { return p.kind === 'klipper' && !/^prusa-/.test(p.model || '') ? 'http://' + slug(p.name) + '.localhost:' + HELPER_PORT + '/' : null; }
-  function opened(url, p) {
-    try { return !!(typeof window !== 'undefined' && window.open && window.open(url, 'b3d-printer-' + slug(p.name))); }
-    catch (e) { return false; }
+  // After Print the program stays where it is: a small note says where the file went, and its "Watch it" opens that
+  // printer on Boolean3d's Printers page in a new tab (status, camera, Stop, history). The same for every kind of
+  // printer and on any computer. The site's address is the one the home bar keeps (home-bar.js).
+  function watchOf(p) {
+    var hub = null;
+    try { hub = localStorage.getItem('b3d-hub'); } catch (e) { /* the public site */ }
+    return (hub || 'https://boolean3d.com/').replace(/\/*$/, '/') + '#/printers/' + encodeURIComponent(p.id);
   }
   function upload(host, head, body) {
     var form = formParts(head, body);
@@ -234,10 +232,7 @@
           return call('POST', 'print-start', { printer: p.id, print: id, name: title }).then(function (s) {
             if (!s || !s.ok) return { status: 409, body: (s && s.error) || 'Boolean3d did not send it to ' + p.name + '.' };
             console.log('b3d print: ' + name + ' (' + bytes.length + ' bytes) sent to ' + p.name + ' through Boolean3d');
-            var said = title + ' is on its way to ' + p.name + ' through your Boolean3d account: it starts in a few seconds.';
-            var own = pageOf(p);
-            if (own && !opened(own, p)) { if (Module.b3dNotice) Module.b3dNotice(said, 'info', { label: 'Open Mainsail', href: own }); }
-            else if (Module.b3dNotice) Module.b3dNotice(said);
+            if (Module.b3dNotice) Module.b3dNotice('Sent to ' + p.name, 'info', { label: 'Watch it', href: watchOf(p) });
             return { status: 201, body: { done: true, files: { local: { name: name, origin: 'local', refs: {} } }, effectivePrint: true, effectiveSelect: true } };
           });
         });

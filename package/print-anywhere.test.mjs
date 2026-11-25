@@ -80,7 +80,7 @@ test('Upload and Print: the file goes up through the account and the printer is 
   assert.equal(JSON.parse(up.body).bytes, gcode.length);
   assert.equal(Buffer.from(put.body).toString(), gcode);
   assert.deepEqual(JSON.parse(go.body), { printer: PRINTER.id, print: JSON.parse(up.body).print, name: 'Box-60x40x12_PLA_12m' });
-  assert.match(p.notices.at(-1), /Box-60x40x12_PLA_12m is on its way to Garage Voron/);
+  assert.equal(p.notices.at(-1).t, 'Sent to Garage Voron');
 });
 
 /** Upload and Print of a small file to `host` (what OrcaSlicer sends). */
@@ -90,23 +90,22 @@ async function uploadAndPrint(p, host = 'garage-voron.boolean3d') {
   return request(p, host, [Buffer.from(`POST /api/files/local HTTP/1.1\r\nHost: ${host}\r\nContent-Length: ${body.length}\r\nContent-Type: multipart/form-data; boundary=${B}\r\n\r\n`), body]);
 }
 
-test('after Upload and Print to a Klipper printer its Mainsail opens, through the helper on this computer (like Bambu Studio\'s device view)', async () => {
+test('after Upload and Print the program stays put: a note "Sent to <printer>" whose Watch it opens that printer on the Printers page', async () => {
   const p = page();
   await tick();
   assert.match(await uploadAndPrint(p), /^HTTP\/1\.1 201/);
-  assert.deepEqual(p.opened, [{ url: 'http://garage-voron.localhost:8770/', name: 'b3d-printer-garage-voron' }]);
-  assert.match(p.notices.at(-1), /Cube is on its way to Garage Voron/);
+  assert.deepEqual(p.opened, []);
+  assert.equal(p.notices.at(-1).t, 'Sent to Garage Voron');
+  assert.deepEqual({ ...p.notices.at(-1).link }, { label: 'Watch it', href: 'https://boolean3d.com/#/printers/' + PRINTER.id });
 });
 
-test('a browser that stops the new tab gets the same page as a link in the notice; a Bambu Lab printer opens nothing', async () => {
-  const p = page({ blocked: true });
-  await tick();
-  await uploadAndPrint(p);
-  assert.deepEqual({ ...p.notices.at(-1).link }, { label: 'Open Mainsail', href: 'http://garage-voron.localhost:8770/' });
+test('the same note for every kind of printer', async () => {
   const b = page({ printers: [{ ...PRINTER, name: 'Office X1C', kind: 'bambu' }] });
   await tick();
   await uploadAndPrint(b, 'office-x1c.boolean3d');
   assert.deepEqual(b.opened, []);
+  assert.equal(b.notices.at(-1).t, 'Sent to Office X1C');
+  assert.equal(b.notices.at(-1).link.label, 'Watch it');
 });
 
 test('Upload without Print is refused in words; an unlinked slicer says how to link it', async () => {
