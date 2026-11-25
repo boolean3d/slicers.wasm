@@ -805,7 +805,7 @@ var b3dAccountModels = (function () {
     var to = ini.indexOf('\n[', from + 2), body = ini.slice(from, to < 0 ? ini.length : to);
     var esc = function (s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); };
     var own = new RegExp('^' + esc(key) + '\\s*=\\s*(.*)$', 'm').exec(body);
-    if (own) return own[1].trim();
+    if (own) return own[1].trim().replace(/^"(.*)"$/, '$1');   // the maker's file quotes a name with an @
     var parents = (/^inherits\s*=\s*(.*)$/m.exec(body) || ['', ''])[1].split(';').map(function (s) { return s.trim(); }).filter(Boolean);
     for (var i = parents.length - 1; i >= 0; i--) { var got = prusaPrinterKey(ini, parents[i], key, (depth || 0) + 1); if (got) return got; }
     return '';
@@ -835,8 +835,15 @@ var b3dAccountModels = (function () {
         var has = (new RegExp('^\\[presets\\][^\\[]*?^' + pair[0] + '\\s*=\\s*(.*)$', 'm').exec(ini) || ['', ''])[1].trim();
         var own = prusaPrinterKey(maker, HOSTED.machine, pair[1]);
         if (!own || (has && !/^- default/.test(has))) return;
+        if (pair[0] === 'filament') {
+          // The program lists only filaments its setup added. The maker's file names the family's filament (Prusament
+          // PLA @HF0.4 for an MK4S, which fits an MK4 only): the one made from it for this model is the one that fits.
+          ini = iniSet(ini, 'filaments', own, '1');
+          var esc = function (s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); };
+          var kin = new RegExp('^\\[filament:([^\\]\\n]*@' + esc(HOSTED.model) + ' [^\\]\\n]*)\\]\\s*\\ninherits\\s*=\\s*' + esc(own) + '\\s*(;|$)', 'm').exec(maker);
+          if (kin) { own = kin[1]; ini = iniSet(ini, 'filaments', own, '1'); }
+        }
         ini = iniSet(ini, 'presets', pair[0], own);
-        if (pair[0] === 'filament') ini = iniSet(ini, 'filaments', own, '1');   // the program lists only filaments its setup added
       });
       if (HOSTED.name) {
         var file = dir + '/physical_printer/' + HOSTED.name + '.ini', host = hostSlug(HOSTED.name) + '.boolean3d';
