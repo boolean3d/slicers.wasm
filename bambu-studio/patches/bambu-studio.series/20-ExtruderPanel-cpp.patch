@@ -1,0 +1,17 @@
+diff --git a/src/slic3r/GUI/ExtruderPanel.cpp b/src/slic3r/GUI/ExtruderPanel.cpp
+--- a/src/slic3r/GUI/ExtruderPanel.cpp
++++ b/src/slic3r/GUI/ExtruderPanel.cpp
+@@ -706,6 +706,13 @@
+         // empty SetScrollbar below leaves them on screen for good. Nothing shows them again once
+         // they are hidden: MacChildAdded only raises them.
+         hide_native_scrollbars(this, true);
++#ifdef __WXUNIVERSAL__
++        // (b3d) wxUniversal (the browser build) also makes both bars as child windows in Create, and only
++        // the base SetScrollbar takes them away again: with no range it deletes the bar and gives its room
++        // back to the client area. The override below never reaches it, so call it once here.
++        wxScrolledWindow::SetScrollbar(wxHORIZONTAL, 0, 0, 0, false);
++        wxScrolledWindow::SetScrollbar(wxVERTICAL, 0, 0, 0, false);
++#endif
+     }
+ 
+     // wxScrollHelper keeps the scroll state itself and only mirrors it onto the native bar here, so
