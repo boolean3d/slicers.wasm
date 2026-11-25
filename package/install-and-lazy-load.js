@@ -105,7 +105,12 @@
     (L.startFiles || []).forEach(function (f) { list.push([abs(f[0]), f[1], f[2]]); });
     L.files.forEach(function (f) { list.push([abs(urlOf(f[0])), f[1] + (f[2] || 0), f[3]]); });
     (L.fonts || []).forEach(function (f) { list.push([abs(urlOf(f.path)), f.bytes || 0, f.hash]); });
-    (L.top || []).forEach(function (f) { list.push([new URL(f[0].split('/').map(encodeURIComponent).join('/'), up).href, f[1], f[2]]); });
+    // The files the web pages show, at their <app>/resources/ address, downloaded from this version's own copy
+    // (f[3], <version>/top/resources/...) when the package has one: <app>/resources/ is shared by every version.
+    (L.top || []).forEach(function (f) {
+      var enc = function (p) { return p.split('/').map(encodeURIComponent).join('/'); };
+      list.push([new URL(enc(f[0]), up).href, f[1], f[2], f[3] ? abs(enc(f[3])) : '']);
+    });
     return list;
   }
   // The copy lives in the origin's private file system (OPFS), like a program's folder on a computer:
@@ -226,7 +231,7 @@
       function download(f, tries) {
         tries = tries || 0;
         var counted = 0;
-        return fetch(f[0], { headers: { 'x-b3d-install': '1' } }).then(function (r) {
+        return fetch(f[3] || f[0], { headers: { 'x-b3d-install': '1' } }).then(function (r) {
           if (!r.ok) throw new Error(f[0] + ' ' + r.status);
           if (r.headers.get('content-type')) types[files[f[0]]] = r.headers.get('content-type');
           // the host's isolation headers: a page of the web view answered from the copy needs them (the slicer page is

@@ -13,6 +13,7 @@
 //                                      holds both the page and the slicer's web pages (<program>.js is pointed at it)
 //   <out>/<app>/resources/web/...      the slicer's own web pages (it opens them as file:///<app>/resources/web/), an hour
 //   <out>/<app>/resources/profiles/<maker>/<model>_cover.png   the printer pictures those pages show, an hour
+//   <out>/<app>/<version>/top/resources/...   the same two, this version's own copy: what the install reads (a year)
 //   <out>/manifest.json                every object: content type, content encoding, cache control, sizes, sha256
 //   <out>/headers.txt                  the headers every response of the slicer host must carry (cross-origin isolation)
 // With --start <list> the first visit downloads only the files the program reads to bring its first screens up
@@ -191,6 +192,11 @@ async function main() {
     }
     fs.closeSync(data);
   }
+  // The same files again inside the version folder (<version>/top/resources/..., cached a year), which the install downloads
+  // and keeps under their <app>/resources/ address: <app>/resources/ is one folder for every version, so staging another
+  // version rewrote it under this one's file list (slicer-hotfix-1125: Bambu stuck at "219 of 220 MB", "bytes, listed").
+  // <app>/resources/ itself stays for a page read before the install (or without one); publish.mjs writes it on promote only.
+  for (const f of files.filter(f => f.top && f.rel.startsWith('resources/'))) add('top/' + f.rel, f.from);
 
   // The address without a version: forwards to the current version, keeping ?arguments and #hash. First it writes down,
   // for this tab, where the tab came from and how long its history is (the referrer is this page's own address once
@@ -204,9 +210,9 @@ async function main() {
   // the fonts, and the files outside the version folder the program's web pages show (resources/...).
   if (fileList) {
     const hashFile = f => contentHash(fs.readFileSync(f.from));
-    fileList.startFiles = files.filter(f => !f.top && !f.rel.startsWith('files/') && !['index.html', 'files.js'].includes(f.rel))
+    fileList.startFiles = files.filter(f => !f.top && !f.rel.startsWith('files/') && !f.rel.startsWith('top/') && !['index.html', 'files.js'].includes(f.rel))
       .map(f => [f.rel, fs.statSync(f.from).size, hashFile(f)]);
-    fileList.top = files.filter(f => f.top && f.rel.startsWith('resources/')).map(f => [f.rel, fs.statSync(f.from).size, hashFile(f)]);
+    fileList.top = files.filter(f => f.top && f.rel.startsWith('resources/')).map(f => [f.rel, fs.statSync(f.from).size, hashFile(f), 'top/' + f.rel]);   // [address, size, hash, the version's own copy]
     fs.writeFileSync(files.find(f => f.rel === 'files.js').from, 'window.SLICER_FILES=' + JSON.stringify(fileList) + ';\n');
   }
   const cache = path.join(out, '.cache');
@@ -247,7 +253,7 @@ async function main() {
     ...(fs.existsSync(backdrop) ? { backdrop: 'backdrop.webp' } : {}) };
   if (fileList) {
     // The whole install, as unpacked and as sent: the install screen counts unpacked bytes and shows the sent size.
-    const inst = files.filter(f => (!f.top || f.rel.startsWith('resources/')) && !['index.html', 'files.js'].includes(f.rel));
+    const inst = files.filter(f => (!f.top || f.rel.startsWith('resources/')) && !f.rel.startsWith('top/') && !['index.html', 'files.js'].includes(f.rel));
     page.installRaw = inst.reduce((s, f) => s + f.raw, 0); page.installSent = inst.reduce((s, f) => s + (f.stored ?? f.raw), 0);
   }
   const inject = '<script>window.SLICER_PAGE=' + JSON.stringify(page) + '</script>'

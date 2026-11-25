@@ -62,6 +62,16 @@ for (const lazy of [false, true]) {
       const files = read('orca/9.9-t/files.js');
       assert.match(files, /"cache":"b3d-slicer-files-orca-9\.9-t"/);
       assert.match(sw, /self\.SLICER_VERSION_DIR = "9\.9-t\/"/);
+      // The install downloads the web pages' files from this version's own copy, never from the shared orca/resources/
+      // (slicer-hotfix-1125: staging another version rewrote it and the live install stuck at "bytes, listed").
+      const L = JSON.parse(files.replace(/^window\.SLICER_FILES=/, '').replace(/;\s*$/, ''));
+      const cover = L.top.find(f => f[0] === 'resources/profiles/Maker/Model One_cover.png');
+      assert.equal(cover[3], 'top/resources/profiles/Maker/Model One_cover.png');
+      assert.equal(read('orca/9.9-t/top/resources/profiles/Maker/Model One_cover.png'), 'PNG-bytes');
+      assert.equal(m['orca/9.9-t/top/resources/profiles/Maker/Model One_cover.png'].cache, 'public, max-age=31536000, immutable, no-transform');
+      assert.equal(read('orca/9.9-t/top/resources/web/guide/21/index.html'), '<html>printers</html>');
+      for (const f of L.top) assert.ok(m['orca/9.9-t/' + f[3]], f[3]);
+      assert.ok(!L.startFiles.some(f => f[0].startsWith('top/')), 'the copy is not a start file');
     }
   });
 }
