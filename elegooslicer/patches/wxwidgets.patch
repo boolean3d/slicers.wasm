@@ -2342,22 +2342,22 @@ index 0000000000..6a4dfc3459
 +    ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
 +    ctx.restore();
 +  };
-+  var wxPenPx = function (ctx, m) { return Math.max(1, Math.round((ctx.lineWidth || 1) * m.a)); };
++  var wxPenSpan = function (lw, s, o, p) { var a = Math.round(s * (p + 0.5 - lw / 2) + o); return [a, Math.max(a + 1, Math.round(s * (p + 0.5 + lw / 2) + o))]; };
 +  var wxPenSolid = function (ctx) { return !(ctx.dashCount > 0) && typeof ctx.strokeStyle === 'string'; };
-+  // a horizontal / vertical pen line as a device-pixel fill (caps: the end pixel is drawn, as wx's round caps do)
++  // a horizontal / vertical pen line as a device-pixel fill, both edges snapped as a fill's are, so lines drawn row by row tile (caps: the end pixel is drawn, as wx's round caps do)
 +  var wxDevStrokeH = function (ctx, m, xa, xb, y, caps) {
-+    var lw = ctx.lineWidth || 1, pw = wxPenPx(ctx, m);
-+    var y0 = Math.round(m.d * (y + 0.5 - lw / 2) + m.f);
++    var ys = wxPenSpan(ctx.lineWidth || 1, m.d, m.f, y);
++    var y0 = ys[0], y1 = ys[1];
 +    var x0 = wxSnapX(m, Math.min(xa, xb)), x1 = wxSnapX(m, Math.max(xa, xb) + (caps ? 1 : 0));
 +    if (x1 <= x0) x1 = x0 + 1;
-+    wxDevFill(ctx, m, x0, y0, x1, y0 + pw, ctx.strokeStyle);
++    wxDevFill(ctx, m, x0, y0, x1, y1, ctx.strokeStyle);
 +  };
 +  var wxDevStrokeV = function (ctx, m, x, ya, yb, caps) {
-+    var lw = ctx.lineWidth || 1, pw = wxPenPx(ctx, m);
-+    var x0 = Math.round(m.a * (x + 0.5 - lw / 2) + m.e);
++    var xs = wxPenSpan(ctx.lineWidth || 1, m.a, m.e, x);
++    var x0 = xs[0], x1 = xs[1];
 +    var y0 = wxSnapY(m, Math.min(ya, yb)), y1 = wxSnapY(m, Math.max(ya, yb) + (caps ? 1 : 0));
 +    if (y1 <= y0) y1 = y0 + 1;
-+    wxDevFill(ctx, m, x0, y0, x0 + pw, y1, ctx.strokeStyle);
++    wxDevFill(ctx, m, x0, y0, x1, y1, ctx.strokeStyle);
 +  };
 +  // a clip on whole device pixels (an edge pixel half inside drew a seam between controls)
 +  var wxClipRect = function (ctx, x, y, w, h) {
