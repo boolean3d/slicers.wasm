@@ -33,7 +33,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 // Our scripts on every program page, in the order the page loads them (before the program's own script): each is a file of
 // this folder, kept in the program's data file as a start file and loaded by index.html.
 export const PAGE_SCRIPTS = ['claude-line.js', 'credit.js', 'home-folder-sync.js', 'project-folder.js', 'boolean3d-folder.js', 'open-part-from-link.js',
-  'home-bar.js', 'print-anywhere.js'];
+  'home-bar.js', 'print-anywhere.js', 'count-slices.js'];
 
 /** The forwarding page's note of where this tab came from (home-bar.js reads it; sessionStorage is this tab's only). */
 export const FWD_NOTE = 'try{sessionStorage.setItem("b3d-from",document.referrer);sessionStorage.setItem("b3d-arrived",String(history.length))}catch(e){}';

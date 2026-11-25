@@ -78,14 +78,14 @@ if want build; then
   [ -z "$(git status --porcelain)" ] || echo "note: building the working tree, uncommitted changes included"
   printf 'BUILD_CAP=%q\nJOBS=%q\nNODE_ENV=%q\n' "${BUILD_CAP:-}" "$JOBS" "${NODE_ENV:-true}" > .build-env
   build_copy_to ./ "src-$APP/" || fail build "copy to the build machine"
-  build_run "bash src-$APP/tools/build-step.sh start $APP"
-  build_run "bash src-$APP/tools/build-step.sh wait $APP" || fail build "build.sh failed (log: build-$APP.log in the build folder; its first errors are above)"
+  build_run "bash src-$APP/tools/build-step.sh build $APP" || fail build "build.sh failed (log: build-$APP.log in the build folder; its first errors are above)"
   done_step build
 fi
 
 REV=$(git rev-parse --short HEAD)
 T0=$SECONDS
 if want package; then
+  build_copy_to ./ "src-$APP/" || fail package "copy to the build machine"   # the page scripts are packaged from this copy
   build_run "bash src-$APP/tools/build-step.sh package $APP $VERSION $OUT $REV" || fail package "package.mjs"
   mkdir -p "${PKG_HOME:-$HOME/slicers-pkg}"; PKG=${PKG_HOME:-$HOME/slicers-pkg}/$APP-$VERSION-$REV
   build_copy_from "pkg-$APP/" "$PKG/" || fail package "copy the package back"
