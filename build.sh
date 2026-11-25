@@ -63,13 +63,22 @@ docker image inspect $IMAGE > /dev/null 2>&1 || docker build -t $IMAGE "$HERE/do
 run() { docker run --rm ${BUILD_CAP:-} -e JOBS=$JOBS "$@" -v "$W":/w -w /w $IMAGE bash -c "$CMD" < /dev/null; }
 
 # Sources, at their pins, with this repository's changes.
+# stamp: what a tree was made from (a pin and the patches to it); aside: a tree set aside as <dir>.old
+stamp() { { echo "$1"; [ -e "$2" ] && find "$2" -type f | sort | xargs cat; } 2>/dev/null | sha256sum | cut -c1-16; }
+aside() { CMD="[ ! -e /w/$1 ] || { rm -rf /w/$1.old; mv /w/$1 /w/$1.old; }"; run; }
 # A fresh copy (the container sees only /w); removed in the container, since earlier runs leave its files in there.
 CMD="rm -rf /w/browser-port"; run
 cp -r "$HERE/$FOLDER" browser-port
 # PrusaSlicer's GUI libraries OpenSSL and curl are built by the same script as Bambu Studio's
 if [ $APP = prusa ]; then cp "$HERE/bambu-studio/browser-build/build-gui-libraries.sh" browser-port/browser-build/; fi
+# wxWidgets carries a stamp too (its commit and patches/wxwidgets.patch): a changed patch makes the tree again, else the
+# port's own wx.js and sources of an older patch were built on. Its build folder is remade by build-wxwidgets.sh every run,
+# and the slicer's objects follow its headers by their dependency files.
+WX_STAMP="$WX_COMMIT $(stamp "$WX_COMMIT" "$HERE/$FOLDER/patches/wxwidgets.patch")"
+if [ -d $WX_DIR ] && [ "$(cat $WX_DIR.stamp 2>/dev/null)" != "$WX_STAMP" ]; then echo "wx: $WX_DIR is not today's; set aside"; aside $WX_DIR; fi
 if [ ! -d $WX_DIR ]; then
   git clone -q $WX_URL $WX_DIR && git -C $WX_DIR checkout -q $WX_COMMIT && git -C $WX_DIR apply --whitespace=nowarn "$HERE/$FOLDER/patches/wxwidgets.patch"
+  echo "$WX_STAMP" > $WX_DIR.stamp
 fi
 # wxWidgets' submodules: its configure checks for them (3rdparty/catch) and build-wx.sh uses its own libpng and libjpeg.
 [ -f $WX_DIR/3rdparty/catch/include/catch.hpp ] || git -C $WX_DIR submodule update -q --init --depth 1
@@ -81,10 +90,8 @@ at() {  # url ref dir
 # A work dir from an earlier release is brought to this one: each tree carries a stamp of what it was made from (its tag
 # or commit and this repository's patches to it); a tree whose stamp differs is set aside as <dir>.old and made again,
 # and the build folder with it, so nothing compiled against the old source is linked in.
-stamp() { { echo "$1"; [ -e "$2" ] && find "$2" -type f | sort | xargs cat; } 2>/dev/null | sha256sum | cut -c1-16; }
 SRC_STAMP="$SRC_TAG $(stamp "$SRC_TAG" "$HERE/$FOLDER/patches/$SRC_PATCH")"
 ENG_STAMP="$ENG_COMMIT $(stamp "$ENG_COMMIT" "$HERE/$FOLDER/patches/muon3d-engine.patch")"
-aside() { CMD="[ ! -e /w/$1 ] || { rm -rf /w/$1.old; mv /w/$1 /w/$1.old; }"; run; }
 if [ -d $SRC_DIR ] && [ "$(cat $SRC_DIR.stamp 2>/dev/null)" != "$SRC_STAMP" ]; then echo "source: $SRC_DIR is not $SRC_TAG with today's patches; set aside"; aside $SRC_DIR; aside ${OUT%%/*}; fi
 if [ -d $ENG_DIR ] && [ $APP != prusa ] && [ "$(cat $ENG_DIR.stamp 2>/dev/null)" != "$ENG_STAMP" ]; then echo "engine: $ENG_DIR is not today's; set aside"; aside $ENG_DIR; aside ${OUT%%/*}; fi
 if [ ! -d $SRC_DIR ]; then
