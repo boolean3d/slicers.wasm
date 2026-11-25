@@ -78,6 +78,15 @@ at() {  # url ref dir
   if [[ $2 =~ ^[0-9a-f]{40}$ ]]; then git init -q $3 && git -C $3 fetch -q --depth 1 $1 $2 && git -C $3 checkout -q FETCH_HEAD
   else git clone -q --depth 1 --branch $2 $1 $3; fi
 }
+# A work dir from an earlier release is brought to this one: each tree carries a stamp of what it was made from (its tag
+# or commit and this repository's patches to it); a tree whose stamp differs is set aside as <dir>.old and made again,
+# and the build folder with it, so nothing compiled against the old source is linked in.
+stamp() { { echo "$1"; [ -e "$2" ] && find "$2" -type f | sort | xargs cat; } 2>/dev/null | sha256sum | cut -c1-16; }
+SRC_STAMP="$SRC_TAG $(stamp "$SRC_TAG" "$HERE/$FOLDER/patches/$SRC_PATCH")"
+ENG_STAMP="$ENG_COMMIT $(stamp "$ENG_COMMIT" "$HERE/$FOLDER/patches/muon3d-engine.patch")"
+aside() { CMD="[ ! -e /w/$1 ] || { rm -rf /w/$1.old; mv /w/$1 /w/$1.old; }"; run; }
+if [ -d $SRC_DIR ] && [ "$(cat $SRC_DIR.stamp 2>/dev/null)" != "$SRC_STAMP" ]; then echo "source: $SRC_DIR is not $SRC_TAG with today's patches; set aside"; aside $SRC_DIR; aside ${OUT%%/*}; fi
+if [ -d $ENG_DIR ] && [ $APP != prusa ] && [ "$(cat $ENG_DIR.stamp 2>/dev/null)" != "$ENG_STAMP" ]; then echo "engine: $ENG_DIR is not today's; set aside"; aside $ENG_DIR; aside ${OUT%%/*}; fi
 if [ ! -d $SRC_DIR ]; then
   at $SRC_URL $SRC_TAG $SRC_DIR
   if [ -d "$HERE/$FOLDER/patches/$SRC_PATCH" ]; then
@@ -87,13 +96,14 @@ if [ ! -d $SRC_DIR ]; then
         { echo "PATCH NO LONGER APPLIES: $FOLDER/patches/$SRC_PATCH/$p (on $SRC_TAG)" >&2; rm -rf $SRC_DIR; exit 3; }
     done < "$HERE/$FOLDER/patches/$SRC_PATCH/series"
   elif [ -n "$SRC_PATCH" ]; then git -C $SRC_DIR apply --whitespace=nowarn "$HERE/$FOLDER/patches/$SRC_PATCH"; fi
+  echo "$SRC_STAMP" > $SRC_DIR.stamp
 fi
 if [ $APP = anycubic ] && [ ! -d open-plugins ]; then
   at $OP_URL $OP_COMMIT open-plugins && git -C open-plugins apply --whitespace=nowarn "$HERE/$FOLDER/patches/open-plugins.patch"
 fi
 if [ ! -d $ENG_DIR ]; then
   git clone -q $ENG_URL $ENG_DIR && git -C $ENG_DIR checkout -q $ENG_COMMIT
-  if [ $APP != prusa ]; then git -C $ENG_DIR apply "$HERE/$FOLDER/patches/muon3d-engine.patch"; fi
+  if [ $APP != prusa ]; then git -C $ENG_DIR apply "$HERE/$FOLDER/patches/muon3d-engine.patch"; echo "$ENG_STAMP" > $ENG_DIR.stamp; fi
 fi
 [ -f $ENG_DIR/orca/cmake/modules/Findlibnoise.cmake ] || git -C $ENG_DIR submodule update -q --init --depth 1 orca
 

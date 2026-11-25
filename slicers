@@ -1,0 +1,116 @@
+#!/bin/bash
+# One command to move a slicer to a new upstream release and put it online:
+#   ./slicers update bambu <tag> [--build N] [--from pin|check|build|package|stage|walk|promote] [--to <same>]
+# Steps, in order; each prints its time, and the first that fails stops the run by name:
+#   pin      write the tag where this repository records it (build.sh, the port's CMakeLists, README, package)
+#   check    fetch the tag and try every change we carry against it WITHOUT building: the source patches one by one
+#            (it stops on the first that no longer applies and names it) and the build-time text patches
+#            (tools/check-text-patches.py names every one that misses)
+#   build    copy this repository to the build machine and run build.sh there, under BUILD_CAP
+#   package  package/package.mjs on the build machine, version <release>-<N>; the package comes back here
+#   stage    upload it beside the live one: reachable at <SITE>/<app>/<version>/, visitors stay on the old version
+#   walk     walks/<app>-walk.mjs in a real browser against the staged address (starts, printer list, open a part,
+#            slice, door actions, drag, scroll, Device tab); every walk must pass
+#   promote  only then: the address without a version moves to the new one
+# Where the machines are is not this repository's business: it is read from ~/.config/slicers.conf (or $SLICERS_CONF),
+# a shell file that sets
+#   build_run <line>            runs a shell line in the build machine's build folder (it holds src-<app>, w, pkg-<app>)
+#   build_copy_to <dir/> <name/>, build_copy_from <name/> <dir/>   rsync a folder into / out of that build folder
+#   BUILD_CAP   docker limits (build.sh);  JOBS  compile jobs;  NODE_ENV  line that puts node on PATH there
+#   PUBLISH     command that uploads a package folder: "$PUBLISH <dir> --apps <app> [--stage]"
+#   SITE        https address the packages are served at
+#   WALK        command that runs a browser script on a machine with a graphics card: "$WALK <script.mjs> KEY=value..."
+#               (it must bring pictures back and end with the script's exit code); PICTURES = where they land
+set -euo pipefail
+HERE=$(cd "$(dirname "$0")" && pwd); cd "$HERE"
+[ "${1:-}" = update ] && [ $# -ge 3 ] || { sed -n 2,23p "$0"; exit 2; }
+APP=$2; TAG=$3; shift 3; N=1; FROM=pin; TO=promote
+while [ $# -gt 0 ]; do case $1 in --build) N=$2; shift 2 ;; --from) FROM=$2; shift 2 ;; --to) TO=$2; shift 2 ;; *) echo "unknown: $1"; exit 2 ;; esac; done
+case $APP in
+  bambu) FOLDER=bambu-studio; URL=https://github.com/bambulab/BambuStudio.git; SERIES=bambu-studio.series; OUT=bgui
+         RELEASE=$(echo "$TAG" | sed -E 's/^v0?//') ;;   # v02.09.02.62 -> 2.09.02.62
+  *) echo "slicers update: only bambu has its patches as a series so far (orca, prusa: build.sh pins and one patch file)"; exit 2 ;;
+esac
+VERSION=$RELEASE-$N
+source "${SLICERS_CONF:-$HOME/.config/slicers.conf}"
+: "${PUBLISH:?}" "${SITE:?}" "${WALK:?}"; JOBS=${JOBS:-12}
+declare -F build_run build_copy_to build_copy_from > /dev/null || { echo "slicers.conf must define build_run, build_copy_to and build_copy_from"; exit 2; }
+STEPS=(pin check build package stage walk promote); on=0; T00=$SECONDS
+want() { [ "$1" = "$FROM" ] && on=1; [ $on = 1 ] || return 1; return 0; }
+done_step() { echo "== $1: $((SECONDS - T0)) s"; [ "$1" = "$TO" ] && { echo "== stopped after $TO, total $((SECONDS - T00)) s"; exit 0; }; return 0; }
+fail() { echo "slicers update $APP $TAG: STOPPED at $1: $2" >&2; exit 1; }
+
+T0=$SECONDS
+if want pin; then
+  OLD=$(sed -n "s/^  $APP) .*SRC_TAG=\${SLICER_TAG:-\([^}]*\)}.*/\1/p" build.sh); [ -n "$OLD" ] || fail pin "build.sh has no tag for $APP"
+  if [ "$OLD" != "$TAG" ]; then
+    OLDREL=$(echo "$OLD" | sed -E 's/^v0?//')
+    COMMIT=$(git ls-remote "$URL" "refs/tags/$TAG^{}" "refs/tags/$TAG" | sort -k2 -r | head -1 | cut -c1-7); [ -n "$COMMIT" ] || fail pin "$URL has no tag $TAG"
+    sed -i "s/$OLD/$TAG/g" build.sh sync-workbench.sh SOURCE.md $FOLDER/browser-build/CMakeLists.txt
+    sed -i -E "s/(tag )$OLD( \(commit )[0-9a-f]+/\1$TAG\2$COMMIT/" package/program-sources.mjs SOURCE.md
+    sed -i "s/$OLDREL-1/$RELEASE-1/g" README.md package/package.mjs
+    echo "pinned $APP: $OLD -> $TAG ($COMMIT)"
+  else echo "already pinned at $TAG"; fi
+  done_step pin
+fi
+
+T0=$SECONDS
+if want check; then
+  C=${XDG_CACHE_HOME:-$HOME/.cache}/slicers-update/$APP-$TAG
+  if [ ! -d "$C/.git" ]; then rm -rf "$C"; git -c advice.detachedHead=false clone -q --depth 1 --branch "$TAG" "$URL" "$C" || fail check "could not fetch $TAG from $URL"; fi
+  git -C "$C" checkout -q -f HEAD && git -C "$C" clean -q -fd
+  n=0
+  while read -r p; do
+    git -C "$C" apply --whitespace=nowarn "$HERE/$FOLDER/patches/$SERIES/$p" 2> "$C.err" ||
+      { sed -n 1,12p "$C.err" >&2; fail check "source patch $FOLDER/patches/$SERIES/$p no longer applies on $TAG (the $n before it do)"; }
+    n=$((n + 1))
+  done < "$FOLDER/patches/$SERIES/series"
+  echo "$n source patches apply on $TAG"
+  cmakes=$(grep -l -E "orca_gui_patch|orca_patch_source" $FOLDER/browser-build/CMakeLists.txt $FOLDER/browser-build/*.cmake 2>/dev/null || true)
+  python3 tools/check-text-patches.py "$C" $cmakes || fail check "build-time text patches miss on $TAG (named above)"
+  rm -rf "$C.res"; python3 $FOLDER/browser-build/remove-maker-branding.py "$C/resources" "$C.res" > /dev/null || fail check "remove-maker-branding.py no longer finds its text in $TAG's resources (named above)"
+  rm -rf "$C.res"
+  done_step check
+fi
+
+T0=$SECONDS
+if want build; then
+  [ -z "$(git status --porcelain)" ] || echo "note: building the working tree, uncommitted changes included"
+  printf 'BUILD_CAP=%q\nJOBS=%q\nNODE_ENV=%q\n' "${BUILD_CAP:-}" "$JOBS" "${NODE_ENV:-true}" > .build-env
+  build_copy_to ./ "src-$APP/" || fail build "copy to the build machine"
+  build_run "bash src-$APP/tools/build-step.sh start $APP"
+  build_run "bash src-$APP/tools/build-step.sh wait $APP" || fail build "build.sh failed (log: build-$APP.log in the build folder; its first errors are above)"
+  done_step build
+fi
+
+REV=$(git rev-parse --short HEAD)
+T0=$SECONDS
+if want package; then
+  build_run "bash src-$APP/tools/build-step.sh package $APP $VERSION $OUT $REV" || fail package "package.mjs"
+  mkdir -p "${PKG_HOME:-$HOME/slicers-pkg}"; PKG=${PKG_HOME:-$HOME/slicers-pkg}/$APP-$VERSION-$REV
+  build_copy_from "pkg-$APP/" "$PKG/" || fail package "copy the package back"
+  [ -f "$PKG/$APP/$VERSION/index.html" ] || fail package "$PKG/$APP/$VERSION/index.html is missing"
+  done_step package
+fi
+PKG=${PKG_HOME:-$HOME/slicers-pkg}/$APP-$VERSION-$REV
+
+T0=$SECONDS
+if want stage; then
+  $PUBLISH "$PKG" --apps $APP --stage || fail stage "upload"
+  curl -sf -o /dev/null "$SITE/$APP/$VERSION/index.html" || fail stage "$SITE/$APP/$VERSION/ does not answer"
+  done_step stage
+fi
+
+T0=$SECONDS
+if want walk; then
+  (cd walks && $WALK $APP-walk.mjs "SLICER=$SITE/$APP/$VERSION/" "VERSION=$VERSION" "TAG=$APP-$VERSION") 2>&1 | tee "${TMPDIR:-/tmp}/slicers-walk-$APP.log" | grep -E "^WALK|pictures?" || true
+  grep -q "^WALKS PASS" "${TMPDIR:-/tmp}/slicers-walk-$APP.log" || fail walk "not promoted; $SITE/$APP/$VERSION/ stays staged. $(grep -E '^WALKS FAIL' "${TMPDIR:-/tmp}/slicers-walk-$APP.log" || echo 'the walk script did not finish')"
+  done_step walk
+fi
+
+T0=$SECONDS
+if want promote; then
+  $PUBLISH "$PKG" --apps $APP || fail promote "publish"
+  done_step promote
+fi
+echo "== $APP $VERSION is live at $SITE/$APP/ (total $((SECONDS - T00)) s)"
