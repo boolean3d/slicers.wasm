@@ -26,8 +26,9 @@ public:
 
     EMSCRIPTEN_WEBGL_CONTEXT_HANDLE GetHandle() const { return m_handle; }
 
-    // Moves/resizes/hides this context's <canvas> element to match win
-    void PlaceOver(const wxGLCanvas& win) const;
+    // Moves/hides this context's <canvas> element to match win; sizeBitmap (only right before a draw) also gives its
+    // drawing surface win's size, which clears it
+    void PlaceOver(const wxGLCanvas& win, bool sizeBitmap = false) const;
     // The canvas went away: hide the element until the next SetCurrent
     void Detach() const;
 
@@ -38,6 +39,7 @@ private:
     mutable wxRect m_lastRect;
     mutable bool m_lastShown;
     mutable double m_lastScale;
+    mutable int m_lastPw, m_lastPh;   // the drawing surface's size in device pixels
 
     wxDECLARE_CLASS(wxGLContext);
 };

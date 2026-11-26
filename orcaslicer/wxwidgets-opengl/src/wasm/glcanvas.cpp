@@ -45,12 +45,20 @@ static int wxglCreateElement(int windowId)
 
 static void wxglSetHost(int id, int windowId) { wxpage_gl_set_host(id, windowId); }
 
-static void wxglSetRect(int id, int x, int y, int w, int h, int shown, double scale)
+// The CSS box only: the browser shows the last drawn picture stretched to it until the next draw
+static void wxglSetBox(int id, int x, int y, int w, int h, int shown) { wxpage_gl_set_rect(id, x, y, w, h, shown); }
+
+// The drawing surface (ours, in the worker). A new size clears it to black, and the browser shows whatever the surface
+// holds when the worker next yields: so it is sized only in SetCurrent, right before a draw that fills it in the same
+// task (a desktop window keeps its old picture until the repaint after a resize, too).
+static void wxglSetBitmap(int id, int w, int h, double scale, int& lastPw, int& lastPh)
 {
     int pw = w * scale > 1 ? (int)(w * scale + 0.5) : 1;
     int ph = h * scale > 1 ? (int)(h * scale + 0.5) : 1;
-    wxglSizeCanvas(id, pw, ph);                      // the bitmap is ours
-    wxpage_gl_set_rect(id, x, y, w, h, shown);       // the CSS box is the page's
+    if (pw == lastPw && ph == lastPh)
+        return;
+    lastPw = pw; lastPh = ph;
+    wxglSizeCanvas(id, pw, ph);
 }
 
 static void wxglDestroyElement(int id) { wxglDrop(id); wxpage_gl_destroy(id); }
@@ -137,7 +145,7 @@ static int TopLevelId(const wxWindow& win)
 wxGLContext::wxGLContext(wxGLCanvas *win,
                          const wxGLContext *WXUNUSED(other),
                          const wxGLContextAttrs *WXUNUSED(ctxAttrs))
-    : m_handle(0), m_elementId(0), m_lastHost(0), m_lastShown(false), m_lastScale(0)
+    : m_handle(0), m_elementId(0), m_lastHost(0), m_lastShown(false), m_lastScale(0), m_lastPw(0), m_lastPh(0)
 {
     m_isOk = false;
     int host = TopLevelId(*win);
@@ -176,7 +184,7 @@ wxGLContext::wxGLContext(wxGLCanvas *win,
     if (emscripten_webgl_get_current_context() == 0)
         emscripten_webgl_make_context_current(m_handle);
     gs_placed[win] = this;
-    PlaceOver(*win);
+    PlaceOver(*win, true);
 }
 
 wxGLContext::~wxGLContext()
@@ -193,14 +201,27 @@ bool wxGLContext::SetCurrent(const wxGLCanvas& win) const
 {
     if (m_handle <= 0)
         return false;
-    for (auto it = gs_placed.begin(); it != gs_placed.end(); )
-        it = it->second == this && it->first != &win ? gs_placed.erase(it) : std::next(it);
-    gs_placed[&win] = this;
-    PlaceOver(win);
+    // One context, one element: on the desktop each canvas is its own window, so a context made current on a hidden
+    // canvas (the slicers share one between the 3D view and Preview, and Preview loads the sliced paths while it is
+    // hidden: GLCanvas3D::_set_current) changes nothing on screen. Here it would carry the element away from the shown
+    // canvas: hidden, resized, cleared, then back, a black/white flash on every slice. A hidden canvas only borrows the
+    // context (it does not draw: GLCanvas3D::render returns while !_is_shown_on_screen()); the element stays.
+    bool borrowed = false;
+    if (!win.IsShownOnScreen())
+        for (const auto& p : gs_placed)
+            if (p.second == this && p.first != &win && p.first->IsShownOnScreen())
+                borrowed = true;
+    if (!borrowed)
+    {
+        for (auto it = gs_placed.begin(); it != gs_placed.end(); )
+            it = it->second == this && it->first != &win ? gs_placed.erase(it) : std::next(it);
+        gs_placed[&win] = this;
+        PlaceOver(win, true);
+    }
     return emscripten_webgl_make_context_current(m_handle) == EMSCRIPTEN_RESULT_SUCCESS;
 }
 
-void wxGLContext::PlaceOver(const wxGLCanvas& win) const
+void wxGLContext::PlaceOver(const wxGLCanvas& win, bool sizeBitmap) const
 {
     if (!m_elementId)
         return;
@@ -218,13 +239,16 @@ void wxGLContext::PlaceOver(const wxGLCanvas& win) const
     bool shown = win.IsShownOnScreen();
     double scale = wxglScale();
 
+    if (sizeBitmap && shown)
+        wxglSetBitmap(m_elementId, rect.width, rect.height, scale, m_lastPw, m_lastPh);
+
     if (rect == m_lastRect && shown == m_lastShown && scale == m_lastScale)
         return;
 
     m_lastRect = rect;
     m_lastShown = shown;
     m_lastScale = scale;
-    wxglSetRect(m_elementId, rect.x, rect.y, rect.width, rect.height, shown, scale);
+    wxglSetBox(m_elementId, rect.x, rect.y, rect.width, rect.height, shown);
 }
 
 void wxGLContext::Detach() const
@@ -232,7 +256,10 @@ void wxGLContext::Detach() const
     m_lastShown = false;
     m_lastRect = wxRect();
     if (m_elementId)
-        wxglSetRect(m_elementId, 0, 0, 0, 0, 0, 1);
+    {
+        wxglSetBox(m_elementId, 0, 0, 0, 0, 0);
+        wxglSetBitmap(m_elementId, 1, 1, 1, m_lastPw, m_lastPh);
+    }
 }
 
 // ----------------------------------------------------------------------------
