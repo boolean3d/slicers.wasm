@@ -116,7 +116,7 @@
   // The copy lives in the origin's private file system (OPFS), like a program's folder on a computer:
   //   b3d-slicer/<app>/objects/<content hash>   every file, once, whatever version or address uses it
   //   b3d-slicer/<app>/<SLICER_FILES.cache>.json   { complete, version, files: { address: object }, types: { object:
-  //   content type }, headers: the host's cross-origin-* headers }, written last
+  //   content type }, headers: the host's isolation headers (cross-origin-*, document-isolation-policy) }, written last
   // (Cache Storage lost most of its entries 30-60 s after a complete install, with nothing of ours deleting them:
   // a later visit then found no program script and stopped. Files in OPFS are ordinary files.) slicer-cache-service-worker.js reads the
   // same folder. A new version downloads only the objects it does not have yet; the objects no version uses are
@@ -203,7 +203,7 @@
   }
   function fillStore(s, list) {
     var sentPerRaw = P.installRaw ? (P.installSent || P.installRaw) / P.installRaw : 1, total = 0, got = 0, reused = 0;
-    var files = {}, types = {}, iso = {}, want = {}, update = false;
+    var files = {}, types = {}, iso = {}, isoKept = {}, want = {}, update = false;
     list.forEach(function (f) { total += f[1]; files[f[0]] = objectName(f); });
     return names(s.app).then(function (versions) {
       var others = Object.keys(versions).filter(function (n) { return n.indexOf(PREFIX) === 0 && n !== L.cache + '.json'; });
@@ -211,7 +211,7 @@
       return Promise.all(others.map(function (n) {   // the content types of the objects kept from earlier versions
         return readJson(s.app, n).then(function (j) {
           if (j && j.types) Object.keys(j.types).forEach(function (k) { types[k] = j.types[k]; });
-          if (j && j.headers) Object.keys(j.headers).forEach(function (k) { iso[k] = j.headers[k]; });
+          if (j && j.headers) Object.keys(j.headers).forEach(function (k) { isoKept[k] = j.headers[k]; });
         });
       }));
     }).then(function () { return sizes(s.objects); }).then(function (have) {
@@ -237,8 +237,10 @@
           if (!r.ok) throw new Error(f[0] + ' ' + r.status);
           if (r.headers.get('content-type')) types[files[f[0]]] = r.headers.get('content-type');
           // the host's isolation headers: a page of the web view answered from the copy needs them (the slicer page is
-          // cross-origin isolated, require-corp)
-          r.headers.forEach(function (v, k) { if (/^cross-origin-/.test(k)) iso[k] = v; });
+          // cross-origin isolated, by COOP+COEP or, in Chromium 137+ on /bambu/, by Document-Isolation-Policy: a frame
+          // without the page's kind of isolation is another agent cluster, the page cannot reach into it, and Home's
+          // buttons never reached the program)
+          r.headers.forEach(function (v, k) { if (/^(cross-origin-|document-isolation-policy$)/.test(k)) iso[k] = v; });
           // counted as it arrives, for the install screen
           var count = new TransformStream({ transform: function (chunk, ctl) { counted += chunk.length; got += chunk.length; ctl.enqueue(chunk); } });
           return putObject(s.objects, files[f[0]], r.body.pipeThrough(count), f[1], function () { return counted; });
@@ -261,6 +263,9 @@
         clearInterval(timer);
         s.files = files;
         // Complete: written last, so a visit that stopped half way carries on where it was on the next one.
+        // The headers this install's downloads came with, never mixed with an older record's (the host may have moved
+        // from COOP+COEP to Document-Isolation-Policy since); an install that downloaded nothing keeps the older ones.
+        if (!Object.keys(iso).length) iso = isoKept;
         return writeFile(s.app, L.cache + '.json', JSON.stringify({ complete: true, version: P.version, files: files, types: types, headers: iso }));
       }).then(function () { return dropOld(s); })
         .then(function () { console.log('slicer installed: ' + Math.round(total / 1e6) + ' MB, ' + Math.round(reused / 1e6) + ' MB kept from the last version'); });

@@ -44,8 +44,28 @@
   var TYPE = { js: 'text/javascript', mjs: 'text/javascript', wasm: 'application/wasm', html: 'text/html', css: 'text/css',
     json: 'application/json', svg: 'image/svg+xml', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
     webp: 'image/webp', ttf: 'font/ttf', otf: 'font/otf', woff: 'font/woff', woff2: 'font/woff2', txt: 'text/plain' };
+  // The isolation headers the host sends this browser now, learnt from every answer of the app folder that comes from
+  // the network (the program's page always does) and kept in Cache Storage for a worker started again. The copy answers
+  // with these, not the install record's: the host decides per browser and may change its mind (COOP+COEP, or
+  // Document-Isolation-Policy in Chromium 137+), and a web-view page whose isolation differs from the program page's is
+  // walled off from it: the page cannot give it window.wx, so Home's buttons (Create new project, Open project) did nothing.
+  var ISO = /^(cross-origin-|document-isolation-policy$)/, ISO_KEY = 'b3d-slicer-iso-' + parts[0], live = null;
+  function learn(res) {
+    if (!res || res.status !== 200 || res.type !== 'basic') return;
+    var h = {}, any = false;
+    res.headers.forEach(function (v, k) { if (ISO.test(k)) { h[k] = v; any = true; } });
+    if (!any || JSON.stringify(h) === JSON.stringify(live)) return;
+    live = h;
+    caches.open(ISO_KEY).then(function (c) { return c.put('iso', new Response(JSON.stringify(h))); }).catch(function () {});
+  }
+  function liveIso() {
+    if (live) return Promise.resolve(live);
+    return caches.open(ISO_KEY).then(function (c) { return c.match('iso'); }).then(function (r) { return r ? r.json() : null; })
+      .then(function (h) { if (h && !live) live = h; return live; }).catch(function () { return null; });
+  }
   function fromInstall(url) {
-    return installed().then(function (j) {
+    return Promise.all([installed(), liveIso()]).then(function (both) {
+      var j = both[0], iso = both[1] || (j && j.headers) || {};
       var n = j && j.files && j.files[url.href];
       if (!n) return null;
       return dir(['b3d-slicer', parts[0], 'objects']).then(function (d) { return d.getFileHandle(n); })
@@ -53,7 +73,7 @@
           var ext = (/\.([a-z0-9]+)$/i.exec(url.pathname) || [])[1];
           var type = (j.types && j.types[n]) || TYPE[(ext || '').toLowerCase()] || 'application/octet-stream';
           var h = { 'content-type': type, 'content-length': String(file.size) };
-          Object.keys(j.headers || {}).forEach(function (k) { h[k] = j.headers[k]; });   // isolation headers, as the host sends
+          Object.keys(iso).forEach(function (k) { h[k] = iso[k]; });   // isolation headers, as the host sends them now
           return new Response(file, { headers: h });
         }, function () { return null; });   // not there (an install from before): from the network
     });
@@ -91,6 +111,7 @@
   function answer(r, url) {
     if (PAGE.test(url.pathname)) {
       return net(r).then(function (res) {
+        learn(res);
         if (res.status === 200) {
           var copy = res.clone(), copy2 = res.clone();
           keepPage(url.href, copy).catch(function () {});
@@ -101,7 +122,7 @@
         return lastPage(url.href).then(function (hit) { if (hit) return hit; throw e; });
       });
     }
-    return fromInstall(url).then(function (hit) { return hit || net(r); });
+    return fromInstall(url).then(function (hit) { return hit || net(r).then(function (res) { learn(res); return res; }); });
   }
   self.fetch = function (input, init) {
     var r = input instanceof Request && !init ? input : new Request(input, init);
