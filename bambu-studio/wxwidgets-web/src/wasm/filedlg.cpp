@@ -94,3 +94,24 @@ void wxFileDialog::GetFilenames(wxArrayString& files) const
 }
 
 #endif // wxUSE_FILEDLG
+
+#if wxUSE_DIRDLG
+
+#include "wx/dirdlg.h"
+
+wxIMPLEMENT_DYNAMIC_CLASS(wxDirDialog, wxDialog);
+
+// A folder asked for to save into (export every object as its own file, a preset bundle...): the browser's downloads,
+// as wxFileDialog's Save is. No box: the browser has no folder of the computer to show, and its downloads are where
+// each file then goes, one download per file written.
+int wxDirDialog::ShowModal()
+{
+    wxFileName::Mkdir(wxWASM_DOWNLOAD_DIR, wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
+    wxWasmWatchDownloads(wxWASM_DOWNLOAD_DIR);
+    m_path = wxWASM_DOWNLOAD_DIR;
+    m_paths.clear();
+    m_paths.Add(m_path);
+    return wxID_OK;
+}
+
+#endif // wxUSE_DIRDLG

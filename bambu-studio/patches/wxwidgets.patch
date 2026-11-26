@@ -5137,6 +5137,21 @@ index 55dc6d0..26d9587 100644
      virtual void EndModal(int retCode) = 0;
      virtual bool IsModal() const = 0;
      // show the dialog frame-modally (needs a parent), using app-modal
+diff --git a/include/wx/dirdlg.h b/include/wx/dirdlg.h
+index 0136069..33ddba5 100644
+--- a/include/wx/dirdlg.h
++++ b/include/wx/dirdlg.h
+@@ -108,7 +108,9 @@ protected:
+ 
+ 
+ // Universal and non-port related switches with need for generic implementation
+-#if defined(__WXUNIVERSAL__)
++#if defined(__WXWASM__)
++    #include "wx/wasm/dirdlg.h"     // the browser's downloads
++#elif defined(__WXUNIVERSAL__)
+     #include "wx/generic/dirdlgg.h"
+     #define wxDirDialog wxGenericDirDialog
+ #elif defined(__WXMSW__) && !wxUSE_OLE
 diff --git a/include/wx/dnd.h b/include/wx/dnd.h
 index c430836..c6b5daa 100644
 --- a/include/wx/dnd.h
@@ -16440,10 +16455,10 @@ index 36906c8..5214a68 100644
  {
 diff --git a/src/wasm/app.cpp b/src/wasm/app.cpp
 new file mode 100644
-index 0000000..1bc1253
+index 0000000..6ad5485
 --- /dev/null
 +++ b/src/wasm/app.cpp
-@@ -0,0 +1,1171 @@
+@@ -0,0 +1,1177 @@
 +/////////////////////////////////////////////////////////////////////////////
 +// Name:        src/wasm/app.cpp
 +// Purpose      wxApp implementation
@@ -17163,6 +17178,12 @@ index 0000000..1bc1253
 +            else
 +            {
 +                preventDefault = false;
++                // A key the program took at its char hook (not skipped) makes no char, as on the desktop toolkits; the
++                // browser still sends this key's text after it, so that text is dropped. Bambu Studio's main window takes
++                // a plain letter there and hands the 3D view the char itself (MainFrame.cpp, the gizmo keys): the text
++                // was a second char, and the tool the letter opened closed again at once.
++                if (keyFlags & wxWASM_KEY_TEXT)
++                    s_textTaken = true;
 +            }
 +        }
 +        else
@@ -27664,10 +27685,10 @@ index 0000000..383fbf0
 +#endif // wxUSE_WEBVIEW && __WXWASM__
 diff --git a/src/wasm/window.cpp b/src/wasm/window.cpp
 new file mode 100644
-index 0000000..2a670c5
+index 0000000..4a2d13a
 --- /dev/null
 +++ b/src/wasm/window.cpp
-@@ -0,0 +1,865 @@
+@@ -0,0 +1,869 @@
 +/////////////////////////////////////////////////////////////////////////////
 +// Name:        wx/wasm/window.cpp
 +// Purpose:     wxWasmWindow implementation
@@ -27940,7 +27961,11 @@ index 0000000..2a670c5
 +    wxCHECK_RET(gs_focusWindow == this,
 +                "killing focus on window that doesn't have it" );
 +
-+    gs_focusWindow = NULL;
++    // While the window losing focus hears of it, the focus is already where it goes, as on the desktop toolkits (on
++    // MSW ::GetFocus() in WM_KILLFOCUS is the new window): a handler asking FindFocus() then gets the window taking the
++    // keyboard, not none. A popup whose own handler asks it (Bambu Studio's settings search, which keeps its text box
++    // outside the popup on every toolkit but GTK) took "none" for "the person left" and closed as it opened.
++    gs_focusWindow = gs_nextFocusWindow;
 +
 +    if ( m_isBeingDeleted )
 +        return; // don't send any events from dtor
