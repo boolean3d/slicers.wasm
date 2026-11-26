@@ -47,12 +47,20 @@
 
   // One whole file, synchronously. A binary response type is refused for a synchronous request on the page, so the
   // bytes come as text in the x-user-defined charset (each byte one character, high bytes in U+F780..U+F7FF).
+  // A copy the browser no longer has (its storage cleared or evicted while the program runs: the blob: address then
+  // answers net::ERR_FILE_NOT_FOUND) is forgotten and the file read from the network, as a file with no copy is.
   function fetchSync(url, skip) {
     var t0 = performance.now(), x = new XMLHttpRequest(), b = blobs[abs(url)];
     x.open('GET', b || url, false);
     x.overrideMimeType('text/plain; charset=x-user-defined');
-    try { x.send(null); } catch (e) { return null; }
-    if (x.status !== 200 && !(b && x.status === 0 && x.responseText)) return null;
+    var sent = true;
+    try { x.send(null); } catch (e) { sent = false; }
+    if (!sent || (x.status !== 200 && !(b && x.status === 0 && x.responseText))) {
+      if (!b) return null;
+      delete blobs[abs(url)];
+      stats.lostCopies = (stats.lostCopies || 0) + 1;
+      return fetchSync(url, skip);
+    }
     var s = x.responseText, n = s.length - skip, out = new Uint8Array(Math.max(n, 0));
     for (var i = 0; i < n; i++) out[i] = s.charCodeAt(i + skip) & 255;
     stats.files++; stats.bytes += n; stats.ms += performance.now() - t0;
