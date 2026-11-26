@@ -1,1 +1,50 @@
-[{"description":"slicers: cross-origin isolation (threads need SharedArrayBuffer)","expression":"(http.host eq \"slicers.boolean3d.com\")","action":"rewrite","action_parameters":{"headers":{"Cross-Origin-Opener-Policy":{"operation":"set","value":"same-origin"},"Cross-Origin-Embedder-Policy":{"operation":"set","value":"require-corp"},"Cross-Origin-Resource-Policy":{"operation":"set","value":"same-origin"},"X-Content-Type-Options":{"operation":"set","value":"nosniff"}}},"enabled":true}]
+[
+ {
+  "description": "slicers, Chromium 137+ (prototype: /bambu/2.09.02.62-9/ only): cross-origin isolated by Document-Isolation-Policy instead of COOP+COEP, so the tab keeps its opener and name and Boolean3d's Open in slicer can hand a file to the running tab (package/hand-over.js). Way back: disable the rule.",
+  "expression": "(http.host eq \"slicers.boolean3d.com\") and (starts_with(http.request.uri.path, \"/bambu/2.09.02.62-9/\")) and (any(http.request.headers[\"sec-ch-ua\"][*] contains \"\\\"Chromium\\\";v=\\\"137\\\"\") or any(http.request.headers[\"sec-ch-ua\"][*] contains \"\\\"Chromium\\\";v=\\\"138\\\"\") or any(http.request.headers[\"sec-ch-ua\"][*] contains \"\\\"Chromium\\\";v=\\\"139\\\"\") or any(http.request.headers[\"sec-ch-ua\"][*] contains \"\\\"Chromium\\\";v=\\\"14\") or any(http.request.headers[\"sec-ch-ua\"][*] contains \"\\\"Chromium\\\";v=\\\"15\") or any(http.request.headers[\"sec-ch-ua\"][*] contains \"\\\"Chromium\\\";v=\\\"16\") or any(http.request.headers[\"sec-ch-ua\"][*] contains \"\\\"Chromium\\\";v=\\\"17\") or any(http.request.headers[\"sec-ch-ua\"][*] contains \"\\\"Chromium\\\";v=\\\"18\") or any(http.request.headers[\"sec-ch-ua\"][*] contains \"\\\"Chromium\\\";v=\\\"19\"))",
+  "action": "rewrite",
+  "enabled": true,
+  "action_parameters": {
+   "headers": {
+    "Document-Isolation-Policy": {
+     "operation": "set",
+     "value": "isolate-and-require-corp"
+    },
+    "Cross-Origin-Resource-Policy": {
+     "operation": "set",
+     "value": "same-origin"
+    },
+    "X-Content-Type-Options": {
+     "operation": "set",
+     "value": "nosniff"
+    }
+   }
+  }
+ },
+ {
+  "description": "slicers: cross-origin isolation (threads need SharedArrayBuffer); every browser the rule above does not take",
+  "expression": "(http.host eq \"slicers.boolean3d.com\") and not ((starts_with(http.request.uri.path, \"/bambu/2.09.02.62-9/\")) and (any(http.request.headers[\"sec-ch-ua\"][*] contains \"\\\"Chromium\\\";v=\\\"137\\\"\") or any(http.request.headers[\"sec-ch-ua\"][*] contains \"\\\"Chromium\\\";v=\\\"138\\\"\") or any(http.request.headers[\"sec-ch-ua\"][*] contains \"\\\"Chromium\\\";v=\\\"139\\\"\") or any(http.request.headers[\"sec-ch-ua\"][*] contains \"\\\"Chromium\\\";v=\\\"14\") or any(http.request.headers[\"sec-ch-ua\"][*] contains \"\\\"Chromium\\\";v=\\\"15\") or any(http.request.headers[\"sec-ch-ua\"][*] contains \"\\\"Chromium\\\";v=\\\"16\") or any(http.request.headers[\"sec-ch-ua\"][*] contains \"\\\"Chromium\\\";v=\\\"17\") or any(http.request.headers[\"sec-ch-ua\"][*] contains \"\\\"Chromium\\\";v=\\\"18\") or any(http.request.headers[\"sec-ch-ua\"][*] contains \"\\\"Chromium\\\";v=\\\"19\")))",
+  "action": "rewrite",
+  "enabled": true,
+  "action_parameters": {
+   "headers": {
+    "Cross-Origin-Opener-Policy": {
+     "operation": "set",
+     "value": "same-origin"
+    },
+    "Cross-Origin-Embedder-Policy": {
+     "operation": "set",
+     "value": "require-corp"
+    },
+    "Cross-Origin-Resource-Policy": {
+     "operation": "set",
+     "value": "same-origin"
+    },
+    "X-Content-Type-Options": {
+     "operation": "set",
+     "value": "nosniff"
+    }
+   }
+  }
+ }
+]

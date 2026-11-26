@@ -5,8 +5,8 @@
 // window.open('', name), which also brings it to the front, and posts {b3d: 'open', link} (the slicer address it would
 // have opened: ?url=&name= or ?project=&open=). This tab opens that file through the door's open_files (the program's
 // own EVT_LOAD_MODEL_OTHER_INSTANCE: one 3MF opens as the project, asking about the open one first; anything else is
-// added to the plate) and answers {b3d: 'taking'} at once and {b3d: 'opened', ok} when done. ok false: the sender opens the address in this tab instead
-// (a reload), as before. The finding only works where the page keeps its opener (Chromium's Document-Isolation-Policy;
+// added to the plate) and answers {b3d: 'taking'} at once and {b3d: 'opened', ok} when done. ok false (or no answer):
+// the sender leaves this tab as it is (it may hold work) and opens the address in a new tab, as before. The finding only works where the page keeps its opener (Chromium's Document-Isolation-Policy;
 // with COOP the browser cuts every link to the tab and Open in slicer starts a new one, as before).
 // Any page may post here: the address is only ever one that page could have opened in a tab itself, of this program.
 (function () {
