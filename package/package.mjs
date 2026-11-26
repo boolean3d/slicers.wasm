@@ -33,7 +33,7 @@ import { licenceText, noticesText, sourceText } from './program-sources.mjs';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // Our scripts on every program page, in the order the page loads them (before the program's own script): each is a file of
 // this folder, kept in the program's data file as a start file and loaded by index.html.
-export const PAGE_SCRIPTS = ['claude-line.js', 'credit.js', 'home-folder-sync.js', 'project-folder.js', 'boolean3d-folder.js', 'open-part-from-link.js',
+export const PAGE_SCRIPTS = ['claude-line.js', 'credit.js', 'home-folder-sync.js', 'project-folder.js', 'boolean3d-folder.js', 'open-part-from-link.js', 'hand-over.js',
   'home-bar.js', 'print-anywhere.js', 'count-slices.js'];
 
 /** The forwarding page's note of where this tab came from (home-bar.js reads it; sessionStorage is this tab's only). */

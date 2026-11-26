@@ -29,6 +29,7 @@
 #include "slic3r/GUI/MainFrame.hpp"
 #include "slic3r/GUI/Notebook.hpp"
 #include "slic3r/GUI/Plater.hpp"
+#include "slic3r/GUI/InstanceCheck.hpp"
 #include "slic3r/GUI/PartPlate.hpp"
 #include "slic3r/GUI/GLCanvas3D.hpp"
 #include "slic3r/GUI/Selection.hpp"
@@ -308,6 +309,16 @@ json run(const std::string &id, const std::string &what, const json &args)
     if (what == "settings") return settings(args);
     if (what == "results") return results();
     if (what == "add_part") return add_part(args);
+    if (what == "open_files") { // what a second copy of the program sends the running one (a file double-clicked on the
+        // desktop): the plater's own EVT_LOAD_MODEL_OTHER_INSTANCE, so it raises the window and opens one 3MF as the
+        // project (asking about the open one, as the desktop does) and adds anything else to the plate
+        std::vector<boost::filesystem::path> paths;
+        for (const auto &s : args.value("paths", json::array())) paths.emplace_back(s.get<std::string>());
+        if (paths.empty()) throw DoorError("open_files needs paths");
+        for (const auto &p : paths) if (!boost::filesystem::exists(p)) throw DoorError("there is no file " + p.string());
+        wxPostEvent(&plater(), LoadFromOtherInstanceEvent(EVT_LOAD_MODEL_OTHER_INSTANCE, std::move(paths)));
+        return json{{"posted", true}};
+    }
     if (what == "new_project") { plater().new_project(true, true); return status(); }
     if (what == "tab") { // the tab the window shows, as the person picks it on the bar: prepare, preview or device
         const std::string to = args.value("to", "");
